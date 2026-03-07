@@ -64,18 +64,18 @@ export default function SearchPage() {
         <div className="text-center max-w-3xl mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 text-accent font-medium text-sm mb-6 border border-accent/20">
             <Sparkles className="w-4 h-4" />
-            AI-Powered Matching
+            AI 기반 매칭
           </div>
-          <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">Find Your Lost Item</h1>
+          <h1 className="text-4xl md:text-5xl font-display font-bold mb-4">분실물 찾기</h1>
           <p className="text-lg text-muted-foreground">
-            Describe what you lost in plain English, or upload a reference picture (like an old photo of the item). Our AI will search through all found reports to find matches.
+            잃어버린 물건을 설명하거나, 물건의 참고 사진(예: 예전 사진)을 업로드하세요. 우리의 AI가 모든 습득물 신고를 검색하여 매칭되는 물건을 찾아줍니다.
           </p>
         </div>
 
         <Card className="w-full max-w-3xl p-2 rounded-3xl shadow-xl shadow-black/5 border-border/50 bg-white/60 backdrop-blur-xl mb-16 relative z-10 overflow-hidden">
           <form onSubmit={form.handleSubmit(onSubmit)} className="relative">
             <Textarea
-              placeholder="Describe your item in detail. E.g., 'A black leather Ridge wallet with a silver money clip. It had my driver's license inside.'"
+              placeholder="물건을 자세히 설명하세요. 예: '검은색 가죽 Ridge 지갑, 은색 금속 클립이 있습니다. 운전면허증이 들어있었어요.'"
               className="min-h-[140px] resize-none border-0 focus-visible:ring-0 bg-transparent text-lg p-6 pb-20 placeholder:text-muted-foreground/60"
               {...form.register("prompt")}
             />
@@ -118,7 +118,7 @@ export default function SearchPage() {
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <ImageIcon className="w-4 h-4 mr-2 text-muted-foreground" />
-                    Add Reference Photo
+                    참고 사진 추가
                   </Button>
                 )}
               </div>
@@ -130,9 +130,9 @@ export default function SearchPage() {
                 disabled={searchMutation.isPending}
               >
                 {searchMutation.isPending ? (
-                  <><Loader2 className="mr-2 w-5 h-5 animate-spin" /> Searching...</>
+                  <><Loader2 className="mr-2 w-5 h-5 animate-spin" /> 검색 중...</>
                 ) : (
-                  <><SearchIcon className="mr-2 w-5 h-5" /> Search AI</>
+                  <><SearchIcon className="mr-2 w-5 h-5" /> AI 검색</>
                 )}
               </Button>
             </div>
@@ -140,7 +140,7 @@ export default function SearchPage() {
         </Card>
         
         {form.formState.errors.prompt && (
-          <p className="text-destructive text-sm -mt-12 mb-12">{form.formState.errors.prompt.message}</p>
+          <p className="text-destructive text-sm -mt-12 mb-12">{form.formState.errors.prompt.message === "Please provide either a description or an image of the lost item." ? "설명이나 이미지를 제공해주세요." : form.formState.errors.prompt.message}</p>
         )}
 
         {/* Results Section */}
@@ -153,8 +153,8 @@ export default function SearchPage() {
                   <Sparkles className="w-8 h-8 text-white" />
                 </div>
               </div>
-              <h3 className="text-2xl font-display font-bold">Scanning database...</h3>
-              <p className="text-muted-foreground">Comparing your description against hundreds of items.</p>
+              <h3 className="text-2xl font-display font-bold">데이터베이스 검색 중...</h3>
+              <p className="text-muted-foreground">수백 개의 물건과 귀하의 설명을 비교하고 있습니다.</p>
             </div>
           )}
 
@@ -165,17 +165,17 @@ export default function SearchPage() {
               className="w-full"
             >
               <div className="flex items-center justify-between mb-8 border-b border-border pb-4">
-                <h2 className="text-2xl font-display font-bold">Search Results</h2>
+                <h2 className="text-2xl font-display font-bold">검색 결과</h2>
                 <span className="text-muted-foreground bg-secondary px-3 py-1 rounded-full text-sm font-medium">
-                  {searchMutation.data.length} potential matches
+                  {searchMutation.data.length}개 매칭 물건
                 </span>
               </div>
               
               {searchMutation.data.length === 0 ? (
                 <div className="text-center py-16 bg-secondary/30 rounded-3xl border border-border/50">
                   <SearchIcon className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
-                  <h3 className="text-xl font-bold mb-2">No matches found right now</h3>
-                  <p className="text-muted-foreground">Check back later or try adjusting your description.</p>
+                  <h3 className="text-xl font-bold mb-2">지금은 매칭 물건이 없습니다</h3>
+                  <p className="text-muted-foreground">나중에 다시 확인하거나 설명을 조정해보세요.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

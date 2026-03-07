@@ -24,23 +24,23 @@ export default function Home() {
             className="max-w-3xl mx-auto"
           >
             <h1 className="text-5xl md:text-6xl lg:text-7xl font-display font-extrabold tracking-tight text-balance mb-6">
-              Reuniting people with the things they <span className="gradient-text">love.</span>
+              사람들을 소중한 물건과 <span className="gradient-text">연결합니다.</span>
             </h1>
             <p className="text-xl text-muted-foreground mb-10 text-balance leading-relaxed">
-              Our AI-powered platform makes it incredibly easy to match found items with their rightful owners. Snap a picture, and let the magic happen.
+              우리의 AI 기반 플랫폼은 습득한 물건과 주인을 쉽게 연결합니다. 사진을 찍고 마법이 일어나도록 하세요.
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/report" className="w-full sm:w-auto">
                 <Button size="lg" className="w-full sm:w-auto rounded-full h-14 px-8 text-lg font-semibold shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-1 transition-all">
                   <Plus className="mr-2 w-5 h-5" />
-                  I Found Something
+                  물건을 찾았어요
                 </Button>
               </Link>
               <Link href="/search" className="w-full sm:w-auto">
                 <Button size="lg" variant="outline" className="w-full sm:w-auto rounded-full h-14 px-8 text-lg font-semibold border-2 hover:bg-secondary/50 transition-all">
                   <Search className="mr-2 w-5 h-5" />
-                  I Lost Something
+                  물건을 찾고 있어요
                 </Button>
               </Link>
             </div>
@@ -52,12 +52,12 @@ export default function Home() {
       <section className="bg-white/50 backdrop-blur-xl border-t border-border/50 py-16 flex-grow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-            <h2 className="text-3xl font-display font-bold">Recent Reports</h2>
+            <h2 className="text-3xl font-display font-bold">최근 신고</h2>
             
             <Tabs value={tab} onValueChange={(v) => setTab(v as 'found' | 'lost')} className="w-full md:w-auto">
               <TabsList className="grid w-full grid-cols-2 h-12 rounded-full p-1 bg-secondary/50">
-                <TabsTrigger value="found" className="rounded-full text-base">Found Items</TabsTrigger>
-                <TabsTrigger value="lost" className="rounded-full text-base">Lost Items</TabsTrigger>
+                <TabsTrigger value="found" className="rounded-full text-base">습득물</TabsTrigger>
+                <TabsTrigger value="lost" className="rounded-full text-base">분실물</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -73,9 +73,9 @@ export default function Home() {
               <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-4">
                 <PackageOpen className="w-10 h-10" />
               </div>
-              <h3 className="text-xl font-bold mb-2">No items found</h3>
+              <h3 className="text-xl font-bold mb-2">신고된 물건이 없습니다</h3>
               <p className="text-muted-foreground max-w-md">
-                There are currently no {tab} items reported in the community.
+                현재 {tab === 'found' ? '습득물' : '분실물'} 신고가 없습니다.
               </p>
             </div>
           ) : (

@@ -26,17 +26,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <nav className="hidden md:flex items-center gap-1">
             <Link href="/">
               <Button variant={location === "/" ? "secondary" : "ghost"} className={cn("rounded-full font-medium", location === "/" && "bg-secondary text-foreground")}>
-                Home
+                홈
               </Button>
             </Link>
             <Link href="/report">
               <Button variant={location === "/report" ? "secondary" : "ghost"} className={cn("rounded-full font-medium text-primary hover:text-primary hover:bg-primary/10", location === "/report" && "bg-primary/10")}>
-                Report Found
+                습득물 신고
               </Button>
             </Link>
             <Link href="/search">
               <Button variant={location === "/search" ? "secondary" : "ghost"} className={cn("rounded-full font-medium", location === "/search" && "bg-secondary text-foreground")}>
-                Find Lost Item
+                분실물 찾기
               </Button>
             </Link>
           </nav>
@@ -59,12 +59,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <footer className="border-t border-border/50 bg-card/50 backdrop-blur-sm mt-auto">
         <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-muted-foreground text-sm">
-            © {new Date().getFullYear()} ReturnIt Community. Helping people reunite with their belongings.
+            © {new Date().getFullYear()} 분실물 찾기 커뮤니티. 사람들이 소중한 물건을 찾을 수 있도록 돕습니다.
           </p>
           <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>Powered by AI</span>
+            <span>AI 기반</span>
             <span>•</span>
-            <span>Community Driven</span>
+            <span>커뮤니티 주도</span>
           </div>
         </div>
       </footer>
