@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { useAnalyzeImage, useCreateItem } from "@/hooks/use-ai";
-import { fileToBase64, cn } from "@/lib/utils";
+import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { useCreateItem as useSaveItem } from "@/hooks/use-items";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -64,7 +64,7 @@ export default function ReportPage() {
 
     try {
       setIsAnalyzing(true);
-      const base64 = await fileToBase64(file);
+      const base64 = await optimizeImageForUpload(file);
       setImagePreview(base64);
       form.setValue("imageUrl", base64);
 

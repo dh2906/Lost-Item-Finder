@@ -1,11 +1,14 @@
-import { items, type Item, type InsertItem } from "@shared/schema";
+import { items, itemEmbeddings, type Item, type InsertItem } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, ilike, and } from "drizzle-orm";
+import { eq, desc, ilike, and, isNull, cosineDistance, sql } from "drizzle-orm";
 
 export interface IStorage {
   getItems(type?: "lost" | "found", search?: string): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem): Promise<Item>;
+  upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
+  getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
+  searchFoundItemsByEmbedding(embedding: number[], limit?: number): Promise<Array<{ item: Item; score: number }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -27,6 +30,51 @@ export class DatabaseStorage implements IStorage {
   async createItem(insertItem: InsertItem): Promise<Item> {
     const [item] = await db.insert(items).values(insertItem).returning();
     return item;
+  }
+
+  async upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void> {
+    await db
+      .insert(itemEmbeddings)
+      .values({ itemId, content, embedding, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: itemEmbeddings.itemId,
+        set: {
+          content,
+          embedding,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async getFoundItemsWithoutEmbeddings(): Promise<Item[]> {
+    const rows = await db
+      .select({ item: items })
+      .from(items)
+      .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
+      .where(and(eq(items.reportType, "found"), isNull(itemEmbeddings.itemId)))
+      .orderBy(desc(items.date));
+
+    return rows.map((row) => row.item);
+  }
+
+  async searchFoundItemsByEmbedding(embedding: number[], limit = 12): Promise<Array<{ item: Item; score: number }>> {
+    const distance = cosineDistance(itemEmbeddings.embedding, embedding);
+
+    const rows = await db
+      .select({
+        item: items,
+        distance,
+      })
+      .from(itemEmbeddings)
+      .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
+      .where(eq(items.reportType, "found"))
+      .orderBy(distance)
+      .limit(limit);
+
+    return rows.map((row) => ({
+      item: row.item,
+      score: Math.max(0, 1 - Number(row.distance ?? 1)),
+    }));
   }
 }
 

@@ -12,3 +12,7 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
+
+export async function ensureVectorExtension(): Promise<void> {
+  await pool.query("CREATE EXTENSION IF NOT EXISTS vector;");
+}

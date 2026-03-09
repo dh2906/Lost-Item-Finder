@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ItemCard } from "@/components/item-card";
 import { useSearchSimilar } from "@/hooks/use-ai";
-import { fileToBase64, cn } from "@/lib/utils";
+import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 const searchSchema = z.object({
@@ -40,7 +40,7 @@ export default function SearchPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    const base64 = await fileToBase64(file);
+    const base64 = await optimizeImageForUpload(file);
     setImagePreview(base64);
     form.setValue("imageUrl", base64);
     // Clear error if exists since we now have an image

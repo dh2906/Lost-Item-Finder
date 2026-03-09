@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, jsonb, integer, vector } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -17,6 +17,13 @@ export const items = pgTable("items", {
   contactInfo: text("contact_info"),
 });
 
+export const itemEmbeddings = pgTable("item_embeddings", {
+  itemId: integer("item_id").primaryKey().references(() => items.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertItemSchema = createInsertSchema(items).omit({
   id: true,
   date: true,
@@ -24,3 +31,4 @@ export const insertItemSchema = createInsertSchema(items).omit({
 
 export type Item = typeof items.$inferSelect;
 export type InsertItem = z.infer<typeof insertItemSchema>;
+export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
