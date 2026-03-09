@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type KeyboardEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -57,6 +57,20 @@ export default function SearchPage() {
     await searchMutation.mutateAsync(data);
   };
 
+  const handlePromptKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) {
+      return;
+    }
+
+    e.preventDefault();
+
+    if (searchMutation.isPending) {
+      return;
+    }
+
+    void form.handleSubmit(onSubmit)();
+  };
+
   return (
     <Layout>
       <div className="max-w-7xl mx-auto px-4 py-12 w-full flex flex-col items-center">
@@ -77,6 +91,7 @@ export default function SearchPage() {
             <Textarea
               placeholder="물건을 자세히 설명하세요. 예: '검은색 가죽 Ridge 지갑, 은색 금속 클립이 있습니다. 운전면허증이 들어있었어요.'"
               className="min-h-[140px] resize-none border-0 focus-visible:ring-0 bg-transparent text-lg p-6 pb-20 placeholder:text-muted-foreground/60"
+              onKeyDown={handlePromptKeyDown}
               {...form.register("prompt")}
             />
             
