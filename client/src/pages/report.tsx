@@ -1,16 +1,16 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type ChangeEvent, type DragEvent } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { UploadCloud, Sparkles, Loader2, Image as ImageIcon, CheckCircle2 } from "lucide-react";
+import { UploadCloud, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { useAnalyzeImage, useCreateItem } from "@/hooks/use-ai";
+import { useAnalyzeImage } from "@/hooks/use-ai";
 import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { useCreateItem as useSaveItem } from "@/hooks/use-items";
 import { useToast } from "@/hooks/use-toast";
@@ -38,6 +38,7 @@ export default function ReportPage() {
   
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   
   const analyzeMutation = useAnalyzeImage();
   const createMutation = useSaveItem();
@@ -58,8 +59,16 @@ export default function ReportPage() {
     },
   });
 
-  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const processSelectedFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "지원되지 않는 파일",
+        description: "이미지 파일만 업로드할 수 있습니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!file) return;
 
     try {
@@ -96,6 +105,35 @@ export default function ReportPage() {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processSelectedFile(file);
+    e.target.value = "";
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!isDragOver) {
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+
+    await processSelectedFile(file);
   };
 
   const onSubmit = async (data: FormValues) => {
@@ -139,10 +177,14 @@ export default function ReportPage() {
               
               <div 
                 className={cn(
-                  "relative aspect-[4/5] flex flex-col items-center justify-center p-6 cursor-pointer",
-                  imagePreview ? "p-0" : ""
+                  "relative aspect-[4/5] flex flex-col items-center justify-center p-6 cursor-pointer transition-colors",
+                  imagePreview ? "p-0" : "",
+                  isDragOver ? "bg-primary/10" : ""
                 )}
                 onClick={() => fileInputRef.current?.click()}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
               >
                 <AnimatePresence mode="wait">
                   {imagePreview ? (
@@ -168,7 +210,7 @@ export default function ReportPage() {
                         <UploadCloud className="w-8 h-8" />
                       </div>
                       <h3 className="font-semibold text-lg mb-1">사진 업로드</h3>
-                      <p className="text-sm text-muted-foreground">기기에서 이미지를 선택하려면 탭하세요</p>
+                      <p className="text-sm text-muted-foreground">드래그 앤 드롭 또는 탭해서 업로드</p>
                     </motion.div>
                   )}
                 </AnimatePresence>
