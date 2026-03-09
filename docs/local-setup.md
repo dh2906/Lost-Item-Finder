@@ -12,7 +12,7 @@ npm run db:push
 npm run dev
 ```
 
-The app runs at `http://127.0.0.1:5001`.
+The app runs at `http://127.0.0.1:8080`.
 
 If you upload large base64 images, the request parser limit is controlled by `REQUEST_BODY_LIMIT` in `.env`. The default is `50mb`.
 
