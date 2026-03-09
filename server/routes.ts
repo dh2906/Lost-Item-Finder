@@ -49,6 +49,53 @@ function getErrorMessage(error: unknown): string {
   return "Internal server error";
 }
 
+function validateSearchPrompt(prompt: string): string | null {
+  const normalized = prompt.replace(/\s+/g, " ").trim();
+  if (normalized.length < 2) {
+    return "검색어가 너무 짧아요. 물건 특징을 조금 더 입력해 주세요.";
+  }
+
+  const meaningfulChars = normalized.match(/[가-힣A-Za-z0-9]/g)?.length ?? 0;
+  if (meaningfulChars < 2) {
+    return "의미 있는 검색어를 입력해 주세요.";
+  }
+
+  const jamoCount = normalized.match(/[ㄱ-ㅎㅏ-ㅣ]/g)?.length ?? 0;
+  const alnumKoreanCount = normalized.match(/[가-힣A-Za-z0-9]/g)?.length ?? 0;
+  const totalSignal = jamoCount + alnumKoreanCount;
+  const jamoRatio = totalSignal > 0 ? jamoCount / totalSignal : 0;
+
+  if (jamoCount >= 3 || jamoRatio > 0.25) {
+    return "자음/모음만 섞인 입력이 많아요. 물건 특징을 자연어로 입력해 주세요.";
+  }
+
+  const isEnglishOnly = /^[A-Za-z\s]+$/.test(normalized);
+  if (isEnglishOnly) {
+    const tokens = normalized.toLowerCase().split(/\s+/).filter(Boolean);
+
+    const suspiciousTokenCount = tokens.filter((token) => {
+      if (token.length < 6) {
+        return false;
+      }
+
+      const vowelCount = token.match(/[aeiou]/g)?.length ?? 0;
+      const vowelRatio = vowelCount / token.length;
+      const uniqueRatio = new Set(token).size / token.length;
+
+      return vowelRatio < 0.22 || uniqueRatio < 0.3;
+    }).length;
+
+    if (
+      (tokens.length === 1 && tokens[0].length >= 7 && suspiciousTokenCount >= 1) ||
+      suspiciousTokenCount >= 2
+    ) {
+      return "영문 난타처럼 보여요. 물건 특징을 문장으로 입력해 주세요. (예: black leather wallet with silver clip)";
+    }
+  }
+
+  return null;
+}
+
 function buildItemSearchText(item: {
   title?: string | null;
   description?: string | null;
@@ -69,6 +116,105 @@ function buildItemSearchText(item: {
   ].filter((value): value is string => Boolean(value));
 
   return sections.join("\n");
+}
+
+function normalizeKoreanText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^가-힣a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractQueryKeywords(queryText: string): string[] {
+  const tokens = normalizeKoreanText(queryText)
+    .split(" ")
+    .filter((token) => token.length >= 2)
+    .filter((token) => !/^\d+$/.test(token));
+
+  return Array.from(new Set(tokens)).slice(0, 20);
+}
+
+function getItemEvidenceText(item: {
+  title?: string | null;
+  description?: string | null;
+  itemCategory?: string | null;
+  color?: string | null;
+  size?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+}): string {
+  return [
+    item.title,
+    item.description,
+    item.itemCategory,
+    item.color,
+    item.size,
+    item.location,
+    item.tags?.join(" "),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+}
+
+function buildReasoningFromEvidence(params: {
+  queryText: string;
+  item: {
+    title?: string | null;
+    itemCategory?: string | null;
+    color?: string | null;
+    size?: string | null;
+    tags?: string[] | null;
+    description?: string | null;
+  };
+  matchScore: number;
+  llmReasoning?: string;
+}): string {
+  const { queryText, item, matchScore, llmReasoning } = params;
+
+  const keywords = extractQueryKeywords(queryText);
+  const evidenceText = normalizeKoreanText(getItemEvidenceText(item));
+  const matchedKeywords = keywords.filter((keyword) => evidenceText.includes(keyword)).slice(0, 4);
+
+  const detailClauses: string[] = [];
+  if (item.itemCategory) {
+    detailClauses.push(`카테고리는 '${item.itemCategory}'로 분류돼 있고`);
+  }
+  if (item.color) {
+    detailClauses.push(`색상은 '${item.color}' 계열로 보이며`);
+  }
+  if (item.size) {
+    detailClauses.push(`크기 정보는 '${item.size}'에 가깝습니다`);
+  }
+  if (item.tags?.length) {
+    detailClauses.push(`태그에는 ${item.tags.slice(0, 3).join(", ")} 같은 특징이 포함돼 있어요`);
+  }
+
+  const evidenceSummary =
+    matchedKeywords.length > 0
+      ? `입력하신 표현 중 ${matchedKeywords.join(", ")} 키워드가 후보 정보와 직접 겹칩니다.`
+      : detailClauses.length > 0
+        ? `${detailClauses.slice(0, 2).join(", ")}.`
+        : "후보 설명과의 의미 유사도를 기준으로 우선 노출되었습니다.";
+
+  const scorePercent = (Math.max(0, Math.min(1, matchScore)) * 100).toFixed(1);
+  const normalizedScore = Math.max(0, Math.min(1, matchScore));
+
+  const scoreSummary =
+    normalizedScore >= 0.75
+      ? `최종 매칭 점수가 약 ${scorePercent}%로 높아, 실제 동일 물건일 가능성이 큽니다.`
+      : normalizedScore >= 0.45
+        ? `최종 매칭 점수는 약 ${scorePercent}%로 중간 수준입니다. 일부 특징은 맞지만 추가 확인이 필요합니다.`
+        : normalizedScore >= 0.25
+          ? `최종 매칭 점수는 약 ${scorePercent}%로 낮은 편이라 참고용 후보로 보는 것이 좋습니다.`
+          : `최종 매칭 점수는 약 ${scorePercent}%로 매우 낮아, 관련성이 약한 후보일 수 있습니다.`;
+  const normalizedLlmReasoning = llmReasoning?.trim();
+
+  if (normalizedLlmReasoning) {
+    return `${normalizedLlmReasoning} ${evidenceSummary} ${scoreSummary}`;
+  }
+
+  return `${evidenceSummary} ${scoreSummary}`;
 }
 
 async function createEmbedding(text: string): Promise<number[]> {
@@ -222,7 +368,7 @@ async function rerankCandidates(params: {
   }
 
   const parsed = JSON.parse(content);
-  const matches = Array.isArray(parsed)
+  const matches: unknown[] = Array.isArray(parsed)
     ? parsed
     : Array.isArray(parsed.matches)
       ? parsed.matches
@@ -356,8 +502,16 @@ export async function registerRoutes(
       await backfillFoundItemEmbeddings();
 
       const queryParts: string[] = [];
-      if (input.prompt?.trim()) {
-        queryParts.push(input.prompt.trim());
+      const trimmedPrompt = input.prompt?.trim();
+      if (trimmedPrompt) {
+        const promptValidationError = validateSearchPrompt(trimmedPrompt);
+        if (promptValidationError && !input.imageUrl) {
+          return res.status(400).json({ message: promptValidationError, field: "prompt" });
+        }
+
+        if (!promptValidationError) {
+          queryParts.push(trimmedPrompt);
+        }
       }
 
       if (input.imageUrl) {
@@ -400,7 +554,12 @@ export async function registerRoutes(
           return {
             item: vectorMatch.item,
             score: blendedScore,
-            reasoning: result.reasoning,
+            reasoning: buildReasoningFromEvidence({
+              queryText,
+              item: vectorMatch.item,
+              matchScore: blendedScore,
+              llmReasoning: result.reasoning,
+            }),
           };
         })
         .filter((result): result is { item: VectorCandidate["item"]; score: number; reasoning: string } => Boolean(result))
@@ -413,7 +572,11 @@ export async function registerRoutes(
           .map((result) => ({
             item: result.item,
             score: Math.max(0, Math.min(1, result.score)),
-            reasoning: `벡터 유사도 ${(Math.max(0, Math.min(1, result.score)) * 100).toFixed(1)}% 기준으로 추린 후보입니다.`,
+            reasoning: buildReasoningFromEvidence({
+              queryText,
+              item: result.item,
+              matchScore: result.score,
+            }),
           }));
 
         return res.json(fallbackResults);

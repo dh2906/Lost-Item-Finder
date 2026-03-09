@@ -11,6 +11,7 @@ import { ItemCard } from "@/components/item-card";
 import { useSearchSimilar } from "@/hooks/use-ai";
 import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useToast } from "@/hooks/use-toast";
 
 const searchSchema = z.object({
   prompt: z.string().optional(),
@@ -25,6 +26,7 @@ type SearchFormValues = z.infer<typeof searchSchema>;
 export default function SearchPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const { toast } = useToast();
   
   const searchMutation = useSearchSimilar();
 
@@ -53,8 +55,22 @@ export default function SearchPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const showSearchErrorToast = (error: unknown) => {
+    const message = error instanceof Error ? error.message : "검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+    toast({
+      variant: "destructive",
+      title: "검색 실패",
+      description: message,
+      duration: 6000,
+    });
+  };
+
   const onSubmit = async (data: SearchFormValues) => {
-    await searchMutation.mutateAsync(data);
+    try {
+      await searchMutation.mutateAsync(data);
+    } catch (error) {
+      showSearchErrorToast(error);
+    }
   };
 
   const handlePromptKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
