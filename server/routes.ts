@@ -412,13 +412,14 @@ export async function registerRoutes(
         res.status(201).json(userWithoutPassword);
       });
     } catch (err) {
+      console.error("Register error:", err);
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
           field: err.errors[0].path.join('.'),
         });
       }
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: err instanceof Error ? err.message : "Internal server error" });
     }
   });
 
