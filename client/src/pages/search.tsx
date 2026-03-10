@@ -216,27 +216,40 @@ export default function SearchPage() {
                   </Link>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {searchMutation.data.map((result, i) => (
-                    <motion.div 
-                      key={result.item.id}
-                      initial={{ opacity: 0, scale: 0.95 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: i * 0.1 }}
-                    >
-                      <ItemCard 
-                        item={result.item} 
-                        score={result.score} 
-                        reasoning={result.reasoning} 
-                      />
-                    </motion.div>
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {searchMutation.data.map((result, i) => (
+                      <motion.div 
+                        key={result.item.id}
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: i * 0.1 }}
+                      >
+                        <ItemCard 
+                          item={result.item} 
+                          score={result.score} 
+                          reasoning={result.reasoning} 
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+                  
+                  {/* CTA for when results don't match what user is looking for */}
+                  <div className="mt-12 text-center py-8 border-t border-border/50">
+                    <p className="text-muted-foreground mb-4">찾으시는 물건이 위 결과에 없나요?</p>
+                    <Link href="/report?type=lost">
+                      <Button variant="outline" size="lg" className="rounded-full gap-2">
+                        <PlusCircle className="w-5 h-5" />
+                        분실물 신고하기
+                      </Button>
+                    </Link>
+                  </div>
+                </>
               )}
             </motion.div>
           )}
-        </div>
       </div>
-    </Layout>
+    </div>
+  </Layout>
   );
 }

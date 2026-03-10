@@ -23,7 +23,13 @@ const formSchema = z.object({
   color: z.string().optional(),
   size: z.string().optional(),
   location: z.string().optional(),
-  contactInfo: z.string().optional(),
+  contactInfo: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || /^01[0-9]{8,9}$/.test(val.replace(/-/g, "")),
+      { message: "올바른 전화번호 형식이 아닙니다 (예: 01012345678)" }
+    ),
   tags: z.array(z.string()).optional(),
   imageUrl: z.string().optional(),
   reportType: z.enum(["found", "lost"]).default("found"),
@@ -39,6 +45,7 @@ const reportTypeConfig: Record<ReportType, {
   locationLabel: string;
   locationPlaceholder: string;
   icon: typeof Package;
+  requireImage: boolean;
 }> = {
   found: {
     title: "습득물 신고",
@@ -47,6 +54,7 @@ const reportTypeConfig: Record<ReportType, {
     locationLabel: "어디서 찾았나요?",
     locationPlaceholder: "예: 중앙공원 분수 근처",
     icon: Package,
+    requireImage: true,
   },
   lost: {
     title: "분실물 신고",
@@ -55,6 +63,7 @@ const reportTypeConfig: Record<ReportType, {
     locationLabel: "어디서 잃어버렸나요?",
     locationPlaceholder: "예: 지하철 2호선 강남역",
     icon: PackageSearch,
+    requireImage: false,
   },
 };
 
@@ -100,6 +109,21 @@ export default function ReportPage() {
     form.setValue("reportType", type);
   };
 
+  // Format phone number for display (01012345678 -> 010-1234-5678)
+  const formatPhoneNumber = (value: string): string => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7, 11)}`;
+  };
+
+  // Handle phone number input with auto-formatting
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    // Store without dashes for validation
+    const rawValue = formatted.replace(/-/g, "");
+    form.setValue("contactInfo", rawValue);
+  };
   const processSelectedFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
       toast({
@@ -179,6 +203,16 @@ export default function ReportPage() {
   };
 
   const onSubmit = async (data: FormValues) => {
+    // Validate image for found items
+    if (reportType === "found" && !data.imageUrl) {
+      toast({
+        title: "사진 필수",
+        description: "습득물 신고에는 사진이 필요합니다.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
       const result = await createMutation.mutateAsync({ ...data, reportType });
       toast({
@@ -206,6 +240,9 @@ export default function ReportPage() {
           <p className="text-muted-foreground text-lg max-w-2xl">
             {config.subtitle}
           </p>
+          {config.requireImage && (
+            <p className="text-sm text-primary mt-2">* 습득물 신고에는 사진이 필수입니다</p>
+          )}
         </div>
 
 
@@ -332,7 +369,16 @@ export default function ReportPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="contactInfo">연락처</Label>
-                    <Input id="contactInfo" placeholder="이메일 또는 전화번호 (선택)" className="bg-secondary/30" {...form.register("contactInfo")} />
+                    <Input 
+                      id="contactInfo" 
+                      placeholder="010-1234-5678" 
+                      className="bg-secondary/30" 
+                      value={formatPhoneNumber(form.watch("contactInfo") || "")}
+                      onChange={handlePhoneChange}
+                    />
+                    {form.formState.errors.contactInfo && (
+                      <p className="text-sm text-destructive">{form.formState.errors.contactInfo.message}</p>
+                    )}
                   </div>
                 </div>
 
@@ -357,5 +403,6 @@ export default function ReportPage() {
         </div>
       </div>
     </Layout>
+
   );
 }
