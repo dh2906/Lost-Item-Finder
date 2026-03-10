@@ -1,8 +1,9 @@
 import { useState, useRef, type KeyboardEvent } from "react";
+import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Sparkles, Image as ImageIcon, Search as SearchIcon, X, Loader2 } from "lucide-react";
+import { Sparkles, Image as ImageIcon, Search as SearchIcon, X, Loader2, PlusCircle } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -206,7 +207,13 @@ export default function SearchPage() {
                 <div className="text-center py-16 bg-secondary/30 rounded-3xl border border-border/50">
                   <SearchIcon className="w-12 h-12 text-muted-foreground/50 mx-auto mb-4" />
                   <h3 className="text-xl font-bold mb-2">지금은 매칭 물건이 없습니다</h3>
-                  <p className="text-muted-foreground">나중에 다시 확인하거나 설명을 조정해보세요.</p>
+                  <p className="text-muted-foreground mb-6">나중에 다시 확인하거나 설명을 조정해보세요.</p>
+                  <Link href="/report?type=lost">
+                    <Button size="lg" className="rounded-full gap-2">
+                      <PlusCircle className="w-5 h-5" />
+                      찾으시는 물건이 없나요? 분실물 신고하기
+                    </Button>
+                  </Link>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

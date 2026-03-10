@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertItemSchema, items } from './schema';
+import { insertItemSchema, items, User } from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -15,6 +15,48 @@ export const errorSchemas = {
 };
 
 export const api = {
+  auth: {
+    register: {
+      method: 'POST' as const,
+      path: '/api/auth/register' as const,
+      input: z.object({
+        username: z.string().min(3, '아이디는 3자 이상이어야 합니다'),
+        password: z.string().min(4, '비밀번호는 4자 이상이어야 합니다'),
+        name: z.string().optional(),
+      }),
+      responses: {
+        201: z.custom<User>(),
+        400: errorSchemas.validation,
+      },
+    },
+    login: {
+      method: 'POST' as const,
+      path: '/api/auth/login' as const,
+      input: z.object({
+        username: z.string(),
+        password: z.string(),
+      }),
+      responses: {
+        200: z.custom<User>(),
+        401: errorSchemas.validation,
+      },
+    },
+    logout: {
+      method: 'POST' as const,
+      path: '/api/auth/logout' as const,
+      input: z.void(),
+      responses: {
+        200: z.object({ message: z.string() }),
+      },
+    },
+    me: {
+      method: 'GET' as const,
+      path: '/api/auth/me' as const,
+      responses: {
+        200: z.custom<User>().nullable(),
+      },
+    },
+  },
   items: {
     list: {
       method: 'GET' as const,

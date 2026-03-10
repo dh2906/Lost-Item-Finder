@@ -31,16 +31,16 @@ export default function Home() {
             </p>
             
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/report" className="w-full sm:w-auto">
+              <Link href="/report?type=found" className="w-full sm:w-auto">
                 <Button size="lg" className="w-full sm:w-auto rounded-full h-14 px-8 text-lg font-semibold shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-1 transition-all">
                   <Plus className="mr-2 w-5 h-5" />
-                  물건을 찾았어요
+                  습득물 신고
                 </Button>
               </Link>
               <Link href="/search" className="w-full sm:w-auto">
-                <Button size="lg" variant="outline" className="w-full sm:w-auto rounded-full h-14 px-8 text-lg font-semibold border-2 hover:bg-secondary/50 transition-all">
+                <Button size="lg" variant="secondary" className="w-full sm:w-auto rounded-full h-14 px-8 text-lg font-semibold transition-all">
                   <Search className="mr-2 w-5 h-5" />
-                  물건을 찾고 있어요
+                  분실물 찾기
                 </Button>
               </Link>
             </div>

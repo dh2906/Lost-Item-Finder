@@ -3,8 +3,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { ensureVectorExtension } from "./db";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
+import { setupAuth } from "./auth";
 import { createServer } from "http";
-
 const app = express();
 const httpServer = createServer(app);
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
@@ -65,6 +65,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await ensureVectorExtension();
+  setupAuth(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

@@ -1,10 +1,21 @@
 import { Link, useLocation } from "wouter";
-import { Search, PlusCircle, Package } from "lucide-react";
+import { Search, PlusCircle, Package, LogOut, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const { user, isAuthenticated, logout } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col bg-background selection:bg-primary/10">
@@ -41,13 +52,51 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Link>
           </nav>
 
-          <div className="flex md:hidden gap-2">
-            <Link href="/report">
-              <Button size="icon" variant="ghost" className="text-primary"><PlusCircle className="w-5 h-5" /></Button>
-            </Link>
-            <Link href="/search">
-              <Button size="icon" variant="ghost"><Search className="w-5 h-5" /></Button>
-            </Link>
+          <div className="flex items-center gap-2">
+            {isAuthenticated ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                    <Avatar className="h-9 w-9">
+                      <AvatarFallback className="bg-primary/10 text-primary">
+                        {user?.name?.[0] || user?.username?.[0]?.toUpperCase() || <UserIcon className="h-4 w-4" />}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end" forceMount>
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{user?.name || user?.username}</p>
+                      <p className="text-xs leading-none text-muted-foreground">{user?.username}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-600">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    로그아웃
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/login">
+                  <Button variant="ghost" className="rounded-full">로그인</Button>
+                </Link>
+                <Link href="/register">
+                  <Button className="rounded-full">회원가입</Button>
+                </Link>
+              </div>
+            )}
+            
+            <div className="flex md:hidden gap-2">
+              <Link href="/report">
+                <Button size="icon" variant="ghost" className="text-primary"><PlusCircle className="w-5 h-5" /></Button>
+              </Link>
+              <Link href="/search">
+                <Button size="icon" variant="ghost"><Search className="w-5 h-5" /></Button>
+              </Link>
+            </div>
           </div>
         </div>
       </header>

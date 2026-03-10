@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { UploadCloud, Sparkles, Loader2, CheckCircle2 } from "lucide-react";
+import { UploadCloud, Sparkles, Loader2, CheckCircle2, PackageSearch, Package } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 
 const formSchema = z.object({
-  title: z.string().min(3, "Title must be at least 3 characters"),
+  title: z.string().min(3, "제목은 3자 이상이어야 합니다"),
   description: z.string().optional(),
   itemCategory: z.string().optional(),
   color: z.string().optional(),
@@ -30,12 +30,47 @@ const formSchema = z.object({
 });
 
 type FormValues = z.infer<typeof formSchema>;
+type ReportType = "found" | "lost";
+
+const reportTypeConfig: Record<ReportType, {
+  title: string;
+  subtitle: string;
+  submitText: string;
+  locationLabel: string;
+  locationPlaceholder: string;
+  icon: typeof Package;
+}> = {
+  found: {
+    title: "습득물 신고",
+    subtitle: "찾은 물건의 사진을 올려주세요. 우리의 AI가 자동으로 카테고리, 색상, 크기 등 세부 사항을 추출하여 주인이 더 빨리 찾을 수 있도록 도와줍니다.",
+    submitText: "습득물 신고 발행",
+    locationLabel: "어디서 찾았나요?",
+    locationPlaceholder: "예: 중앙공원 분수 근처",
+    icon: Package,
+  },
+  lost: {
+    title: "분실물 신고",
+    subtitle: "잃어버린 물건에 대한 정보를 등록해주세요. 습득자가 찾아볼 수 있도록 상세한 정보를 입력하면 매칭 확률이 높아집니다.",
+    submitText: "분실물 신고 발행",
+    locationLabel: "어디서 잃어버렸나요?",
+    locationPlaceholder: "예: 지하철 2호선 강남역",
+    icon: PackageSearch,
+  },
+};
 
 export default function ReportPage() {
-  const [, setLocation] = useLocation();
+  const [locationPath, setLocation] = useLocation();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Parse URL query params to set initial report type
+  const getInitialReportType = (): ReportType => {
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get("type");
+    return type === "lost" ? "lost" : "found";
+  };
+  
+  const [reportType, setReportType] = useState<ReportType>(getInitialReportType);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -46,7 +81,7 @@ export default function ReportPage() {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      reportType: "found",
+      reportType: getInitialReportType(),
       title: "",
       description: "",
       itemCategory: "",
@@ -58,6 +93,12 @@ export default function ReportPage() {
       imageUrl: "",
     },
   });
+
+  // Reset form when report type changes
+  const handleReportTypeChange = (type: ReportType) => {
+    setReportType(type);
+    form.setValue("reportType", type);
+  };
 
   const processSelectedFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -89,7 +130,8 @@ export default function ReportPage() {
       
       // Generate a smart title if one isn't set
       if (!form.getValues("title")) {
-        form.setValue("title", `습득: ${analysis.color} ${analysis.itemCategory}`);
+        const prefix = reportType === "found" ? "습득:" : "분실:";
+        form.setValue("title", `${prefix} ${analysis.color} ${analysis.itemCategory}`);
       }
 
       toast({
@@ -138,7 +180,7 @@ export default function ReportPage() {
 
   const onSubmit = async (data: FormValues) => {
     try {
-      const result = await createMutation.mutateAsync(data);
+      const result = await createMutation.mutateAsync({ ...data, reportType });
       toast({
         title: "신고 완료!",
         description: "커뮤니티에 도움을 주셔서 감사합니다.",
@@ -153,15 +195,19 @@ export default function ReportPage() {
     }
   };
 
+  const config = reportTypeConfig[reportType];
+  const IconComponent = config.icon;
+
   return (
     <Layout>
       <div className="max-w-5xl mx-auto px-4 py-12 w-full">
         <div className="mb-10">
-          <h1 className="text-4xl font-display font-bold mb-3">습득물 신고</h1>
+          <h1 className="text-4xl font-display font-bold mb-3">{config.title}</h1>
           <p className="text-muted-foreground text-lg max-w-2xl">
-            찾은 물건의 사진을 올려주세요. 우리의 AI가 자동으로 카테고리, 색상, 크기 등 세부 사항을 추출하여 주인이 더 빨리 찾을 수 있도록 도와줍니다.
+            {config.subtitle}
           </p>
         </div>
+
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left Column: Image Upload & Preview */}
@@ -243,7 +289,7 @@ export default function ReportPage() {
                   <Label htmlFor="title" className="text-base">제목 <span className="text-destructive">*</span></Label>
                   <Input 
                     id="title" 
-                    placeholder="예: 검은색 가죽 지갑을 찾았습니다" 
+                    placeholder={reportType === "found" ? "예: 검은색 가죽 지갑을 찾았습니다" : "예: 검은색 가죽 지갑을 잃어버렸습니다"} 
                     className="h-12 text-lg bg-secondary/30"
                     {...form.register("title")} 
                   />
@@ -281,8 +327,8 @@ export default function ReportPage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="location">어디서 찾았나요?</Label>
-                    <Input id="location" placeholder="예: 중앙공원 분수 근처" className="bg-secondary/30" {...form.register("location")} />
+                    <Label htmlFor="location">{config.locationLabel}</Label>
+                    <Input id="location" placeholder={config.locationPlaceholder} className="bg-secondary/30" {...form.register("location")} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="contactInfo">연락처</Label>
@@ -300,7 +346,7 @@ export default function ReportPage() {
                     {createMutation.isPending ? (
                       <><Loader2 className="mr-2 w-5 h-5 animate-spin" /> 제출 중...</>
                     ) : (
-                      "습득물 신고 발행"
+                      config.submitText
                     )}
                   </Button>
                 </div>

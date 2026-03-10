@@ -1,10 +1,10 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import passport from "passport";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import OpenAI from "openai";
-
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -393,6 +393,70 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // --- Auth API ---
+  app.post(api.auth.register.path, async (req, res) => {
+    try {
+      const input = api.auth.register.input.parse(req.body);
+      
+      const existingUser = await storage.getUserByUsername(input.username);
+      if (existingUser) {
+        return res.status(400).json({ message: "이미 존재하는 아이디입니다" });
+      }
+      
+      const user = await storage.createUser(input);
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "로그인 처리 중 오류가 발생했습니다" });
+        }
+        const { password: _, ...userWithoutPassword } = user;
+        res.status(201).json(userWithoutPassword);
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join('.'),
+        });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.auth.login.path, (req, res, next) => {
+    passport.authenticate("local", (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
+      if (err) {
+        return res.status(500).json({ message: "Internal server error" });
+      }
+      if (!user) {
+        return res.status(401).json({ message: info?.message || "로그인에 실패했습니다" });
+      }
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "로그인 처리 중 오류가 발생했습니다" });
+        }
+        const { password: _, ...userWithoutPassword } = user;
+        res.json(userWithoutPassword);
+      });
+    })(req, res, next);
+  });
+
+  app.post(api.auth.logout.path, (req, res) => {
+    req.logout((err) => {
+      if (err) {
+        return res.status(500).json({ message: "로그아웃 중 오류가 발생했습니다" });
+      }
+      res.json({ message: "로그아웃 되었습니다" });
+    });
+  });
+
+  app.get(api.auth.me.path, (req, res) => {
+    if (!req.user) {
+      return res.json(null);
+    }
+    const { password: _, ...userWithoutPassword } = req.user;
+    res.json(userWithoutPassword);
+  });
+
   // --- Items API ---
   app.get(api.items.list.path, async (req, res) => {
     try {
