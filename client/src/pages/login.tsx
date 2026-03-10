@@ -51,7 +51,7 @@ export function LoginPage() {
           <CardTitle className="text-2xl">로그인</CardTitle>
           <CardDescription>아이디와 비밀번호를 입력하세요</CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="on">
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="username">아이디</Label>
@@ -62,6 +62,7 @@ export function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="아이디 입력"
                 required
+                autoComplete="username"
               />
             </div>
             <div className="space-y-2">
@@ -73,6 +74,7 @@ export function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="비밀번호 입력"
                 required
+                autoComplete="current-password"
               />
             </div>
           </CardContent>

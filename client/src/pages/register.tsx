@@ -55,7 +55,7 @@ export function RegisterPage() {
           <CardTitle className="text-2xl">회원가입</CardTitle>
           <CardDescription>새 계정을 만들어보세요</CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="on">
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="username">아이디 *</Label>
@@ -67,6 +67,7 @@ export function RegisterPage() {
                 placeholder="3자 이상 입력"
                 required
                 minLength={3}
+                autoComplete="username"
               />
             </div>
             <div className="space-y-2">
@@ -79,6 +80,7 @@ export function RegisterPage() {
                 placeholder="4자 이상 입력"
                 required
                 minLength={4}
+                autoComplete="new-password"
               />
             </div>
             <div className="space-y-2">
@@ -90,6 +92,7 @@ export function RegisterPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="비밀번호 다시 입력"
                 required
+                autoComplete="new-password"
               />
             </div>
             <div className="space-y-2">
