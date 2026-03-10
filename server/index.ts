@@ -5,6 +5,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { setupAuth } from "./auth";
 import { createServer } from "http";
+import cors from "cors";
 const app = express();
 const httpServer = createServer(app);
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
@@ -23,6 +24,11 @@ app.use(
     },
   }),
 );
+
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || "*",
+  credentials: true,
+}));
 
 app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
 
