@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
+import { LocationDisplay } from "@/components/location-display";
 
 export default function ItemDetail() {
   const [, params] = useRoute("/item/:id");
@@ -135,6 +136,20 @@ export default function ItemDetail() {
                 </div>
               )}
             </div>
+
+            {/* 지도 위치 표시 */}
+            {(item.latitude && item.longitude) && (
+              <div>
+                <h3 className="text-lg font-semibold mb-3">위치</h3>
+                <LocationDisplay 
+                  latitude={item.latitude} 
+                  longitude={item.longitude}
+                  height="250px"
+                />
+              </div>
+            )}
+
+            {/* Contact Action */}
 
             {/* Contact Action */}
             <div className="mt-12 bg-primary/5 rounded-3xl p-6 sm:p-8 border border-primary/10 relative overflow-hidden">

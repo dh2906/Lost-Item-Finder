@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Sparkles, Image as ImageIcon, Search as SearchIcon, X, Loader2, PlusCircle } from "lucide-react";
+import { Sparkles, Image as ImageIcon, Search as SearchIcon, X, Loader2, PlusCircle, MapPin } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,10 +13,13 @@ import { useSearchSimilar } from "@/hooks/use-ai";
 import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
+import { LocationPicker } from "@/components/location-picker";
 
 const searchSchema = z.object({
   prompt: z.string().optional(),
   imageUrl: z.string().optional(),
+  latitude: z.string().optional(),
+  longitude: z.string().optional(),
 }).refine(data => data.prompt || data.imageUrl, {
   message: "Please provide either a description or an image of the lost item.",
   path: ["prompt"]
@@ -36,6 +39,8 @@ export default function SearchPage() {
     defaultValues: {
       prompt: "",
       imageUrl: "",
+      latitude: "",
+      longitude: "",
     },
   });
 
@@ -56,6 +61,10 @@ export default function SearchPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  const handleLocationChange = (location: { latitude: string; longitude: string }) => {
+    form.setValue("latitude", location.latitude);
+    form.setValue("longitude", location.longitude);
+  };
   const showSearchErrorToast = (error: unknown) => {
     const message = error instanceof Error ? error.message : "검색 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
     toast({
@@ -103,14 +112,32 @@ export default function SearchPage() {
           </p>
         </div>
 
-        <Card className="w-full max-w-3xl p-2 rounded-3xl shadow-xl shadow-black/5 border-border/50 bg-white/60 backdrop-blur-xl mb-16 relative z-10 overflow-hidden">
+        <Card className="w-full max-w-3xl p-2 rounded-3xl shadow-xl shadow-black/5 border-border/50 bg-white/60 backdrop-blur-xl mb-8 relative z-10 overflow-hidden">
           <form onSubmit={form.handleSubmit(onSubmit)} className="relative">
-            <Textarea
-              placeholder="물건을 자세히 설명하세요. 예: '검은색 가죽 Ridge 지갑, 은색 금속 클립이 있습니다. 운전면허증이 들어있었어요.'"
-              className="min-h-[140px] resize-none border-0 focus-visible:ring-0 bg-transparent text-lg p-6 pb-20 placeholder:text-muted-foreground/60"
-              onKeyDown={handlePromptKeyDown}
-              {...form.register("prompt")}
-            />
+            <div className="p-4">
+              <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
+                <MapPin className="w-4 h-4" />
+                <span>분실 위치 선택 (선택)</span>
+              </div>
+              <LocationPicker
+                value={
+                  form.watch("latitude") && form.watch("longitude")
+                    ? { latitude: form.watch("latitude") || "", longitude: form.watch("longitude") || "" }
+                    : undefined
+                }
+                onChange={handleLocationChange}
+                height="200px"
+              />
+            </div>
+            
+            <div className="border-t border-border/50">
+              <Textarea
+                placeholder="물건을 자세히 설명하세요. 예: '검은색 가죽 Ridge 지갑, 은색 금속 클립이 있습니다. 운전면허증이 들어있었어요.'"
+                className="min-h-[140px] resize-none border-0 focus-visible:ring-0 bg-transparent text-lg p-6 pb-20 placeholder:text-muted-foreground/60"
+                onKeyDown={handlePromptKeyDown}
+                {...form.register("prompt")}
+              />
+            </div>
             
             <AnimatePresence>
               {imagePreview && (
@@ -248,8 +275,8 @@ export default function SearchPage() {
               )}
             </motion.div>
           )}
+        </div>
       </div>
-    </div>
-  </Layout>
+    </Layout>
   );
 }

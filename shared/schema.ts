@@ -13,6 +13,8 @@ export const items = pgTable("items", {
   size: text("size"),
   tags: jsonb("tags").$type<string[]>(), 
   location: text("location"),
+  latitude: text("latitude"), // 위도
+  longitude: text("longitude"), // 경도
   date: timestamp("date").defaultNow(),
   contactInfo: text("contact_info"),
 });
