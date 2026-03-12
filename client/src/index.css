@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -6,112 +6,127 @@
 
 @layer base {
   :root {
-    --font-sans: 'DM Sans', sans-serif;
-    --font-display: 'Outfit', sans-serif;
+    --font-sans: "Noto Sans KR", system-ui, sans-serif;
 
-    /* Trustworthy, calming palette */
-    --background: 210 40% 98%;
-    --foreground: 222 47% 11%;
-    
+    /* Clean, bright, modern palette - Toss/Kakao inspired */
+    --background: 0 0% 100%;
+    --foreground: 224 71% 4%;
+
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    
+    --card-foreground: 224 71% 4%;
+    --card-border: 214 32% 91%;
+
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    
-    /* Primary: Azure Blue */
-    --primary: 212 100% 48%;
-    --primary-foreground: 210 40% 98%;
-    
-    /* Secondary: Soft Gray-Blue */
-    --secondary: 214 32% 91%;
+    --popover-foreground: 224 71% 4%;
+    --popover-border: 214 32% 91%;
+
+    --primary: 228 76% 58%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
-    
-    /* Muted */
-    --muted: 214 32% 91%;
+
+    --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
-    
-    /* Accent: Soft Teal for AI/Success elements */
-    --accent: 175 70% 41%;
-    --accent-foreground: 210 40% 98%;
-    
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 212 100% 48%;
-
-    --radius: 1rem;
+    --ring: 228 76% 58%;
+    --radius: 0.5rem;
   }
 
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-    
-    --primary: 212 100% 48%;
-    --primary-foreground: 210 40% 98%;
-    
-    --secondary: 217 32% 17%;
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+
+    --card: 224 71% 4%;
+    --card-foreground: 213 31% 91%;
+    --card-border: 216 34% 17%;
+
+    --popover: 224 71% 4%;
+    --popover-foreground: 213 31% 91%;
+    --popover-border: 216 34% 17%;
+
+    --primary: 217 91% 60%;
+    --primary-foreground: 222 47% 11%;
+
+    --secondary: 222 47% 11%;
     --secondary-foreground: 210 40% 98%;
-    
-    --muted: 217 32% 17%;
+
+    --muted: 223 47% 11%;
     --muted-foreground: 215 20% 65%;
-    
-    --accent: 175 70% 41%;
+
+    --accent: 216 34% 17%;
     --accent-foreground: 210 40% 98%;
-    
-    --destructive: 0 62% 30%;
+
+    --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
-    
-    --border: 217 32% 17%;
-    --input: 217 32% 17%;
-    --ring: 212 100% 48%;
+
+    --border: 216 34% 17%;
+    --input: 216 34% 17%;
+    --ring: 224 76% 48%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    scroll-behavior: smooth;
   }
 
   body {
-    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
+    @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
     word-break: keep-all;
   }
+
   h1, h2, h3, h4, h5, h6 {
-    font-family: var(--font-display);
-    @apply font-bold tracking-tight text-foreground;
+    @apply font-semibold tracking-tight;
+  }
+
+  img {
+    image-rendering: auto;
+  }
+}
+
+@layer components {
+  .container {
+    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .section-container {
+    @apply py-12 md:py-16 lg:py-20;
   }
 }
 
 @layer utilities {
-  .glass {
-    @apply bg-white/70 backdrop-blur-lg border border-white/20 shadow-xl shadow-black/5;
-  }
-  .glass-dark {
-    @apply bg-black/50 backdrop-blur-lg border border-white/10 shadow-xl shadow-black/20;
-  }
   .text-balance {
     text-wrap: balance;
   }
-  .gradient-text {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
-  }
 }
 
-/* Custom Scrollbar */
+/* Simple, clean scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/30 rounded-full;
+  border-radius: 4px;
+  background: hsl(215 16% 47% / 0.3);
 }
+
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-muted-foreground/50;
+  background: hsl(215 16% 47% / 0.5);
 }

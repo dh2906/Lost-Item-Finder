@@ -1,29 +1,29 @@
 import { useRoute } from "wouter";
+import { format } from "date-fns";
+import { ko } from "date-fns/locale";
 import { Layout } from "@/components/layout";
 import { useItem } from "@/hooks/use-items";
-import { format } from "date-fns";
-import { MapPin, Calendar, Tag, AlertCircle, ShieldCheck, Mail, ArrowLeft } from "lucide-react";
+import { MapPin, Calendar, Tag, AlertCircle, Mail, ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { LocationDisplay } from "@/components/location-display";
 
 export default function ItemDetail() {
   const [, params] = useRoute("/item/:id");
-  const id = params?.id ? parseInt(params.id) : 0;
-  
+  const id = params?.id ? parseInt(params.id, 10) : 0;
+
   const { data: item, isLoading, isError } = useItem(id);
 
   if (isLoading) {
     return (
       <Layout>
-        <div className="max-w-5xl mx-auto px-4 py-12 w-full animate-pulse flex flex-col lg:flex-row gap-8">
-          <div className="w-full lg:w-1/2 aspect-square bg-secondary/50 rounded-3xl" />
-          <div className="w-full lg:w-1/2 space-y-4 pt-4">
-            <div className="h-10 bg-secondary/50 rounded-lg w-3/4" />
-            <div className="h-6 bg-secondary/50 rounded-lg w-1/4" />
-            <div className="h-32 bg-secondary/50 rounded-lg w-full mt-8" />
+        <div className="container max-w-4xl py-8">
+          <div className="aspect-[4/3] rounded-lg bg-muted animate-pulse mb-6" />
+          <div className="space-y-4">
+            <div className="h-8 w-2/3 rounded bg-muted animate-pulse" />
+            <div className="h-4 w-1/2 rounded bg-muted animate-pulse" />
           </div>
         </div>
       </Layout>
@@ -33,13 +33,15 @@ export default function ItemDetail() {
   if (isError || !item) {
     return (
       <Layout>
-        <div className="max-w-md mx-auto px-4 py-32 text-center">
-          <AlertCircle className="w-16 h-16 text-destructive mx-auto mb-4" />
-          <h1 className="text-2xl font-bold mb-2">물건을 찾을 수 없습니다</h1>
-          <p className="text-muted-foreground mb-8">이 물건은 삭제되었거나 URL이 잘못되었을 수 있습니다.</p>
-          <Link href="/">
-            <Button>홈으로 돌아가기</Button>
-          </Link>
+        <div className="container max-w-lg py-16 text-center">
+          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h1 className="text-2xl font-semibold mb-2">물건을 찾을 수 없습니다</h1>
+          <p className="text-muted-foreground mb-6">
+            삭제되었거나 잘못된 주소일 수 있습니다.
+          </p>
+          <Button asChild>
+            <Link href="/">홈으로 돌아가기</Link>
+          </Button>
         </div>
       </Layout>
     );
@@ -47,134 +49,132 @@ export default function ItemDetail() {
 
   return (
     <Layout>
-      <div className="max-w-6xl mx-auto px-4 py-8 lg:py-12 w-full">
-        
-        <Link href="/" className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors mb-8 group">
-          <ArrowLeft className="w-4 h-4 mr-2 group-hover:-translate-x-1 transition-transform" /> 목록으로 돌아가기
-        </Link>
+      <div className="container max-w-4xl py-8">
+        <Button variant="ghost" size="sm" asChild className="mb-6">
+          <Link href="/">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            목록으로
+          </Link>
+        </Button>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16">
-          {/* Image Section */}
-          <div className="rounded-3xl overflow-hidden bg-secondary/30 border border-border/50 relative shadow-2xl shadow-black/5 h-fit">
-            <Badge className={cn(
-              "absolute top-4 left-4 z-10 text-sm py-1 px-4 shadow-lg backdrop-blur-md border-0 uppercase tracking-wider font-bold",
-              item.reportType === 'found' ? "bg-primary/90 text-white" : "bg-orange-500/90 text-white"
-            )}>
-              {item.reportType === 'found' ? '습득물' : '분실물'}
-            </Badge>
-            
-            {item.imageUrl ? (
-              <img 
-                src={item.imageUrl} 
-                alt={item.title} 
-                className="w-full aspect-[4/3] object-cover"
-              />
-            ) : (
-              <div className="w-full aspect-[4/3] flex flex-col items-center justify-center text-muted-foreground/50">
-                <Tag className="w-20 h-20 mb-4 opacity-50" />
-                <p>이미지 없음</p>
+        <div className="grid gap-8 lg:grid-cols-[1.2fr_1fr]">
+          <div>
+            <div className="relative rounded-lg overflow-hidden bg-muted mb-6">
+              {item.imageUrl ? (
+                <img
+                  src={item.imageUrl}
+                  alt={item.title}
+                  className="aspect-[4/3] w-full object-cover"
+                />
+              ) : (
+                <div className="aspect-[4/3] flex items-center justify-center">
+                  <Tag className="h-12 w-12 text-muted-foreground/30" />
+                </div>
+              )}
+              <Badge
+                className={cn(
+                  "absolute left-3 top-3",
+                  item.reportType === "found" ? "" : "bg-secondary"
+                )}
+              >
+                {item.reportType === "found" ? "습득" : "분실"}
+              </Badge>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">장소</p>
+                <p className="text-sm font-medium truncate">{item.location || "-"}</p>
               </div>
-            )}
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">날짜</p>
+                <p className="text-sm font-medium">
+                  {item.date ? format(new Date(item.date), "MM/dd", { locale: ko }) : "-"}
+                </p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">카테고리</p>
+                <p className="text-sm font-medium">{item.itemCategory || "-"}</p>
+              </div>
+            </div>
           </div>
 
-          {/* Details Section */}
-          <div className="flex flex-col">
-            <h1 className="text-4xl md:text-5xl font-display font-extrabold mb-4 text-balance">
-              {item.title}
-            </h1>
-            
-            <div className="flex flex-wrap gap-4 text-muted-foreground mb-8 pb-8 border-b border-border/60">
-              {item.location && (
-                <div className="flex items-center gap-2 bg-secondary/50 px-3 py-1.5 rounded-full text-sm">
-                  <MapPin className="w-4 h-4 text-primary" /> {item.location}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>{item.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2 text-sm">
+                  {item.location && (
+                    <div className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {item.location}
+                    </div>
+                  )}
+                  {item.date && (
+                    <div className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <Calendar className="h-3.5 w-3.5" />
+                      {format(new Date(item.date), "PPP", { locale: ko })}
+                    </div>
+                  )}
                 </div>
-              )}
-              {item.date && (
-                <div className="flex items-center gap-2 bg-secondary/50 px-3 py-1.5 rounded-full text-sm">
-                  <Calendar className="w-4 h-4 text-primary" /> {format(new Date(item.date), 'MMMM d, yyyy')}
-                </div>
-              )}
-            </div>
 
-            <div className="space-y-8 flex-grow">
-              {item.description && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                    설명
-                  </h3>
-                  <p className="text-foreground/80 leading-relaxed text-lg">
-                    {item.description}
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                {item.itemCategory && (
-                  <div className="bg-secondary/30 p-4 rounded-2xl border border-border/50">
-                    <span className="text-sm text-muted-foreground block mb-1">카테고리</span>
-                    <span className="font-medium">{item.itemCategory}</span>
+                {item.description && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">설명</p>
+                    <p className="text-sm text-muted-foreground">{item.description}</p>
                   </div>
                 )}
-                {item.color && (
-                  <div className="bg-secondary/30 p-4 rounded-2xl border border-border/50">
-                    <span className="text-sm text-muted-foreground block mb-1">색상</span>
-                    <span className="font-medium capitalize">{item.color}</span>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {item.itemCategory && (
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground mb-1">카테고리</p>
+                      <p className="font-medium">{item.itemCategory}</p>
+                    </div>
+                  )}
+                  {item.color && (
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-muted-foreground mb-1">색상</p>
+                      <p className="font-medium capitalize">{item.color}</p>
+                    </div>
+                  )}
+                </div>
+
+                {item.tags && item.tags.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">태그</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {item.tags.map((tag) => (
+                        <Badge key={tag} variant="secondary">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
                 )}
-              </div>
+              </CardContent>
+            </Card>
 
-              {item.tags && item.tags.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold mb-3">AI 태그</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {item.tags.map((tag, i) => (
-                      <Badge key={i} variant="outline" className="bg-background text-sm py-1.5 px-3 border-border">
-                        {tag}
-                      </Badge>
-                    ))}
+            <Card className="border-primary/20 bg-primary/5">
+              <CardHeader>
+                <CardTitle className="text-lg">이 물건이 당신의 것인가요?</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  상세 정보를 확인하고 연락해 주세요.
+                </p>
+                {item.contactInfo ? (
+                  <div className="flex items-center gap-2 p-3 rounded-lg border bg-background">
+                    <Mail className="h-4 w-4 text-primary" />
+                    <span className="font-medium">{item.contactInfo}</span>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* 지도 위치 표시 */}
-            {(item.latitude && item.longitude) && (
-              <div>
-                <h3 className="text-lg font-semibold mb-3">위치</h3>
-                <LocationDisplay 
-                  latitude={item.latitude} 
-                  longitude={item.longitude}
-                  height="250px"
-                />
-              </div>
-            )}
-
-            {/* Contact Action */}
-
-            {/* Contact Action */}
-            <div className="mt-12 bg-primary/5 rounded-3xl p-6 sm:p-8 border border-primary/10 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-5">
-                <ShieldCheck className="w-32 h-32 text-primary" />
-              </div>
-              <h3 className="text-xl font-bold mb-2">이 물건이 당신의 것인가요?</h3>
-              <p className="text-muted-foreground mb-6 max-w-md relative z-10">
-                {item.contactInfo 
-                  ? "습득자가 연락처를 남겼습니다. 물건을 찾기 위해 연락하세요." 
-                  : "습득자가 공개 연락처를 남기지 않았습니다. 물건 ID와 함께 커뮤니티 관리자에게 문의하세요."}
-              </p>
-              
-              {item.contactInfo ? (
-                <div className="flex items-center gap-3 bg-white p-4 rounded-xl border border-border shadow-sm w-fit relative z-10">
-                  <Mail className="w-5 h-5 text-primary" />
-                  <span className="font-medium text-lg">{item.contactInfo}</span>
-                </div>
-              ) : (
-                <Button size="lg" className="relative z-10 shadow-lg">
-                  관리자에게 문의
-                </Button>
-              )}
-            </div>
-
+                ) : (
+                  <Button>관리자에게 문의</Button>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>

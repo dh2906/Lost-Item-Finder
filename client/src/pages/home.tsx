@@ -1,94 +1,93 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { Search, Plus, PackageOpen, Info } from "lucide-react";
+import { Search, Plus, PackageOpen } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ItemCard } from "@/components/item-card";
 import { useItems } from "@/hooks/use-items";
-import { motion } from "framer-motion";
 
 export default function Home() {
-  const [tab, setTab] = useState<'found' | 'lost'>('found');
+  const [tab, setTab] = useState<"found" | "lost">("found");
   const { data: items, isLoading } = useItems({ type: tab });
 
   return (
     <Layout>
-      {/* Hero Section */}
-      <section className="relative pt-20 pb-32 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="max-w-3xl mx-auto"
-          >
-            <h1 className="text-5xl md:text-6xl lg:text-7xl font-display font-extrabold tracking-tight text-balance mb-6">
-              사람들을 소중한 물건과 <span className="gradient-text">연결합니다.</span>
+      <section className="section-container">
+        <div className="container">
+          <div className="mx-auto max-w-2xl text-center space-y-6 mb-12">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              잃어버린 물건을 빠르게 찾으세요
             </h1>
-            <p className="text-xl text-muted-foreground mb-10 text-balance leading-relaxed">
-              우리의 AI 기반 플랫폼은 습득한 물건과 주인을 쉽게 연결합니다. 사진을 찍고 마법이 일어나도록 하세요.
+            <p className="text-muted-foreground">
+              분실물과 습득물을 한 곳에서 관리합니다. AI 이미지 분석으로 유사한 물건을 추천해 드려요.
             </p>
-            
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Link href="/report?type=found" className="w-full sm:w-auto">
-                <Button size="lg" className="w-full sm:w-auto rounded-full h-14 px-8 text-lg font-semibold shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-1 transition-all">
-                  <Plus className="mr-2 w-5 h-5" />
-                  습득물 신고
-                </Button>
-              </Link>
-              <Link href="/search" className="w-full sm:w-auto">
-                <Button size="lg" variant="secondary" className="w-full sm:w-auto rounded-full h-14 px-8 text-lg font-semibold transition-all">
-                  <Search className="mr-2 w-5 h-5" />
-                  분실물 찾기
-                </Button>
-              </Link>
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <Button size="lg" asChild>
+                <Link href="/report?type=found">
+                  <Plus className="mr-2 h-5 w-5" />
+                  습득물 신고하기
+                </Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild>
+                <Link href="/search">
+                  <Search className="mr-2 h-5 w-5" />
+                  분실물 검색하기
+                </Link>
+              </Button>
             </div>
-          </motion.div>
+          </div>
         </div>
       </section>
 
-      {/* Feed Section */}
-      <section className="bg-white/50 backdrop-blur-xl border-t border-border/50 py-16 flex-grow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-            <h2 className="text-3xl font-display font-bold">최근 신고</h2>
-            
-            <Tabs value={tab} onValueChange={(v) => setTab(v as 'found' | 'lost')} className="w-full md:w-auto">
-              <TabsList className="grid w-full grid-cols-2 h-12 rounded-full p-1 bg-secondary/50">
-                <TabsTrigger value="found" className="rounded-full text-base">습득물</TabsTrigger>
-                <TabsTrigger value="lost" className="rounded-full text-base">분실물</TabsTrigger>
+      <section className="pb-16">
+        <div className="container">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight">최근 신고 게시물</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                카드에서 위치, 날짜, 유형을 바로 확인하세요
+              </p>
+            </div>
+
+            <Tabs value={tab} onValueChange={(value) => setTab(value as "found" | "lost")}>
+              <TabsList>
+                <TabsTrigger value="found" className="font-medium">습득물</TabsTrigger>
+                <TabsTrigger value="lost" className="font-medium">분실물</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
           {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="h-[400px] rounded-2xl bg-secondary/50 animate-pulse" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-[340px] rounded-lg bg-muted animate-pulse" />
               ))}
             </div>
           ) : !items || items.length === 0 ? (
-            <div className="py-20 text-center flex flex-col items-center">
-              <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center text-primary mb-4">
-                <PackageOpen className="w-10 h-10" />
+            <div className="text-center py-16 px-4 rounded-lg border border-dashed">
+              <div className="flex justify-center mb-4">
+                <div className="rounded-full bg-muted p-4">
+                  <PackageOpen className="h-8 w-8 text-muted-foreground" />
+                </div>
               </div>
-              <h3 className="text-xl font-bold mb-2">신고된 물건이 없습니다</h3>
-              <p className="text-muted-foreground max-w-md">
-                현재 {tab === 'found' ? '습득물' : '분실물'} 신고가 없습니다.
+              <h3 className="text-xl font-semibold mb-2">아직 등록된 게시물이 없어요</h3>
+              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                현재 {tab === "found" ? "습득물" : "분실물"} 신고가 없습니다. 
+                첫 게시물을 올려서 주변 사람들과 연결해 보세요.
               </p>
+              <Button asChild>
+                <Link href={`/report?type=${tab}`}>
+                  게시물 작성하기
+                </Link>
+              </Button>
             </div>
           ) : (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ staggerChildren: 0.1 }}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-            >
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
               {items.map((item) => (
                 <ItemCard key={item.id} item={item} />
               ))}
-            </motion.div>
+            </div>
           )}
         </div>
       </section>

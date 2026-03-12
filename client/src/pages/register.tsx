@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
+import { Layout } from "@/components/layout";
 
 export function RegisterPage() {
   const [, setLocation] = useLocation();
@@ -31,7 +33,7 @@ export function RegisterPage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "회원가입 성공", description: "환영합니다!" });
+      toast({ title: "회원가입 성공", description: "바로 서비스를 이용할 수 있습니다." });
       setLocation("/");
     },
     onError: (error: Error) => {
@@ -42,83 +44,96 @@ export function RegisterPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) {
-      toast({ variant: "destructive", title: "비밀번호 불일치", description: "비밀번호가 일치하지 않습니다" });
+      toast({ variant: "destructive", title: "비밀번호 불일치", description: "비밀번호가 일치하지 않습니다." });
       return;
     }
     registerMutation.mutate({ username, password, name: name || undefined });
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">회원가입</CardTitle>
-          <CardDescription>새 계정을 만들어보세요</CardDescription>
-        </CardHeader>
-        <form onSubmit={handleSubmit} autoComplete="on">
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">아이디 *</Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="3자 이상 입력"
-                required
-                minLength={3}
-                autoComplete="username"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">비밀번호 *</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="4자 이상 입력"
-                required
-                minLength={4}
-                autoComplete="new-password"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">비밀번호 확인 *</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="비밀번호 다시 입력"
-                required
-                autoComplete="new-password"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="name">이름 (선택)</Label>
-              <Input
-                id="name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="이름 입력"
-              />
-            </div>
-          </CardContent>
-          <CardFooter className="flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
-              {registerMutation.isPending ? "가입 중..." : "회원가입"}
-            </Button>
-            <p className="text-sm text-muted-foreground">
-              이미 계정이 있으신가요?{" "}
-              <Link href="/login" className="text-primary hover:underline">
-                로그인
-              </Link>
+    <Layout>
+      <div className="section-container">
+        <div className="container max-w-md">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl mb-3">
+              회원가입
+            </h1>
+            <p className="text-muted-foreground">
+              새 계정을 만들어 시작하세요.
             </p>
-          </CardFooter>
-        </form>
-      </Card>
-    </div>
+          </div>
+
+          <Card>
+            <form onSubmit={handleSubmit}>
+              <CardContent className="pt-6 space-y-4">
+                <div>
+                  <Label htmlFor="username">아이디 *</Label>
+                  <Input
+                    id="username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="3자 이상 입력"
+                    required
+                    minLength={3}
+                    autoComplete="username"
+                    className="mt-1.5"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="password">비밀번호 *</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="4자 이상 입력"
+                    required
+                    minLength={4}
+                    autoComplete="new-password"
+                    className="mt-1.5"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="confirmPassword">비밀번호 확인 *</Label>
+                  <Input
+                    id="confirmPassword"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="비밀번호 다시 입력"
+                    required
+                    autoComplete="new-password"
+                    className="mt-1.5"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="name">이름 (선택)</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="이름 입력"
+                    className="mt-1.5"
+                  />
+                </div>
+
+                <Button type="submit" className="w-full" disabled={registerMutation.isPending}>
+                  {registerMutation.isPending ? "가입 중..." : "회원가입"}
+                </Button>
+
+                <p className="text-center text-sm text-muted-foreground">
+                  이미 계정이 있으신가요?{" "}
+                  <Link href="/login" className="font-medium text-primary hover:underline">
+                    로그인
+                  </Link>
+                </p>
+              </CardContent>
+            </form>
+          </Card>
+        </div>
+      </div>
+    </Layout>
   );
 }
