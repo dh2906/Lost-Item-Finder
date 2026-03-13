@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Search, PlusCircle, Package, LogOut, User as UserIcon } from "lucide-react";
+import { Search, PlusCircle, Package, LogOut, User as UserIcon, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -13,52 +14,51 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-export function Layout({ children }: { children: React.ReactNode }) {
+const navigation = [
+  { href: "/", label: "홈" },
+  { href: "/report", label: "습득물 신고" },
+  { href: "/search", label: "분실물 찾기" },
+];
+
+export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
 
   return (
-    <div className="min-h-screen flex flex-col bg-background selection:bg-primary/10">
-      {/* Decorative background blurs */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute -top-[25%] -left-[10%] w-[50%] h-[50%] rounded-full bg-primary/5 blur-[120px]" />
-        <div className="absolute top-[20%] -right-[10%] w-[40%] h-[40%] rounded-full bg-accent/5 blur-[100px]" />
-      </div>
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-16 items-center justify-between">
+          <div className="flex items-center gap-6">
+            <Link href="/" className="flex items-center gap-2 font-semibold">
+              <Package className="h-6 w-6 text-primary" />
+              <span className="text-lg">ReturnIt</span>
+            </Link>
 
-      <header className="sticky top-0 z-50 w-full border-b border-border/50 glass">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-primary to-primary/70 flex items-center justify-center text-white shadow-lg shadow-primary/20 group-hover:scale-105 transition-transform duration-300">
-              <Package className="w-5 h-5" />
-            </div>
-            <span className="font-display font-bold text-xl tracking-tight">Return<span className="text-primary">It</span></span>
-          </Link>
-          
-          <nav className="hidden md:flex items-center gap-1">
-            <Link href="/">
-              <Button variant={location === "/" ? "secondary" : "ghost"} className={cn("rounded-full font-medium", location === "/" && "bg-secondary text-foreground")}>
-                홈
-              </Button>
-            </Link>
-            <Link href="/report">
-              <Button variant={location === "/report" ? "secondary" : "ghost"} className={cn("rounded-full font-medium text-primary hover:text-primary hover:bg-primary/10", location === "/report" && "bg-primary/10")}>
-                습득물 신고
-              </Button>
-            </Link>
-            <Link href="/search">
-              <Button variant={location === "/search" ? "secondary" : "ghost"} className={cn("rounded-full font-medium", location === "/search" && "bg-secondary text-foreground")}>
-                분실물 찾기
-              </Button>
-            </Link>
-          </nav>
+            <nav className="hidden md:flex items-center gap-1">
+              {navigation.map((item) => {
+                const active = location === item.href;
+                return (
+                  <Link key={item.href} href={item.href}>
+                    <Button
+                      variant={active ? "default" : "ghost"}
+                      size="sm"
+                      className={cn(active && "font-medium")}
+                    >
+                      {item.label}
+                    </Button>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-9 w-9 rounded-full">
                     <Avatar className="h-9 w-9">
-                      <AvatarFallback className="bg-primary/10 text-primary">
+                      <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
                         {user?.name?.[0] || user?.username?.[0]?.toUpperCase() || <UserIcon className="h-4 w-4" />}
                       </AvatarFallback>
                     </Avatar>
@@ -72,7 +72,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout} className="text-red-600 focus:text-red-600">
+                  <DropdownMenuItem onClick={logout} className="text-red-600">
                     <LogOut className="mr-2 h-4 w-4" />
                     로그아웃
                   </DropdownMenuItem>
@@ -80,40 +80,71 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </DropdownMenu>
             ) : (
               <div className="hidden md:flex items-center gap-2">
-                <Link href="/login">
-                  <Button variant="ghost" className="rounded-full">로그인</Button>
-                </Link>
-                <Link href="/register">
-                  <Button className="rounded-full">회원가입</Button>
-                </Link>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link href="/login">로그인</Link>
+                </Button>
+                <Button size="sm" asChild>
+                  <Link href="/register">
+                    회원가입
+                    <ArrowRight className="ml-1 h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
             )}
-            
-            <div className="flex md:hidden gap-2">
-              <Link href="/report">
-                <Button size="icon" variant="ghost" className="text-primary"><PlusCircle className="w-5 h-5" /></Button>
-              </Link>
-              <Link href="/search">
-                <Button size="icon" variant="ghost"><Search className="w-5 h-5" /></Button>
-              </Link>
+
+            <div className="flex md:hidden items-center gap-1">
+              {!isAuthenticated && (
+                <Button variant="ghost" size="icon" asChild aria-label="로그인">
+                  <Link href="/login">
+                    <UserIcon className="h-5 w-5" />
+                  </Link>
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" asChild aria-label="신고">
+                <Link href="/report">
+                  <PlusCircle className="h-5 w-5" />
+                </Link>
+              </Button>
+              <Button variant="ghost" size="icon" asChild aria-label="검색">
+                <Link href="/search">
+                  <Search className="h-5 w-5" />
+                </Link>
+              </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="flex-grow flex flex-col">
-        {children}
-      </main>
+      <main className="flex-1">{children}</main>
 
-      <footer className="border-t border-border/50 bg-card/50 backdrop-blur-sm mt-auto">
-        <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row justify-between items-center gap-4">
-          <p className="text-muted-foreground text-sm">
-            © {new Date().getFullYear()} 분실물 찾기 커뮤니티. 사람들이 소중한 물건을 찾을 수 있도록 돕습니다.
-          </p>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-            <span>AI 기반</span>
-            <span>•</span>
-            <span>커뮤니티 주도</span>
+      <footer className="border-t bg-muted/30">
+        <div className="container py-8 md:py-12">
+          <div className="grid gap-8 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 font-semibold">
+                <Package className="h-5 w-5 text-primary" />
+                <span>ReturnIt</span>
+              </div>
+              <p className="text-sm text-muted-foreground max-w-md">
+                분실물과 습득물을 빠르게 연결하는 지역 기반 게시판입니다. 
+                AI 이미지 분석과 위치 기반 검색으로 잃어버린 물건을 찾아보세요.
+              </p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-sm font-medium">서비스</p>
+                <p className="text-sm text-muted-foreground">
+                  AI 이미지 분석, 지역 위치 선택, 빠른 검색
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">특징</p>
+                <p className="text-sm text-muted-foreground">
+                  신뢰, 명확성, 빠른 발견
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </footer>

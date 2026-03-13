@@ -1,7 +1,8 @@
 import { format } from "date-fns";
+import { ko } from "date-fns/locale";
 import { MapPin, Calendar, Tag as TagIcon, Sparkles } from "lucide-react";
 import { Link } from "wouter";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { Item } from "@shared/schema";
 import { cn } from "@/lib/utils";
@@ -14,88 +15,101 @@ interface ItemCardProps {
 }
 
 export function ItemCard({ item, score, reasoning, className }: ItemCardProps) {
+  const reportLabel = item.reportType === "found" ? "습득" : "분실";
+
   return (
-    <Link href={`/item/${item.id}`} className={cn("block group h-full", className)}>
-      <Card className="h-full overflow-hidden border-border/50 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 bg-card/50 backdrop-blur-sm flex flex-col">
-        <div className="relative aspect-video overflow-hidden bg-muted flex-shrink-0">
+    <Link href={`/item/${item.id}`} className={cn("block h-full", className)}>
+      <Card className="h-full overflow-hidden transition-colors hover:border-primary/50 hover:shadow-md">
+        <div className="relative aspect-[4/3] overflow-hidden bg-muted">
           {item.imageUrl ? (
-            <img 
-              src={item.imageUrl} 
+            <img
+              src={item.imageUrl}
               alt={item.title}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+              className="h-full w-full object-cover"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-              <TagIcon className="w-12 h-12 opacity-20" />
+            <div className="flex h-full w-full items-center justify-center">
+              <TagIcon className="h-12 w-12 text-muted-foreground/30" />
             </div>
           )}
-          <div className="absolute top-3 left-3 flex flex-col gap-2">
-            <Badge className={cn(
-              "font-semibold uppercase tracking-wider backdrop-blur-md shadow-sm border-0",
-              item.reportType === 'found' 
-                ? "bg-primary/90 hover:bg-primary text-white" 
-                : "bg-orange-500/90 hover:bg-orange-500 text-white"
-            )}>
-              {item.reportType}
+
+          <div className="absolute left-3 top-3">
+            <Badge
+              variant={item.reportType === "found" ? "default" : "secondary"}
+              className="font-medium"
+            >
+              {reportLabel}
             </Badge>
           </div>
-          
+
           {score !== undefined && (
-            <div className="absolute top-3 right-3">
-              <Badge className="bg-accent text-accent-foreground font-bold shadow-lg flex items-center gap-1">
-                <Sparkles className="w-3 h-3" />
-                {Math.round(score * 100)}% Match
+            <div className="absolute right-3 top-3">
+              <Badge variant="outline" className="bg-white/90 font-medium">
+                <Sparkles className="mr-1 h-3 w-3 text-primary" />
+                {Math.round(score * 100)}% 일치
               </Badge>
             </div>
           )}
         </div>
 
-        <CardContent className="p-5 flex-grow">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <h3 className="font-display font-bold text-lg leading-tight line-clamp-1 group-hover:text-primary transition-colors">
-              {item.title}
-            </h3>
+        <CardContent className="p-4 space-y-3">
+          <div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+              <span>{item.itemCategory || "분류 미지정"}</span>
+              {item.tags?.[0] && (
+                <>
+                  <span>·</span>
+                  <span>{item.tags[0]}</span>
+                </>
+              )}
+            </div>
+            <h3 className="font-semibold line-clamp-2">{item.title}</h3>
           </div>
-          
-          <div className="space-y-2 text-sm text-muted-foreground mb-4">
+
+          <div className="space-y-1.5 text-sm text-muted-foreground">
             {item.location && (
-              <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-primary/70 shrink-0" />
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-primary" />
                 <span className="truncate">{item.location}</span>
               </div>
             )}
             {item.date && (
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-primary/70 shrink-0" />
-                <span>{format(new Date(item.date), 'MMM d, yyyy')}</span>
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3.5 w-3.5 text-primary" />
+                <span>{format(new Date(item.date), "PPP", { locale: ko })}</span>
               </div>
             )}
           </div>
 
-          {reasoning && (
-            <div className="mt-4 p-3 bg-accent/10 border border-accent/20 rounded-xl text-sm text-foreground/80 leading-relaxed relative">
-              <Sparkles className="w-4 h-4 text-accent absolute -top-2 -left-2 bg-background rounded-full" />
-              {reasoning}
+          {reasoning ? (
+            <div className="rounded-lg bg-primary/5 border border-primary/10 p-3 text-sm text-foreground/80">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-primary mb-1">
+                <Sparkles className="h-3 w-3" />
+                일치 이유
+              </div>
+              <p className="line-clamp-2">{reasoning}</p>
             </div>
+          ) : (
+            <p className="text-sm text-muted-foreground line-clamp-2">
+              {item.description || "등록된 핵심 정보와 위치를 기반으로 확인할 수 있는 게시물입니다."}
+            </p>
           )}
-        </CardContent>
 
-        {item.tags && item.tags.length > 0 && (
-          <CardFooter className="px-5 pb-5 pt-0 mt-auto">
-            <div className="flex flex-wrap gap-1.5">
-              {item.tags.slice(0, 3).map((tag, i) => (
-                <Badge key={i} variant="secondary" className="bg-secondary/50 text-xs font-normal">
+          {item.tags && item.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {item.tags.slice(0, 3).map((tag) => (
+                <Badge key={tag} variant="secondary" className="text-xs">
                   {tag}
                 </Badge>
               ))}
               {item.tags.length > 3 && (
-                <Badge variant="secondary" className="bg-secondary/50 text-xs font-normal">
+                <Badge variant="secondary" className="text-xs">
                   +{item.tags.length - 3}
                 </Badge>
               )}
             </div>
-          </CardFooter>
-        )}
+          )}
+        </CardContent>
       </Card>
     </Link>
   );
