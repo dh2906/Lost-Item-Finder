@@ -1,5 +1,11 @@
-import { useMutation } from "@tanstack/react-query";
-import { api, type AnalyzeImageInput, type SearchSimilarInput } from "@shared/routes";
+import { useMutation, type UseMutationResult } from "@tanstack/react-query";
+import {
+  api,
+  type AnalyzeImageInput,
+  type AnalyzeImageResponse,
+  type SearchSimilarInput,
+  type SearchSimilarResponse,
+} from "@shared/routes";
 import { z } from "zod";
 
 function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: string): T {
@@ -11,7 +17,7 @@ function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: strin
   return result.data;
 }
 
-export function useAnalyzeImage() {
+export function useAnalyzeImage(): UseMutationResult<AnalyzeImageResponse, Error, AnalyzeImageInput> {
   return useMutation({
     mutationFn: async (data: AnalyzeImageInput) => {
       const validated = api.ai.analyzeImage.input.parse(data);
@@ -32,7 +38,7 @@ export function useAnalyzeImage() {
   });
 }
 
-export function useSearchSimilar() {
+export function useSearchSimilar(): UseMutationResult<SearchSimilarResponse, Error, SearchSimilarInput> {
   return useMutation({
     mutationFn: async (data: SearchSimilarInput) => {
       const validated = api.ai.searchSimilar.input.parse(data);

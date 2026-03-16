@@ -25,6 +25,9 @@ const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
 const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 12);
+const MIN_VECTOR_MATCH_SCORE = Number(process.env.MIN_VECTOR_MATCH_SCORE ?? 0.22);
+const MIN_FINAL_MATCH_SCORE = Number(process.env.MIN_FINAL_MATCH_SCORE ?? 0.42);
+const MIN_FALLBACK_MATCH_SCORE = Number(process.env.MIN_FALLBACK_MATCH_SCORE ?? 0.3);
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -96,6 +99,83 @@ function validateSearchPrompt(prompt: string): string | null {
   return null;
 }
 
+function parseCoordinate(value?: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatCoordinateForEmbedding(value?: string | null): string | null {
+  const parsed = parseCoordinate(value);
+  if (parsed === null) {
+    return null;
+  }
+
+  return parsed.toFixed(3);
+}
+
+function getSearchCoordinates(input: {
+  latitude?: string;
+  longitude?: string;
+}): { latitude: number; longitude: number } | null {
+  const hasLatitude = Boolean(input.latitude);
+  const hasLongitude = Boolean(input.longitude);
+
+  if (!hasLatitude && !hasLongitude) {
+    return null;
+  }
+
+  if (!hasLatitude || !hasLongitude) {
+    throw new Error("위치 검색을 하려면 위도와 경도를 모두 전달해야 합니다.");
+  }
+
+  const latitude = parseCoordinate(input.latitude);
+  const longitude = parseCoordinate(input.longitude);
+
+  if (latitude === null || longitude === null) {
+    throw new Error("위치 좌표 형식이 올바르지 않습니다.");
+  }
+
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    throw new Error("위치 좌표 범위가 올바르지 않습니다.");
+  }
+
+  return { latitude, longitude };
+}
+
+function toRadians(value: number): number {
+  return (value * Math.PI) / 180;
+}
+
+function calculateDistanceKm(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+): number {
+  const earthRadiusKm = 6371;
+  const deltaLatitude = toRadians(to.latitude - from.latitude);
+  const deltaLongitude = toRadians(to.longitude - from.longitude);
+  const fromLatitude = toRadians(from.latitude);
+  const toLatitude = toRadians(to.latitude);
+
+  const a =
+    Math.sin(deltaLatitude / 2) ** 2 +
+    Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(deltaLongitude / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return earthRadiusKm * c;
+}
+
+function formatDistanceText(distanceKm: number): string {
+  if (distanceKm < 1) {
+    return `${Math.round(distanceKm * 1000)}m`;
+  }
+
+  return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)}km`;
+}
+
 function buildItemSearchText(item: {
   title?: string | null;
   description?: string | null;
@@ -104,7 +184,14 @@ function buildItemSearchText(item: {
   size?: string | null;
   tags?: string[] | null;
   location?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
 }): string {
+  const coordinateSummary = [
+    formatCoordinateForEmbedding(item.latitude),
+    formatCoordinateForEmbedding(item.longitude),
+  ].filter((value): value is string => Boolean(value));
+
   const sections = [
     item.title ? `제목: ${item.title}` : null,
     item.itemCategory ? `카테고리: ${item.itemCategory}` : null,
@@ -112,6 +199,7 @@ function buildItemSearchText(item: {
     item.size ? `크기: ${item.size}` : null,
     item.description ? `설명: ${item.description}` : null,
     item.location ? `위치: ${item.location}` : null,
+    coordinateSummary.length === 2 ? `위치 좌표(근사): ${coordinateSummary.join(", ")}` : null,
     item.tags?.length ? `태그: ${item.tags.join(", ")}` : null,
   ].filter((value): value is string => Boolean(value));
 
@@ -168,9 +256,10 @@ function buildReasoningFromEvidence(params: {
     description?: string | null;
   };
   matchScore: number;
+  distanceKm?: number | null;
   llmReasoning?: string;
 }): string {
-  const { queryText, item, matchScore, llmReasoning } = params;
+  const { queryText, item, matchScore, distanceKm, llmReasoning } = params;
 
   const keywords = extractQueryKeywords(queryText);
   const evidenceText = normalizeKoreanText(getItemEvidenceText(item));
@@ -209,12 +298,20 @@ function buildReasoningFromEvidence(params: {
           ? `최종 매칭 점수는 약 ${scorePercent}%로 낮은 편이라 참고용 후보로 보는 것이 좋습니다.`
           : `최종 매칭 점수는 약 ${scorePercent}%로 매우 낮아, 관련성이 약한 후보일 수 있습니다.`;
   const normalizedLlmReasoning = llmReasoning?.trim();
+  const locationSummary =
+    distanceKm !== null && distanceKm !== undefined
+      ? `선택한 분실 위치 기준으로 약 ${formatDistanceText(distanceKm)} 거리여서 위치도 함께 반영했습니다.`
+      : null;
 
   if (normalizedLlmReasoning) {
-    return `${normalizedLlmReasoning} ${evidenceSummary} ${scoreSummary}`;
+    return [normalizedLlmReasoning, evidenceSummary, locationSummary, scoreSummary]
+      .filter((value): value is string => Boolean(value))
+      .join(" ");
   }
 
-  return `${evidenceSummary} ${scoreSummary}`;
+  return [evidenceSummary, locationSummary, scoreSummary]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
 }
 
 async function createEmbedding(text: string): Promise<number[]> {
@@ -284,6 +381,8 @@ async function ensureItemEmbedding(item: {
   size?: string | null;
   tags?: string[] | null;
   location?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
 }): Promise<void> {
   const content = buildItemSearchText(item);
   const embedding = await createEmbedding(content);
@@ -299,6 +398,9 @@ async function backfillFoundItemEmbeddings(): Promise<void> {
 }
 
 type VectorCandidate = Awaited<ReturnType<typeof storage.searchFoundItemsByEmbedding>>[number];
+type RankedVectorCandidate = VectorCandidate & {
+  distanceKm: number | null;
+};
 
 async function rerankCandidates(params: {
   prompt?: string;
@@ -564,6 +666,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Either prompt or imageUrl must be provided" });
       }
 
+      const searchCoordinates = getSearchCoordinates(input);
       await backfillFoundItemEmbeddings();
 
       const queryParts: string[] = [];
@@ -590,7 +693,25 @@ export async function registerRoutes(
       const queryEmbedding = await createEmbedding(queryText);
       const vectorMatches = await storage.searchFoundItemsByEmbedding(queryEmbedding, VECTOR_CANDIDATE_COUNT);
 
-      const filteredVectorMatches = vectorMatches.filter((result) => result.score > 0.15);
+      const filteredVectorMatches: RankedVectorCandidate[] = vectorMatches
+        .filter((result) => result.score >= MIN_VECTOR_MATCH_SCORE)
+        .map((result) => {
+          const itemLatitude = parseCoordinate(result.item.latitude);
+          const itemLongitude = parseCoordinate(result.item.longitude);
+          const distanceKm =
+            searchCoordinates && itemLatitude !== null && itemLongitude !== null
+              ? calculateDistanceKm(searchCoordinates, {
+                  latitude: itemLatitude,
+                  longitude: itemLongitude,
+                })
+              : null;
+
+          return {
+            ...result,
+            distanceKm,
+          };
+        });
+
       if (filteredVectorMatches.length === 0) {
         return res.json([]);
       }
@@ -619,28 +740,42 @@ export async function registerRoutes(
           return {
             item: vectorMatch.item,
             score: blendedScore,
+            distanceKm: vectorMatch.distanceKm,
             reasoning: buildReasoningFromEvidence({
               queryText,
               item: vectorMatch.item,
               matchScore: blendedScore,
+              distanceKm: vectorMatch.distanceKm,
               llmReasoning: result.reasoning,
             }),
           };
         })
-        .filter((result): result is { item: VectorCandidate["item"]; score: number; reasoning: string } => Boolean(result))
+        .filter(
+          (
+            result,
+          ): result is {
+            item: VectorCandidate["item"];
+            score: number;
+            distanceKm: number | null;
+            reasoning: string;
+          } => Boolean(result) && (result?.score ?? 0) >= MIN_FINAL_MATCH_SCORE,
+        )
         .sort((a, b) => b.score - a.score)
         .slice(0, FINAL_RESULT_COUNT);
 
       if (searchResults.length === 0) {
         const fallbackResults = filteredVectorMatches
+          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE)
           .slice(0, FINAL_RESULT_COUNT)
           .map((result) => ({
             item: result.item,
             score: Math.max(0, Math.min(1, result.score)),
+            distanceKm: result.distanceKm,
             reasoning: buildReasoningFromEvidence({
               queryText,
               item: result.item,
               matchScore: result.score,
+              distanceKm: result.distanceKm,
             }),
           }));
 

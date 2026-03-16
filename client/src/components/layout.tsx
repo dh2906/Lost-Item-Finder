@@ -1,6 +1,6 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Search, PlusCircle, Package, LogOut, User as UserIcon, ArrowRight } from "lucide-react";
+import { MapPinCheckInside, ChevronDown, LogOut, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,36 +16,114 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navigation = [
   { href: "/", label: "홈" },
-  { href: "/report", label: "습득물 신고" },
+  {
+    href: "/report",
+      label: "물건 신고",
+      children: [
+      { href: "/report/found", label: "습득물 신고" },
+      { href: "/report/lost", label: "분실물 신고" },
+    ],
+  },
   { href: "/search", label: "분실물 찾기" },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
+  const [reportMenuOpen, setReportMenuOpen] = useState(false);
+
+  const handleReportMenuNavigate = (href: string) => {
+    setReportMenuOpen(false);
+    void setLocation(href);
+  };
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2 font-semibold">
-              <Package className="h-6 w-6 text-primary" />
-              <span className="text-lg">ReturnIt</span>
+      <header className="sticky top-0 z-50 border-b border-border/70 bg-background/94 backdrop-blur supports-[backdrop-filter]:bg-background/78">
+        <div className="container flex h-[68px] items-center justify-between gap-4 xl:max-w-[1440px]">
+          <div className="flex items-center gap-3 md:gap-5">
+            <Link href="/" className="flex items-center gap-3 text-sm font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/80">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-primary to-primary/80 text-primary-foreground shadow-[0_12px_24px_-16px_hsl(var(--primary)/0.45)]">
+                <MapPinCheckInside className="h-5 w-5" />
+              </span>
+              <span className="flex flex-col leading-none">
+                <span className="text-base">ReturnIt</span>
+                <span className="mt-1 text-[11px] font-medium text-muted-foreground">분실물 연결 게시판</span>
+              </span>
             </Link>
 
-            <nav className="hidden md:flex items-center gap-1">
+            <nav className="hidden items-center rounded-full border border-border/55 bg-white/80 p-0.5 shadow-[0_10px_22px_-20px_rgba(27,31,59,0.14)] lg:flex">
               {navigation.map((item) => {
-                const active = location === item.href;
+                const active = item.href === "/"
+                  ? location === item.href
+                  : location === item.href ||
+                    location.startsWith(`${item.href}?`) ||
+                    location.startsWith(`${item.href}/`);
+
+                if (item.children) {
+                  return (
+                    <div
+                      key={item.href}
+                      className="relative"
+                      onMouseEnter={() => setReportMenuOpen(true)}
+                      onMouseLeave={() => setReportMenuOpen(false)}
+                    >
+                      <button
+                        type="button"
+                        className={cn(
+                          "relative inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
+                          active || reportMenuOpen
+                            ? "bg-primary text-primary-foreground font-semibold shadow-[0_8px_16px_-14px_hsl(var(--primary)/0.34)]"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        )}
+                      >
+                        {item.label}
+                        <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                      </button>
+
+                      {reportMenuOpen && (
+                        <div className="absolute inset-x-0 top-full h-4" aria-hidden="true" />
+                      )}
+
+                      {reportMenuOpen && (
+                        <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-1.5 text-popover-foreground shadow-md">
+                          {item.children.map((child) => {
+                            const childActive = location === child.href;
+
+                            return (
+                              <button
+                                key={child.href}
+                                type="button"
+                                onClick={() => handleReportMenuNavigate(child.href)}
+                                className={cn(
+                                  "block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
+                                  childActive
+                                    ? "bg-accent text-accent-foreground"
+                                    : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                                )}
+                              >
+                                {child.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 return (
                   <Link key={item.href} href={item.href}>
-                    <Button
-                      variant={active ? "default" : "ghost"}
-                      size="sm"
-                      className={cn(active && "font-medium")}
+                    <span
+                      className={cn(
+                        "relative inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
+                        active
+                          ? "bg-primary text-primary-foreground font-semibold shadow-[0_8px_16px_-14px_hsl(var(--primary)/0.34)]"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      )}
                     >
                       {item.label}
-                    </Button>
+                    </span>
                   </Link>
                 );
               })}
@@ -56,9 +134,9 @@ export function Layout({ children }: { children: ReactNode }) {
             {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback className="bg-primary/10 text-primary text-sm font-medium">
+                   <Button variant="ghost" className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary">
                         {user?.name?.[0] || user?.username?.[0]?.toUpperCase() || <UserIcon className="h-4 w-4" />}
                       </AvatarFallback>
                     </Avatar>
@@ -67,49 +145,36 @@ export function Layout({ children }: { children: ReactNode }) {
                 <DropdownMenuContent className="w-56" align="end" forceMount>
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">{user?.name || user?.username}</p>
+                      <p className="text-sm font-semibold leading-none">{user?.name || user?.username}</p>
                       <p className="text-xs leading-none text-muted-foreground">{user?.username}</p>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout} className="text-red-600">
+                  <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
                     <LogOut className="mr-2 h-4 w-4" />
                     로그아웃
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <div className="hidden md:flex items-center gap-2">
-                <Button variant="ghost" size="sm" asChild>
+              <div className="hidden items-center gap-2 md:flex">
+                <Button variant="ghost" size="sm" asChild className="h-9 rounded-full px-4 text-muted-foreground hover:bg-accent/70 hover:text-foreground">
                   <Link href="/login">로그인</Link>
                 </Button>
-                <Button size="sm" asChild>
-                  <Link href="/register">
-                    회원가입
-                    <ArrowRight className="ml-1 h-4 w-4" />
-                  </Link>
-                </Button>
+                 <Button size="sm" asChild className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]">
+                   <Link href="/register">회원가입</Link>
+                  </Button>
               </div>
             )}
 
-            <div className="flex md:hidden items-center gap-1">
+            <div className="flex items-center gap-1 md:hidden">
               {!isAuthenticated && (
-                <Button variant="ghost" size="icon" asChild aria-label="로그인">
+                <Button variant="ghost" size="icon" asChild aria-label="로그인" className="h-10 w-10 rounded-xl">
                   <Link href="/login">
                     <UserIcon className="h-5 w-5" />
                   </Link>
                 </Button>
               )}
-              <Button variant="ghost" size="icon" asChild aria-label="신고">
-                <Link href="/report">
-                  <PlusCircle className="h-5 w-5" />
-                </Link>
-              </Button>
-              <Button variant="ghost" size="icon" asChild aria-label="검색">
-                <Link href="/search">
-                  <Search className="h-5 w-5" />
-                </Link>
-              </Button>
             </div>
           </div>
         </div>
@@ -117,35 +182,15 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <main className="flex-1">{children}</main>
 
-      <footer className="border-t bg-muted/30">
-        <div className="container py-8 md:py-12">
-          <div className="grid gap-8 md:grid-cols-2">
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 font-semibold">
-                <Package className="h-5 w-5 text-primary" />
-                <span>ReturnIt</span>
-              </div>
-              <p className="text-sm text-muted-foreground max-w-md">
-                분실물과 습득물을 빠르게 연결하는 지역 기반 게시판입니다. 
-                AI 이미지 분석과 위치 기반 검색으로 잃어버린 물건을 찾아보세요.
-              </p>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-sm font-medium">서비스</p>
-                <p className="text-sm text-muted-foreground">
-                  AI 이미지 분석, 지역 위치 선택, 빠른 검색
-                </p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-sm font-medium">특징</p>
-                <p className="text-sm text-muted-foreground">
-                  신뢰, 명확성, 빠른 발견
-                </p>
-              </div>
-            </div>
+      <footer className="border-t border-border/35 bg-white/70">
+        <div className="container flex flex-col gap-1 py-1.5 text-sm text-muted-foreground/72 md:flex-row md:items-center md:justify-between xl:max-w-[1440px]">
+          <div className="flex items-center gap-2 font-medium text-foreground/72">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground/92">
+              <MapPinCheckInside className="h-4 w-4" />
+            </span>
+            <span>ReturnIt</span>
           </div>
+          <p className="text-center text-muted-foreground/42 md:text-right">© {new Date().getFullYear()} ReturnIt</p>
         </div>
       </footer>
     </div>
