@@ -111,13 +111,16 @@ export const api = {
       path: '/api/ai/search' as const,
       input: z.object({
         prompt: z.string().optional(),
-        imageUrl: z.string().optional() // base64 string
+        imageUrl: z.string().optional(), // base64 string
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
       }),
       responses: {
         200: z.array(z.object({
           item: z.custom<typeof items.$inferSelect>(),
           score: z.number(),
-          reasoning: z.string()
+          reasoning: z.string(),
+          distanceKm: z.number().nullable().optional(),
         })),
         400: errorSchemas.validation,
         500: errorSchemas.internal
