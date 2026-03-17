@@ -4,19 +4,22 @@ import { z } from "zod";
 
 export const items = pgTable("items", {
   id: serial("id").primaryKey(),
-  reportType: text("report_type").notNull(), // 'lost' or 'found'
+  reportType: text("report_type").notNull(),
   title: text("title").notNull(),
   description: text("description"),
-  imageUrl: text("image_url"), // base64 data URI
+  imageUrl: text("image_url"),
+  images: jsonb("images").$type<string[]>(),
   itemCategory: text("item_category"),
   color: text("color"),
   size: text("size"),
-  tags: jsonb("tags").$type<string[]>(), 
+  tags: jsonb("tags").$type<string[]>(),
   location: text("location"),
-  latitude: text("latitude"), // 위도
-  longitude: text("longitude"), // 경도
+  latitude: text("latitude"),
+  longitude: text("longitude"),
   date: timestamp("date").defaultNow(),
   contactInfo: text("contact_info"),
+  status: text("status").default("active"),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
 });
 
 export const itemEmbeddings = pgTable("item_embeddings", {
@@ -31,16 +34,29 @@ export const insertItemSchema = createInsertSchema(items).omit({
   date: true,
 });
 
+export const updateItemSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  contactInfo: z.string().optional(),
+  status: z.enum(["active", "resolved"]).optional(),
+});
+
 export type Item = typeof items.$inferSelect;
 export type InsertItem = z.infer<typeof insertItemSchema>;
+export type UpdateItem = z.infer<typeof updateItemSchema>;
 export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password").notNull().default(""),
   name: text("name"),
   createdAt: timestamp("created_at").defaultNow(),
+  // Social login
+  provider: text("provider").default("local"),   // 'local' | 'kakao' | 'google'
+  providerId: text("provider_id"),               // OAuth provider의 유저 ID
+  avatarUrl: text("avatar_url"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({

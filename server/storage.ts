@@ -1,4 +1,4 @@
-import { items, itemEmbeddings, users, type Item, type InsertItem, type User, type InsertUser } from "@shared/schema";
+import { items, itemEmbeddings, users, type Item, type InsertItem, type UpdateItem, type User, type InsertUser } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, isNull, cosineDistance, sql } from "drizzle-orm";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -20,28 +20,29 @@ async function verifyPassword(supplied: string, stored: string): Promise<boolean
 }
 
 export interface IStorage {
-  // Items
   getItems(type?: "lost" | "found", search?: string): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem): Promise<Item>;
+  updateItem(id: number, userId: number, data: UpdateItem): Promise<Item | undefined>;
+  deleteItem(id: number, userId: number): Promise<boolean>;
+  getItemsByUser(userId: number): Promise<Item[]>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
   getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
   searchFoundItemsByEmbedding(embedding: number[], limit?: number): Promise<Array<{ item: Item; score: number }>>;
-  
-  // Users
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByProvider(provider: string, providerId: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  createSocialUser(data: { username: string; name: string; provider: string; providerId: string; avatarUrl?: string | null }): Promise<User>;
   hashPassword(password: string): Promise<string>;
   verifyPassword(supplied: string, stored: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
   async getItems(type?: "lost" | "found", search?: string): Promise<Item[]> {
-    let conditions = [];
+    const conditions = [];
     if (type) conditions.push(eq(items.reportType, type));
     if (search) conditions.push(ilike(items.title, `%${search}%`));
-    
     return await db.select().from(items)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(items.date));
@@ -57,52 +58,54 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
+  async updateItem(id: number, userId: number, data: UpdateItem): Promise<Item | undefined> {
+    const [existing] = await db.select().from(items).where(eq(items.id, id));
+    if (!existing) return undefined;
+    if (existing.userId !== null && existing.userId !== userId) return undefined;
+    const [updated] = await db.update(items).set(data).where(eq(items.id, id)).returning();
+    return updated;
+  }
+
+  async deleteItem(id: number, userId: number): Promise<boolean> {
+    const [existing] = await db.select().from(items).where(eq(items.id, id));
+    if (!existing) return false;
+    if (existing.userId !== null && existing.userId !== userId) return false;
+    await db.delete(items).where(eq(items.id, id));
+    return true;
+  }
+
+  async getItemsByUser(userId: number): Promise<Item[]> {
+    return await db.select().from(items)
+      .where(eq(items.userId, userId))
+      .orderBy(desc(items.date));
+  }
+
   async upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void> {
-    await db
-      .insert(itemEmbeddings)
+    await db.insert(itemEmbeddings)
       .values({ itemId, content, embedding, updatedAt: new Date() })
-      .onConflictDoUpdate({
-        target: itemEmbeddings.itemId,
-        set: {
-          content,
-          embedding,
-          updatedAt: new Date(),
-        },
-      });
+      .onConflictDoUpdate({ target: itemEmbeddings.itemId, set: { content, embedding, updatedAt: new Date() } });
   }
 
   async getFoundItemsWithoutEmbeddings(): Promise<Item[]> {
-    const rows = await db
-      .select({ item: items })
+    const rows = await db.select({ item: items })
       .from(items)
       .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
       .where(and(eq(items.reportType, "found"), isNull(itemEmbeddings.itemId)))
       .orderBy(desc(items.date));
-
-    return rows.map((row) => row.item);
+    return rows.map((r) => r.item);
   }
 
   async searchFoundItemsByEmbedding(embedding: number[], limit = 12): Promise<Array<{ item: Item; score: number }>> {
     const distance = cosineDistance(itemEmbeddings.embedding, embedding);
-
-    const rows = await db
-      .select({
-        item: items,
-        distance,
-      })
+    const rows = await db.select({ item: items, distance })
       .from(itemEmbeddings)
       .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
-      .where(eq(items.reportType, "found"))
+      .where(and(eq(items.reportType, "found"), sql`(${items.status} IS NULL OR ${items.status} = 'active')`))
       .orderBy(distance)
       .limit(limit);
-
-    return rows.map((row) => ({
-      item: row.item,
-      score: Math.max(0, 1 - Number(row.distance ?? 1)),
-    }));
+    return rows.map((r) => ({ item: r.item, score: Math.max(0, 1 - Number(r.distance ?? 1)) }));
   }
 
-  // Users
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
@@ -113,11 +116,23 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async getUserByProvider(provider: string, providerId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users)
+      .where(and(eq(users.provider, provider), eq(users.providerId, providerId)));
+    return user;
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
-    const hashedPassword = await hashPassword(insertUser.password);
-    const [user] = await db
-      .insert(users)
+    const hashedPassword = await hashPassword(insertUser.password || "");
+    const [user] = await db.insert(users)
       .values({ ...insertUser, password: hashedPassword })
+      .returning();
+    return user;
+  }
+
+  async createSocialUser(data: { username: string; name: string; provider: string; providerId: string; avatarUrl?: string | null }): Promise<User> {
+    const [user] = await db.insert(users)
+      .values({ username: data.username, name: data.name, password: "", provider: data.provider, providerId: data.providerId, avatarUrl: data.avatarUrl ?? null })
       .returning();
     return user;
   }
