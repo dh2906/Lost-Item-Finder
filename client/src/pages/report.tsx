@@ -3,13 +3,25 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Upload, Loader2, MapPinned, ArrowLeft, CheckCircle2 } from "lucide-react";
+import {
+  Upload,
+  Loader2,
+  MapPinned,
+  ArrowLeft,
+  CheckCircle2,
+} from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { useAnalyzeImage } from "@/hooks/use-ai";
 import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { useCreateItem as useSaveItem } from "@/hooks/use-items";
@@ -26,9 +38,12 @@ const formSchema = z.object({
   contactInfo: z
     .string()
     .optional()
-    .refine((value) => !value || /^01[0-9]{8,9}$/.test(value.replace(/-/g, "")), {
-      message: "올바른 전화번호 형식이 아닙니다 (예: 01012345678)",
-    }),
+    .refine(
+      (value) => !value || /^01[0-9]{8,9}$/.test(value.replace(/-/g, "")),
+      {
+        message: "올바른 전화번호 형식이 아닙니다 (예: 01012345678)",
+      }
+    ),
   tags: z.array(z.string()).optional(),
   imageUrl: z.string().optional(),
   reportType: z.enum(["found", "lost"]).default("found"),
@@ -42,7 +57,7 @@ type ReportPageProps = {
   forcedType?: ReportType;
 };
 
-  const config = {
+const config = {
   found: {
     locationLabel: "발견 장소",
     locationPlaceholder: "예: 중앙공원 분수대 앞",
@@ -89,7 +104,8 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
     return params.get("type") === "lost" ? "lost" : "found";
   };
 
-  const [reportType, setReportType] = useState<ReportType>(getInitialReportType);
+  const [reportType, setReportType] =
+    useState<ReportType>(getInitialReportType);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -135,25 +151,42 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
     form.setValue("contactInfo", formatted.replace(/-/g, ""));
   };
 
-  const handleLocationChange = (location: { latitude: string; longitude: string }) => {
+  const handleLocationChange = (location: {
+    latitude: string;
+    longitude: string;
+  }) => {
     form.setValue("latitude", location.latitude);
     form.setValue("longitude", location.longitude);
   };
 
   const processSelectedFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
-      toast({ title: "이미지 파일만 업로드 가능합니다", variant: "destructive" });
+      toast({
+        title: "이미지 파일만 업로드 가능합니다",
+        variant: "destructive",
+      });
       return;
     }
 
     try {
       setIsAnalyzing(true);
+      // 1. 처음엔 사용자가 올린 원본 이미지를 프리뷰와 폼에 세팅 (스피너가 도는 동안 보임)
       const base64 = await optimizeImageForUpload(file);
       setImagePreview(base64);
       form.setValue("imageUrl", base64);
 
+      // 2. 백엔드로 원본 이미지 전송 (이때 서버에서 Qwen + 구글 비전 마스킹이 돌아감)
       const analysis = await analyzeMutation.mutateAsync({ imageUrl: base64 });
 
+      const responseData = analysis as any;
+      // ✨ [추가된 핵심 로직]
+      // 3. 서버가 '모자이크 처리된 이미지'를 돌려줬다면, 원본을 안전한 이미지로 싹 교체!
+      if (responseData.maskedImage) {
+        setImagePreview(responseData.maskedImage);
+        form.setValue("imageUrl", responseData.maskedImage);
+      }
+
+      // 4. 나머지 AI 분석 텍스트 데이터 폼에 채우기
       form.setValue("itemCategory", analysis.itemCategory);
       form.setValue("color", analysis.color);
       form.setValue("size", analysis.size);
@@ -164,9 +197,16 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
         form.setValue("title", `${analysis.color} ${analysis.itemCategory}`);
       }
 
-      toast({ title: "AI 분석 완료", description: "입력 가능한 정보를 먼저 채워 두었습니다." });
+      toast({
+        title: "AI 분석 완료",
+        description: "입력 가능한 정보를 먼저 채워 두었습니다.",
+      });
     } catch {
-      toast({ title: "분석 실패", description: "직접 입력해도 괜찮습니다.", variant: "destructive" });
+      toast({
+        title: "분석 실패",
+        description: "직접 입력해도 괜찮습니다.",
+        variant: "destructive",
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -190,7 +230,8 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
       toast({ title: "신고 완료", description: "게시물이 등록되었습니다." });
       setLocation(`/item/${result.id}`);
     } catch (error) {
-      const description = error instanceof Error ? error.message : "제출 중 문제가 발생했습니다.";
+      const description =
+        error instanceof Error ? error.message : "제출 중 문제가 발생했습니다.";
       toast({ title: "제출 실패", description, variant: "destructive" });
     }
   };
@@ -200,8 +241,19 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
   return (
     <Layout>
       <div className="container py-6 xl:max-w-[1440px]">
-        <Button variant="ghost" size="sm" asChild className="mb-2 h-auto px-0 text-muted-foreground hover:bg-transparent hover:text-foreground">
-          <a href="/" onClick={(e) => { e.preventDefault(); setLocation("/"); }}>
+        <Button
+          variant="ghost"
+          size="sm"
+          asChild
+          className="mb-2 h-auto px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+        >
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              setLocation("/");
+            }}
+          >
             <ArrowLeft className="mr-1 h-4 w-4" />
             돌아가기
           </a>
@@ -209,13 +261,22 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
 
         <div className="mb-4 space-y-2">
           <div className="flex items-center gap-3">
-            <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold", currentConfig.badge)}>
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold",
+                currentConfig.badge
+              )}
+            >
               {reportType === "found" ? "습득" : "분실"}
             </span>
           </div>
           <div className="space-y-1">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-[1.85rem]">{currentConfig.title}</h1>
-            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{currentConfig.description}</p>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-[1.85rem]">
+              {currentConfig.title}
+            </h1>
+            <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+              {currentConfig.description}
+            </p>
           </div>
         </div>
 
@@ -225,7 +286,12 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
         >
           <div className="space-y-5 xl:sticky xl:top-24">
             <Card className="overflow-hidden">
-              <CardHeader className={cn("border-b bg-gradient-to-br px-5 py-1.5 text-white", currentConfig.gradient)}>
+              <CardHeader
+                className={cn(
+                  "border-b bg-gradient-to-br px-5 py-1.5 text-white",
+                  currentConfig.gradient
+                )}
+              >
                 <div className="mb-1 inline-flex w-fit rounded-full border border-white/15 bg-white/12 px-2.5 py-1 text-[11px] font-semibold text-white/88">
                   1단계
                 </div>
@@ -234,7 +300,9 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                   사진 업로드
                 </CardTitle>
                 <CardDescription className="text-white/64">
-                  {currentConfig.requireImage ? "먼저 사진을 올리면 입력이 더 쉬워져요." : "사진이 있으면 물건 특징을 더 정확하게 전달할 수 있어요."}
+                  {currentConfig.requireImage
+                    ? "먼저 사진을 올리면 입력이 더 쉬워져요."
+                    : "사진이 있으면 물건 특징을 더 정확하게 전달할 수 있어요."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-5">
@@ -262,18 +330,24 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                     />
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center py-7 text-center">
-                       <div className="mb-1.5 rounded-full bg-background p-3 shadow-sm">
-                          <Upload className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                       <p className="text-sm font-semibold leading-none">클릭하여 사진 업로드</p>
-                       <p className="mt-0.5 text-xs leading-[1.4] text-muted-foreground">정면이 잘 보이는 사진일수록 정확도가 높아요.</p>
-                       </div>
+                      <div className="mb-1.5 rounded-full bg-background p-3 shadow-sm">
+                        <Upload className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm font-semibold leading-none">
+                        클릭하여 사진 업로드
+                      </p>
+                      <p className="mt-0.5 text-xs leading-[1.4] text-muted-foreground">
+                        정면이 잘 보이는 사진일수록 정확도가 높아요.
+                      </p>
+                    </div>
                   )}
                   {isAnalyzing && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm">
                       <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
                       <p className="text-sm font-semibold">AI 분석 중...</p>
-                      <p className="text-xs text-muted-foreground">사진을 분석하고 있어요</p>
+                      <p className="text-xs text-muted-foreground">
+                        사진을 분석하고 있어요
+                      </p>
                     </div>
                   )}
                 </div>
@@ -289,7 +363,9 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                   <MapPinned className="h-4 w-4 text-primary" />
                   위치 지정
                 </CardTitle>
-                <CardDescription>발견 위치를 먼저 지정해 주세요.</CardDescription>
+                <CardDescription>
+                  발견 위치를 먼저 지정해 주세요.
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-5">
                 <div className="overflow-hidden rounded-[22px] border border-border/70 shadow-card">
@@ -316,11 +392,15 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                 <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
                   3단계
                 </div>
-                <CardTitle className="text-base font-semibold">기본 정보</CardTitle>
+                <CardTitle className="text-base font-semibold">
+                  기본 정보
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 p-5 pt-3">
                 <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 p-4">
-                  <p className="text-sm font-semibold text-foreground">물건 식별 정보</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    물건 식별 정보
+                  </p>
 
                   <div>
                     <Label htmlFor="title" className="text-sm font-semibold">
@@ -333,13 +413,18 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                       {...form.register("title")}
                     />
                     {form.formState.errors.title && (
-                      <p className="mt-1.5 text-sm text-destructive">{form.formState.errors.title.message}</p>
+                      <p className="mt-1.5 text-sm text-destructive">
+                        {form.formState.errors.title.message}
+                      </p>
                     )}
                   </div>
 
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <div>
-                      <Label htmlFor="itemCategory" className="text-sm font-semibold">
+                      <Label
+                        htmlFor="itemCategory"
+                        className="text-sm font-semibold"
+                      >
                         카테고리
                       </Label>
                       <Input
@@ -364,7 +449,9 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                 </section>
 
                 <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 p-4">
-                  <p className="text-sm font-semibold text-foreground">상세 설명</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    상세 설명
+                  </p>
 
                   <div>
                     <Textarea
@@ -373,16 +460,23 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                       className="min-h-[132px] resize-none rounded-xl border-border/85 px-4 py-3.5 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
                       {...form.register("description")}
                     />
-                    <p className="mt-1.5 text-xs text-slate-500">구분 가능한 특징을 적어주세요.</p>
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      구분 가능한 특징을 적어주세요.
+                    </p>
                   </div>
                 </section>
 
                 <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 px-4 pt-4 pb-3.5">
-                  <p className="text-sm font-semibold text-foreground">발견 정보</p>
+                  <p className="text-sm font-semibold text-foreground">
+                    발견 정보
+                  </p>
 
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <div>
-                      <Label htmlFor="location" className="text-sm font-semibold">
+                      <Label
+                        htmlFor="location"
+                        className="text-sm font-semibold"
+                      >
                         {currentConfig.locationLabel}
                       </Label>
                       <Input
@@ -393,17 +487,24 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="contactInfo" className="text-sm font-semibold">
+                      <Label
+                        htmlFor="contactInfo"
+                        className="text-sm font-semibold"
+                      >
                         연락처
                       </Label>
                       <Input
                         id="contactInfo"
                         placeholder="010-1234-5678"
                         className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                        value={formatPhoneNumber(form.watch("contactInfo") || "")}
+                        value={formatPhoneNumber(
+                          form.watch("contactInfo") || ""
+                        )}
                         onChange={handlePhoneChange}
                       />
-                      <p className="mt-1.5 pl-0.5 text-[12px] leading-5 text-muted-foreground">주인이 연락할 수 있는 번호를 입력해 주세요.</p>
+                      <p className="mt-1.5 pl-0.5 text-[12px] leading-5 text-muted-foreground">
+                        주인이 연락할 수 있는 번호를 입력해 주세요.
+                      </p>
                     </div>
                   </div>
                 </section>
@@ -416,8 +517,12 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                   <div className="mb-2 inline-flex w-fit rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
                     4단계
                   </div>
-                  <p className="text-base font-semibold text-foreground">입력 내용을 확인해 주세요</p>
-                  <p className="text-sm leading-6 text-muted-foreground">사진, 위치, 연락처를 다시 확인한 뒤 신고를 완료해 주세요.</p>
+                  <p className="text-base font-semibold text-foreground">
+                    입력 내용을 확인해 주세요
+                  </p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    사진, 위치, 연락처를 다시 확인한 뒤 신고를 완료해 주세요.
+                  </p>
                 </div>
                 <Button
                   type="submit"

@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import passport from "passport";
+import { maskSensitiveInfo } from "./lib/masking";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -25,9 +26,13 @@ const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
 const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 12);
-const MIN_VECTOR_MATCH_SCORE = Number(process.env.MIN_VECTOR_MATCH_SCORE ?? 0.22);
+const MIN_VECTOR_MATCH_SCORE = Number(
+  process.env.MIN_VECTOR_MATCH_SCORE ?? 0.22
+);
 const MIN_FINAL_MATCH_SCORE = Number(process.env.MIN_FINAL_MATCH_SCORE ?? 0.42);
-const MIN_FALLBACK_MATCH_SCORE = Number(process.env.MIN_FALLBACK_MATCH_SCORE ?? 0.3);
+const MIN_FALLBACK_MATCH_SCORE = Number(
+  process.env.MIN_FALLBACK_MATCH_SCORE ?? 0.3
+);
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -89,7 +94,9 @@ function validateSearchPrompt(prompt: string): string | null {
     }).length;
 
     if (
-      (tokens.length === 1 && tokens[0].length >= 7 && suspiciousTokenCount >= 1) ||
+      (tokens.length === 1 &&
+        tokens[0].length >= 7 &&
+        suspiciousTokenCount >= 1) ||
       suspiciousTokenCount >= 2
     ) {
       return "영문 난타처럼 보여요. 물건 특징을 문장으로 입력해 주세요. (예: black leather wallet with silver clip)";
@@ -152,7 +159,7 @@ function toRadians(value: number): number {
 
 function calculateDistanceKm(
   from: { latitude: number; longitude: number },
-  to: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number }
 ): number {
   const earthRadiusKm = 6371;
   const deltaLatitude = toRadians(to.latitude - from.latitude);
@@ -162,7 +169,9 @@ function calculateDistanceKm(
 
   const a =
     Math.sin(deltaLatitude / 2) ** 2 +
-    Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(deltaLongitude / 2) ** 2;
+    Math.cos(fromLatitude) *
+      Math.cos(toLatitude) *
+      Math.sin(deltaLongitude / 2) ** 2;
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return earthRadiusKm * c;
@@ -199,7 +208,9 @@ function buildItemSearchText(item: {
     item.size ? `크기: ${item.size}` : null,
     item.description ? `설명: ${item.description}` : null,
     item.location ? `위치: ${item.location}` : null,
-    coordinateSummary.length === 2 ? `위치 좌표(근사): ${coordinateSummary.join(", ")}` : null,
+    coordinateSummary.length === 2
+      ? `위치 좌표(근사): ${coordinateSummary.join(", ")}`
+      : null,
     item.tags?.length ? `태그: ${item.tags.join(", ")}` : null,
   ].filter((value): value is string => Boolean(value));
 
@@ -263,7 +274,9 @@ function buildReasoningFromEvidence(params: {
 
   const keywords = extractQueryKeywords(queryText);
   const evidenceText = normalizeKoreanText(getItemEvidenceText(item));
-  const matchedKeywords = keywords.filter((keyword) => evidenceText.includes(keyword)).slice(0, 4);
+  const matchedKeywords = keywords
+    .filter((keyword) => evidenceText.includes(keyword))
+    .slice(0, 4);
 
   const detailClauses: string[] = [];
   if (item.itemCategory) {
@@ -276,15 +289,19 @@ function buildReasoningFromEvidence(params: {
     detailClauses.push(`크기 정보는 '${item.size}'에 가깝습니다`);
   }
   if (item.tags?.length) {
-    detailClauses.push(`태그에는 ${item.tags.slice(0, 3).join(", ")} 같은 특징이 포함돼 있어요`);
+    detailClauses.push(
+      `태그에는 ${item.tags.slice(0, 3).join(", ")} 같은 특징이 포함돼 있어요`
+    );
   }
 
   const evidenceSummary =
     matchedKeywords.length > 0
-      ? `입력하신 표현 중 ${matchedKeywords.join(", ")} 키워드가 후보 정보와 직접 겹칩니다.`
+      ? `입력하신 표현 중 ${matchedKeywords.join(
+          ", "
+        )} 키워드가 후보 정보와 직접 겹칩니다.`
       : detailClauses.length > 0
-        ? `${detailClauses.slice(0, 2).join(", ")}.`
-        : "후보 설명과의 의미 유사도를 기준으로 우선 노출되었습니다.";
+      ? `${detailClauses.slice(0, 2).join(", ")}.`
+      : "후보 설명과의 의미 유사도를 기준으로 우선 노출되었습니다.";
 
   const scorePercent = (Math.max(0, Math.min(1, matchScore)) * 100).toFixed(1);
   const normalizedScore = Math.max(0, Math.min(1, matchScore));
@@ -293,18 +310,25 @@ function buildReasoningFromEvidence(params: {
     normalizedScore >= 0.75
       ? `최종 매칭 점수가 약 ${scorePercent}%로 높아, 실제 동일 물건일 가능성이 큽니다.`
       : normalizedScore >= 0.45
-        ? `최종 매칭 점수는 약 ${scorePercent}%로 중간 수준입니다. 일부 특징은 맞지만 추가 확인이 필요합니다.`
-        : normalizedScore >= 0.25
-          ? `최종 매칭 점수는 약 ${scorePercent}%로 낮은 편이라 참고용 후보로 보는 것이 좋습니다.`
-          : `최종 매칭 점수는 약 ${scorePercent}%로 매우 낮아, 관련성이 약한 후보일 수 있습니다.`;
+      ? `최종 매칭 점수는 약 ${scorePercent}%로 중간 수준입니다. 일부 특징은 맞지만 추가 확인이 필요합니다.`
+      : normalizedScore >= 0.25
+      ? `최종 매칭 점수는 약 ${scorePercent}%로 낮은 편이라 참고용 후보로 보는 것이 좋습니다.`
+      : `최종 매칭 점수는 약 ${scorePercent}%로 매우 낮아, 관련성이 약한 후보일 수 있습니다.`;
   const normalizedLlmReasoning = llmReasoning?.trim();
   const locationSummary =
     distanceKm !== null && distanceKm !== undefined
-      ? `선택한 분실 위치 기준으로 약 ${formatDistanceText(distanceKm)} 거리여서 위치도 함께 반영했습니다.`
+      ? `선택한 분실 위치 기준으로 약 ${formatDistanceText(
+          distanceKm
+        )} 거리여서 위치도 함께 반영했습니다.`
       : null;
 
   if (normalizedLlmReasoning) {
-    return [normalizedLlmReasoning, evidenceSummary, locationSummary, scoreSummary]
+    return [
+      normalizedLlmReasoning,
+      evidenceSummary,
+      locationSummary,
+      scoreSummary,
+    ]
       .filter((value): value is string => Boolean(value))
       .join(" ");
   }
@@ -341,7 +365,7 @@ async function createImageSearchText(imageUrl: string): Promise<string> {
       {
         role: "system",
         content:
-          "너는 분실물 검색용 이미지 요약 도우미다. 제공된 이미지를 보고 검색에 도움이 되는 한국어 JSON 객체만 반환해라. 형식은 {\"itemCategory\":\"...\",\"color\":\"...\",\"size\":\"...\",\"tags\":[\"...\"],\"description\":\"...\"} 이다.",
+          '너는 분실물 검색용 이미지 요약 도우미다. 제공된 이미지를 보고 검색에 도움이 되는 한국어 JSON 객체만 반환해라. 형식은 {"itemCategory":"...","color":"...","size":"...","tags":["..."],"description":"..."} 이다.',
       },
       {
         role: "user",
@@ -397,7 +421,9 @@ async function backfillFoundItemEmbeddings(): Promise<void> {
   }
 }
 
-type VectorCandidate = Awaited<ReturnType<typeof storage.searchFoundItemsByEmbedding>>[number];
+type VectorCandidate = Awaited<
+  ReturnType<typeof storage.searchFoundItemsByEmbedding>
+>[number];
 type RankedVectorCandidate = VectorCandidate & {
   distanceKm: number | null;
 };
@@ -421,7 +447,7 @@ async function rerankCandidates(params: {
       text: [
         "다음은 벡터 검색으로 먼저 추린 습득물 후보 목록이다.",
         "사용자 분실물 정보와 각 후보를 비교해서 실제로 같은 물건일 가능성을 다시 평가해라.",
-        "반드시 JSON 객체만 반환하고 형식은 {\"matches\": [{\"itemId\": 1, \"score\": 0.91, \"reasoning\": \"한국어 설명\"}]} 이어야 한다.",
+        '반드시 JSON 객체만 반환하고 형식은 {"matches": [{"itemId": 1, "score": 0.91, "reasoning": "한국어 설명"}]} 이어야 한다.',
         "score는 0부터 1 사이 숫자여야 하고, reasoning은 자연스러운 한국어 한두 문장이어야 한다.",
         `사용자 검색 텍스트:\n${queryText}`,
         prompt ? `사용자 원문 설명:\n${prompt}` : null,
@@ -436,7 +462,7 @@ async function rerankCandidates(params: {
             size: candidate.item.size,
             tags: candidate.item.tags,
             location: candidate.item.location,
-          })),
+          }))
         )}`,
       ]
         .filter((value): value is string => Boolean(value))
@@ -473,8 +499,8 @@ async function rerankCandidates(params: {
   const matches: unknown[] = Array.isArray(parsed)
     ? parsed
     : Array.isArray(parsed.matches)
-      ? parsed.matches
-      : [];
+    ? parsed.matches
+    : [];
 
   return matches
     .map((match: unknown) => {
@@ -488,7 +514,10 @@ async function rerankCandidates(params: {
 
       return result.success ? result.data : null;
     })
-    .filter((match): match is { itemId: number; score: number; reasoning: string } => Boolean(match));
+    .filter(
+      (match): match is { itemId: number; score: number; reasoning: string } =>
+        Boolean(match)
+    );
 }
 
 export async function registerRoutes(
@@ -499,16 +528,18 @@ export async function registerRoutes(
   app.post(api.auth.register.path, async (req, res) => {
     try {
       const input = api.auth.register.input.parse(req.body);
-      
+
       const existingUser = await storage.getUserByUsername(input.username);
       if (existingUser) {
         return res.status(400).json({ message: "이미 존재하는 아이디입니다" });
       }
-      
+
       const user = await storage.createUser(input);
       req.login(user, (err) => {
         if (err) {
-          return res.status(500).json({ message: "로그인 처리 중 오류가 발생했습니다" });
+          return res
+            .status(500)
+            .json({ message: "로그인 처리 중 오류가 발생했습니다" });
         }
         const { password: _, ...userWithoutPassword } = user;
         res.status(201).json(userWithoutPassword);
@@ -518,35 +549,50 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+          field: err.errors[0].path.join("."),
         });
       }
-      res.status(500).json({ message: err instanceof Error ? err.message : "Internal server error" });
+      res.status(500).json({
+        message: err instanceof Error ? err.message : "Internal server error",
+      });
     }
   });
 
   app.post(api.auth.login.path, (req, res, next) => {
-    passport.authenticate("local", (err: Error | null, user: Express.User | false, info: { message: string } | undefined) => {
-      if (err) {
-        return res.status(500).json({ message: "Internal server error" });
-      }
-      if (!user) {
-        return res.status(401).json({ message: info?.message || "로그인에 실패했습니다" });
-      }
-      req.login(user, (err) => {
+    passport.authenticate(
+      "local",
+      (
+        err: Error | null,
+        user: Express.User | false,
+        info: { message: string } | undefined
+      ) => {
         if (err) {
-          return res.status(500).json({ message: "로그인 처리 중 오류가 발생했습니다" });
+          return res.status(500).json({ message: "Internal server error" });
         }
-        const { password: _, ...userWithoutPassword } = user;
-        res.json(userWithoutPassword);
-      });
-    })(req, res, next);
+        if (!user) {
+          return res
+            .status(401)
+            .json({ message: info?.message || "로그인에 실패했습니다" });
+        }
+        req.login(user, (err) => {
+          if (err) {
+            return res
+              .status(500)
+              .json({ message: "로그인 처리 중 오류가 발생했습니다" });
+          }
+          const { password: _, ...userWithoutPassword } = user;
+          res.json(userWithoutPassword);
+        });
+      }
+    )(req, res, next);
   });
 
   app.post(api.auth.logout.path, (req, res) => {
     req.logout((err) => {
       if (err) {
-        return res.status(500).json({ message: "로그아웃 중 오류가 발생했습니다" });
+        return res
+          .status(500)
+          .json({ message: "로그아웃 중 오류가 발생했습니다" });
       }
       res.json({ message: "로그아웃 되었습니다" });
     });
@@ -602,7 +648,7 @@ export async function registerRoutes(
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+          field: err.errors[0].path.join("."),
         });
       }
       res.status(500).json({ message: "Internal server error" });
@@ -613,23 +659,27 @@ export async function registerRoutes(
   app.post(api.ai.analyzeImage.path, async (req, res) => {
     try {
       const input = api.ai.analyzeImage.input.parse(req.body);
-      
+
       const response = await getQwenClient().chat.completions.create({
         model: QWEN_VISION_MODEL,
         messages: [
           {
             role: "system",
-            content: "너는 분실물 보관 시스템에서 습득물을 분류하는 AI 도우미다. 제공된 이미지를 분석해서 다음 메타데이터를 한국어로 추출해라: itemCategory(예: 지갑, 휴대폰, 열쇠), color, size(예: 소형, 중형, 대형), tags(설명형 키워드 배열), description(짧고 명확한 설명). 반드시 JSON 객체만 반환하고, 값은 모두 자연스러운 한국어로 작성해라."
+            content:
+              "너는 분실물 보관 시스템에서 습득물을 분류하는 AI 도우미다. 이미지를 분석해서 다음 메타데이터를 한국어로 추출해라: itemCategory, color, size, tags, description, requiresMasking(개인정보, 얼굴, 신분증, 카드 등이 포함되어 있는지 여부 boolean). 사진 속에 사람의 이름, 주민등록번호, 카드 번호, 상세 주소, 발급일자는 절대 출력하지 마라. 반드시 JSON 객체만 반환해라.",
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "이 이미지를 분석하고 메타데이터를 JSON 형식으로 한국어로 반환해줘." },
-              { type: "image_url", image_url: { url: input.imageUrl } }
-            ]
-          }
+              {
+                type: "text",
+                text: "이 이미지를 분석하고 메타데이터를 JSON 형식으로 한국어로 반환해줘.",
+              },
+              { type: "image_url", image_url: { url: input.imageUrl } },
+            ],
+          },
         ],
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
       });
 
       const content = response.choices[0].message.content;
@@ -638,20 +688,36 @@ export async function registerRoutes(
       }
 
       const result = JSON.parse(content);
+
+      let finalImageBase64 = input.imageUrl;
+
+      if (result.requiresMasking === true) {
+        console.log("🔒 [보안] 개인정보 감지! 마스킹 처리를 시작합니다.");
+        const base64Data = input.imageUrl.replace(
+          /^data:image\/\w+;base64,/,
+          ""
+        );
+        const imageBuffer = Buffer.from(base64Data, "base64");
+
+        finalImageBase64 = await maskSensitiveInfo(imageBuffer);
+      } else {
+        console.log("✅ [안전] 일반 사물입니다. 마스킹을 건너뜁니다.");
+      }
+
       res.json({
         itemCategory: result.itemCategory || "알 수 없음",
         color: result.color || "알 수 없음",
         size: result.size || "알 수 없음",
         tags: Array.isArray(result.tags) ? result.tags : [],
-        description: result.description || "설명이 없습니다"
+        description: result.description || "설명이 없습니다",
+        maskedImage: finalImageBase64,
       });
-
     } catch (err) {
       console.error(err);
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+          field: err.errors[0].path.join("."),
         });
       }
       res.status(500).json({ message: getErrorMessage(err) });
@@ -661,9 +727,11 @@ export async function registerRoutes(
   app.post(api.ai.searchSimilar.path, async (req, res) => {
     try {
       const input = api.ai.searchSimilar.input.parse(req.body);
-      
+
       if (!input.prompt && !input.imageUrl) {
-        return res.status(400).json({ message: "Either prompt or imageUrl must be provided" });
+        return res
+          .status(400)
+          .json({ message: "Either prompt or imageUrl must be provided" });
       }
 
       const searchCoordinates = getSearchCoordinates(input);
@@ -674,7 +742,9 @@ export async function registerRoutes(
       if (trimmedPrompt) {
         const promptValidationError = validateSearchPrompt(trimmedPrompt);
         if (promptValidationError && !input.imageUrl) {
-          return res.status(400).json({ message: promptValidationError, field: "prompt" });
+          return res
+            .status(400)
+            .json({ message: promptValidationError, field: "prompt" });
         }
 
         if (!promptValidationError) {
@@ -691,7 +761,10 @@ export async function registerRoutes(
 
       const queryText = queryParts.join("\n\n").trim();
       const queryEmbedding = await createEmbedding(queryText);
-      const vectorMatches = await storage.searchFoundItemsByEmbedding(queryEmbedding, VECTOR_CANDIDATE_COUNT);
+      const vectorMatches = await storage.searchFoundItemsByEmbedding(
+        queryEmbedding,
+        VECTOR_CANDIDATE_COUNT
+      );
 
       const filteredVectorMatches: RankedVectorCandidate[] = vectorMatches
         .filter((result) => result.score >= MIN_VECTOR_MATCH_SCORE)
@@ -724,7 +797,7 @@ export async function registerRoutes(
       });
 
       const vectorMatchById = new Map(
-        filteredVectorMatches.map((candidate) => [candidate.item.id, candidate]),
+        filteredVectorMatches.map((candidate) => [candidate.item.id, candidate])
       );
 
       const searchResults = rerankedMatches
@@ -735,7 +808,9 @@ export async function registerRoutes(
           }
 
           const llmScore = Math.max(0, Math.min(1, result.score));
-          const blendedScore = Number(((vectorMatch.score * 0.35) + (llmScore * 0.65)).toFixed(4));
+          const blendedScore = Number(
+            (vectorMatch.score * 0.35 + llmScore * 0.65).toFixed(4)
+          );
 
           return {
             item: vectorMatch.item,
@@ -752,13 +827,13 @@ export async function registerRoutes(
         })
         .filter(
           (
-            result,
+            result
           ): result is {
             item: VectorCandidate["item"];
             score: number;
             distanceKm: number | null;
             reasoning: string;
-          } => Boolean(result) && (result?.score ?? 0) >= MIN_FINAL_MATCH_SCORE,
+          } => Boolean(result) && (result?.score ?? 0) >= MIN_FINAL_MATCH_SCORE
         )
         .sort((a, b) => b.score - a.score)
         .slice(0, FINAL_RESULT_COUNT);
@@ -783,13 +858,12 @@ export async function registerRoutes(
       }
 
       res.json(searchResults);
-
     } catch (err) {
       console.error(err);
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
-          field: err.errors[0].path.join('.'),
+          field: err.errors[0].path.join("."),
         });
       }
       res.status(500).json({ message: getErrorMessage(err) });
