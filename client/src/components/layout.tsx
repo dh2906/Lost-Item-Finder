@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MapPinCheckInside, ChevronDown, LogOut, User as UserIcon } from "lucide-react";
+import { MapPinCheckInside, ChevronDown, LogOut, User as UserIcon, LayoutList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -16,10 +16,11 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navigation = [
   { href: "/", label: "홈" },
+  { href: "/items", label: "목록" },
   {
     href: "/report",
-      label: "물건 신고",
-      children: [
+    label: "물건 신고",
+    children: [
       { href: "/report/found", label: "습득물 신고" },
       { href: "/report/lost", label: "분실물 신고" },
     ],
@@ -89,7 +90,6 @@ export function Layout({ children }: { children: ReactNode }) {
                         <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-1.5 text-popover-foreground shadow-md">
                           {item.children.map((child) => {
                             const childActive = location === child.href;
-
                             return (
                               <button
                                 key={child.href}
@@ -134,7 +134,7 @@ export function Layout({ children }: { children: ReactNode }) {
             {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                   <Button variant="ghost" className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md">
+                  <Button variant="ghost" className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary">
                         {user?.name?.[0] || user?.username?.[0]?.toUpperCase() || <UserIcon className="h-4 w-4" />}
@@ -150,6 +150,13 @@ export function Layout({ children }: { children: ReactNode }) {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/mypage">
+                      <LayoutList className="mr-2 h-4 w-4" />
+                      마이페이지
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
                     <LogOut className="mr-2 h-4 w-4" />
                     로그아웃
@@ -161,9 +168,9 @@ export function Layout({ children }: { children: ReactNode }) {
                 <Button variant="ghost" size="sm" asChild className="h-9 rounded-full px-4 text-muted-foreground hover:bg-accent/70 hover:text-foreground">
                   <Link href="/login">로그인</Link>
                 </Button>
-                 <Button size="sm" asChild className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]">
-                   <Link href="/register">회원가입</Link>
-                  </Button>
+                <Button size="sm" asChild className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]">
+                  <Link href="/register">회원가입</Link>
+                </Button>
               </div>
             )}
 
