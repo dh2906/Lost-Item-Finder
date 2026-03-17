@@ -17,9 +17,9 @@ export const items = pgTable("items", {
   longitude: text("longitude"),
   date: timestamp("date").defaultNow(),
   contactInfo: text("contact_info"),
-  // 판배자 정보 및 상태
-  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  // --- new columns ---
   status: text("status").default("active"), // 'active' | 'resolved'
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
 });
 
 export const itemEmbeddings = pgTable("item_embeddings", {
@@ -34,10 +34,12 @@ export const insertItemSchema = createInsertSchema(items).omit({
   date: true,
 });
 
-export const updateItemSchema = createInsertSchema(items).partial().omit({
-  id: true,
-  date: true,
-  userId: true,
+export const updateItemSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  contactInfo: z.string().optional(),
+  status: z.enum(["active", "resolved"]).optional(),
 });
 
 export type Item = typeof items.$inferSelect;

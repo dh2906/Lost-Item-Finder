@@ -93,7 +93,6 @@ export const api = {
       responses: {
         200: z.custom<typeof items.$inferSelect>(),
         400: errorSchemas.validation,
-        401: errorSchemas.validation,
         403: errorSchemas.validation,
         404: errorSchemas.notFound,
       },
@@ -103,7 +102,6 @@ export const api = {
       path: '/api/items/:id' as const,
       responses: {
         200: z.object({ message: z.string() }),
-        401: errorSchemas.validation,
         403: errorSchemas.validation,
         404: errorSchemas.notFound,
       },
@@ -172,9 +170,9 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
 }
 
 export type ItemInput = z.infer<typeof api.items.create.input>;
-export type ItemUpdateInput = z.infer<typeof api.items.update.input>;
 export type ItemResponse = z.infer<typeof api.items.create.responses[201]>;
 export type ItemsListResponse = z.infer<typeof api.items.list.responses[200]>;
+export type UpdateItemInput = z.infer<typeof api.items.update.input>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<typeof api.ai.analyzeImage.responses[200]>;
 export type SearchSimilarInput = z.infer<typeof api.ai.searchSimilar.input>;

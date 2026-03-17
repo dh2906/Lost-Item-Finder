@@ -24,8 +24,8 @@ export interface IStorage {
   getItems(type?: "lost" | "found", search?: string): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem): Promise<Item>;
-  updateItem(id: number, data: UpdateItem): Promise<Item | undefined>;
-  deleteItem(id: number): Promise<boolean>;
+  updateItem(id: number, userId: number, data: UpdateItem): Promise<Item | undefined>;
+  deleteItem(id: number, userId: number): Promise<boolean>;
   getItemsByUser(userId: number): Promise<Item[]>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
   getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
@@ -44,9 +44,6 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
     if (type) conditions.push(eq(items.reportType, type));
     if (search) conditions.push(ilike(items.title, `%${search}%`));
-    // 완료된 게시물은 목록에서 제외
-    conditions.push(sql`(${items.status} IS NULL OR ${items.status} = 'active')`);
-
     return await db.select().from(items)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(items.date));
@@ -62,18 +59,20 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
-  async updateItem(id: number, data: UpdateItem): Promise<Item | undefined> {
-    const [item] = await db
-      .update(items)
-      .set(data)
-      .where(eq(items.id, id))
-      .returning();
-    return item;
+  async updateItem(id: number, userId: number, data: UpdateItem): Promise<Item | undefined> {
+    const [existing] = await db.select().from(items).where(eq(items.id, id));
+    if (!existing) return undefined;
+    if (existing.userId !== null && existing.userId !== userId) return undefined; // unauthorized
+    const [updated] = await db.update(items).set(data).where(eq(items.id, id)).returning();
+    return updated;
   }
 
-  async deleteItem(id: number): Promise<boolean> {
-    const result = await db.delete(items).where(eq(items.id, id)).returning();
-    return result.length > 0;
+  async deleteItem(id: number, userId: number): Promise<boolean> {
+    const [existing] = await db.select().from(items).where(eq(items.id, id));
+    if (!existing) return false;
+    if (existing.userId !== null && existing.userId !== userId) return false;
+    await db.delete(items).where(eq(items.id, id));
+    return true;
   }
 
   async getItemsByUser(userId: number): Promise<Item[]> {
@@ -108,10 +107,7 @@ export class DatabaseStorage implements IStorage {
       .select({ item: items, distance })
       .from(itemEmbeddings)
       .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
-      .where(and(
-        eq(items.reportType, "found"),
-        sql`(${items.status} IS NULL OR ${items.status} = 'active')`
-      ))
+      .where(and(eq(items.reportType, "found"), sql`(${items.status} IS NULL OR ${items.status} = 'active')`))
       .orderBy(distance)
       .limit(limit);
     return rows.map((row) => ({
@@ -132,10 +128,7 @@ export class DatabaseStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const hashedPassword = await hashPassword(insertUser.password);
-    const [user] = await db
-      .insert(users)
-      .values({ ...insertUser, password: hashedPassword })
-      .returning();
+    const [user] = await db.insert(users).values({ ...insertUser, password: hashedPassword }).returning();
     return user;
   }
 

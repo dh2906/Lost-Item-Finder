@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type ItemInput, type ItemUpdateInput, type ItemResponse, type ItemsListResponse } from "@shared/routes";
+import { api, buildUrl, type ItemInput, type ItemResponse, type ItemsListResponse, type UpdateItemInput } from "@shared/routes";
 import { z } from "zod";
 
 function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: string): T {
@@ -15,10 +15,8 @@ export function useItems(filters?: { type?: 'lost' | 'found', search?: string })
   const queryParams = new URLSearchParams();
   if (filters?.type) queryParams.set('type', filters.type);
   if (filters?.search) queryParams.set('search', filters.search);
-
   const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
   const url = `${api.items.list.path}${queryString}`;
-
   return useQuery({
     queryKey: [api.items.list.path, filters],
     queryFn: async () => {
@@ -47,12 +45,11 @@ export function useItem(id: number) {
 
 export function useMyItems() {
   return useQuery({
-    queryKey: ["myItems"],
+    queryKey: ['my-items'],
     queryFn: async () => {
       const res = await fetch(api.items.myItems.path, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch my items");
-      const data = await res.json();
-      return parseWithLogging(api.items.list.responses[200], data, "items.my");
+      return res.json() as Promise<ItemsListResponse>;
     },
   });
 }
@@ -70,14 +67,17 @@ export function useCreateItem() {
       });
       const resData = await res.json();
       if (!res.ok) {
-        const error = resData as { message: string };
-        throw new Error(error.message);
+        if (res.status === 400) {
+          const error = parseWithLogging(api.items.create.responses[400], resData, "items.create.error");
+          throw new Error(error.message);
+        }
+        throw new Error("Failed to create item");
       }
       return parseWithLogging(api.items.create.responses[201], resData, "items.create");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.items.list.path] });
-      queryClient.invalidateQueries({ queryKey: ["myItems"] });
+      queryClient.invalidateQueries({ queryKey: ['my-items'] });
     },
   });
 }
@@ -85,21 +85,24 @@ export function useCreateItem() {
 export function useUpdateItem() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: ItemUpdateInput }) => {
-      const res = await fetch(buildUrl(api.items.update.path, { id }), {
-        method: api.items.update.method,
-        headers: { "Content-Type": "application/json" },
+    mutationFn: async ({ id, data }: { id: number; data: UpdateItemInput }) => {
+      const url = buildUrl(api.items.update.path, { id });
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
-        credentials: "include",
+        credentials: 'include',
       });
-      const resData = await res.json();
-      if (!res.ok) throw new Error((resData as { message: string }).message);
-      return resData as typeof import("@shared/schema").items.$inferSelect;
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message ?? '수정에 실패했습니다');
+      }
+      return res.json();
     },
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: [api.items.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.items.get.path, id] });
-      queryClient.invalidateQueries({ queryKey: ["myItems"] });
+      queryClient.invalidateQueries({ queryKey: ['my-items'] });
     },
   });
 }
@@ -108,18 +111,20 @@ export function useDeleteItem() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => {
-      const res = await fetch(buildUrl(api.items.delete.path, { id }), {
-        method: api.items.delete.method,
-        credentials: "include",
+      const url = buildUrl(api.items.delete.path, { id });
+      const res = await fetch(url, {
+        method: 'DELETE',
+        credentials: 'include',
       });
       if (!res.ok) {
-        const resData = await res.json() as { message: string };
-        throw new Error(resData.message);
+        const err = await res.json();
+        throw new Error(err.message ?? '삭제에 실패했습니다');
       }
+      return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.items.list.path] });
-      queryClient.invalidateQueries({ queryKey: ["myItems"] });
+      queryClient.invalidateQueries({ queryKey: ['my-items'] });
     },
   });
 }
