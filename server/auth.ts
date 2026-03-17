@@ -2,7 +2,7 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
-import { Express } from "express";
+import { type Express, type NextFunction, type Request, type Response } from "express";
 import { storage } from "./storage";
 import { pool } from "./db";
 import { User as UserType } from "@shared/schema";
@@ -73,7 +73,7 @@ export function setupAuth(app: Express) {
   });
 }
 
-export function isAuthenticated(req: Express.Request, res: Express.Response, next: Express.NextFunction) {
+export function isAuthenticated(req: Request, res: Response, next: NextFunction) {
   if (req.isAuthenticated()) {
     return next();
   }

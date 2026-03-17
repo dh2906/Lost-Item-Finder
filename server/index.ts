@@ -1,6 +1,6 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
-import { ensureVectorExtension } from "./db";
+import { ensureChatSchema, ensureVectorExtension } from "./db";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { setupAuth } from "./auth";
@@ -25,8 +25,24 @@ app.use(
   }),
 );
 
+const allowedOrigins = (process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
+  : [
+      "http://localhost:5173",
+      "http://127.0.0.1:5173",
+      "http://localhost:8080",
+      "http://127.0.0.1:8080",
+    ]);
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || "*",
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
   credentials: true,
 }));
 
@@ -71,6 +87,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await ensureVectorExtension();
+  await ensureChatSchema();
   setupAuth(app);
   await registerRoutes(httpServer, app);
 

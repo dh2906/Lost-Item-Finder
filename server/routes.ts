@@ -6,6 +6,10 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import OpenAI from "openai";
+import { isAuthenticated } from "./auth";
+import { db } from "./db";
+import { and, eq, ne, or, desc, asc, isNull } from "drizzle-orm";
+import { chatRooms, chatMessages } from "@shared/schema";
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -633,7 +637,10 @@ export async function registerRoutes(
   app.post(api.items.create.path, async (req, res) => {
     try {
       const input = api.items.create.input.parse(req.body);
-      const item = await storage.createItem(input);
+      const item = await storage.createItem({
+        ...input,
+        userId: req.user?.id,
+      });
 
       if (item.reportType === "found") {
         try {
@@ -866,6 +873,182 @@ export async function registerRoutes(
           field: err.errors[0].path.join("."),
         });
       }
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.post("/api/chat/rooms", isAuthenticated, async (req, res) => {
+    try {
+      const { itemId, receiverId } = req.body;
+      const senderId = req.user!.id;
+
+      if (!itemId || !receiverId) {
+        return res.status(400).json({ message: "itemId와 receiverId가 필요합니다" });
+      }
+
+      const existingRoom = await db.query.chatRooms.findFirst({
+        where: and(
+          eq(chatRooms.itemId, itemId),
+          eq(chatRooms.senderId, senderId),
+          eq(chatRooms.receiverId, receiverId)
+        ),
+      });
+
+      if (existingRoom) {
+        return res.json(existingRoom);
+      }
+
+      const [room] = await db.insert(chatRooms).values({
+        itemId,
+        senderId,
+        receiverId,
+      }).returning();
+
+      res.status(201).json(room);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get("/api/chat/rooms", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user!.id;
+
+      const rooms = await db.query.chatRooms.findMany({
+        where: or(
+          eq(chatRooms.senderId, userId),
+          eq(chatRooms.receiverId, userId)
+        ),
+        with: {
+          item: true,
+          sender: {
+            columns: { id: true, username: true, name: true }
+          },
+          receiver: {
+            columns: { id: true, username: true, name: true }
+          }
+        },
+        orderBy: desc(chatRooms.updatedAt),
+      });
+
+      const roomsWithUnread = await Promise.all(
+        rooms.map(async (room) => {
+          const unreadMessage = await db.query.chatMessages.findFirst({
+            where: and(
+              eq(chatMessages.roomId, room.id),
+              ne(chatMessages.senderId, userId),
+              or(
+                eq(chatMessages.isRead, 0),
+                isNull(chatMessages.isRead)
+              )
+            ),
+          });
+
+          const latestMessage = await db.query.chatMessages.findFirst({
+            columns: {
+              content: true,
+              senderId: true,
+            },
+            where: eq(chatMessages.roomId, room.id),
+            orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
+          });
+
+          return {
+            ...room,
+            hasUnread: Boolean(unreadMessage),
+            latestMessage: latestMessage
+              ? {
+                  content: latestMessage.content,
+                  senderId: latestMessage.senderId,
+                }
+              : null,
+          };
+        })
+      );
+
+      res.json(roomsWithUnread);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get("/api/chat/rooms/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const roomId = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+      const userId = req.user!.id;
+
+      const room = await db.query.chatRooms.findFirst({
+        where: eq(chatRooms.id, roomId),
+      });
+
+      if (!room || (room.senderId !== userId && room.receiverId !== userId)) {
+        return res.status(403).json({ message: "접근 권한이 없습니다" });
+      }
+
+      await db.update(chatMessages)
+        .set({ isRead: 1 })
+        .where(
+          and(
+            eq(chatMessages.roomId, roomId),
+            ne(chatMessages.senderId, userId),
+            or(
+              eq(chatMessages.isRead, 0),
+              isNull(chatMessages.isRead)
+            )
+          )
+        );
+
+      const messages = await db.query.chatMessages.findMany({
+        where: eq(chatMessages.roomId, roomId),
+        with: {
+          sender: {
+            columns: { id: true, username: true, name: true }
+          }
+        },
+        orderBy: asc(chatMessages.createdAt),
+      });
+
+      res.json(messages);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.post("/api/chat/rooms/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const roomId = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+      const { content } = req.body;
+      const senderId = req.user!.id;
+
+      if (!content || content.trim() === "") {
+        return res.status(400).json({ message: "메시지 내용이 필요합니다" });
+      }
+
+      const room = await db.query.chatRooms.findFirst({
+        where: eq(chatRooms.id, roomId),
+      });
+
+      if (!room || (room.senderId !== senderId && room.receiverId !== senderId)) {
+        return res.status(403).json({ message: "접근 권한이 없습니다" });
+      }
+
+      const [message] = await db.insert(chatMessages).values({
+        roomId,
+        senderId,
+        content: content.trim(),
+        isRead: 0,
+      }).returning();
+
+      await db.update(chatRooms).set({
+        updatedAt: new Date(),
+      }).where(eq(chatRooms.id, roomId));
+
+      res.status(201).json(message);
+    } catch (err) {
+      console.error(err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });

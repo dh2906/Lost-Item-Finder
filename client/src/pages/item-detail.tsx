@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChatButton } from "@/components/chat-button";
+import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 
 export default function ItemDetail() {
@@ -15,6 +17,7 @@ export default function ItemDetail() {
   const id = params?.id ? parseInt(params.id, 10) : 0;
 
   const { data: item, isLoading, isError } = useItem(id);
+  const { user, isAuthenticated } = useAuth();
 
   if (isLoading) {
     return (
@@ -188,13 +191,23 @@ export default function ItemDetail() {
                 <p className="mb-4 text-sm leading-6 text-muted-foreground">
                   상세 정보를 확인하고 연락해 주세요.
                 </p>
-                {item.contactInfo ? (
-                   <div className="flex items-center gap-2 rounded-[22px] border border-border/70 bg-secondary/40 p-4">
-                     <Mail className="h-4 w-4 text-primary" />
-                     <span className="font-medium">{item.contactInfo}</span>
-                   </div>
-                ) : (
-                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90">관리자에게 문의</Button>
+                {item.contactInfo && (
+                  <div className="flex items-center gap-2 rounded-[22px] border border-border/70 bg-secondary/40 p-4">
+                    <Mail className="h-4 w-4 text-primary" />
+                    <span className="font-medium">{item.contactInfo}</span>
+                  </div>
+                )}
+                {isAuthenticated && item.userId === user?.id && (
+                  <Button className="w-full rounded-full" disabled>
+                    내 게시물입니다.
+                  </Button>
+                )}
+                {isAuthenticated && item.userId && item.userId !== user?.id && (
+                  <ChatButton
+                    itemId={item.id}
+                    receiverId={item.userId}
+                    className="w-full rounded-full"
+                  />
                 )}
               </CardContent>
             </Card>
