@@ -1,22 +1,25 @@
-import { pgTable, text, serial, timestamp, jsonb, integer, vector } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, jsonb, integer, vector, boolean, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 export const items = pgTable("items", {
   id: serial("id").primaryKey(),
-  reportType: text("report_type").notNull(), // 'lost' or 'found'
+  reportType: text("report_type").notNull(),
   title: text("title").notNull(),
   description: text("description"),
-  imageUrl: text("image_url"), // base64 data URI
+  imageUrl: text("image_url"),
+  images: jsonb("images").$type<string[]>(),
   itemCategory: text("item_category"),
   color: text("color"),
   size: text("size"),
-  tags: jsonb("tags").$type<string[]>(), 
+  tags: jsonb("tags").$type<string[]>(),
   location: text("location"),
-  latitude: text("latitude"), // 위도
-  longitude: text("longitude"), // 경도
+  latitude: text("latitude"),
+  longitude: text("longitude"),
   date: timestamp("date").defaultNow(),
   contactInfo: text("contact_info"),
+  status: text("status").default("active"),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
 });
 
 export const itemEmbeddings = pgTable("item_embeddings", {
@@ -26,27 +29,63 @@ export const itemEmbeddings = pgTable("item_embeddings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertItemSchema = createInsertSchema(items).omit({
-  id: true,
-  date: true,
+export const conversations = pgTable("conversations", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").references(() => items.id, { onDelete: "cascade" }),
+  participantA: integer("participant_a").notNull().references(() => users.id, { onDelete: "cascade" }),
+  participantB: integer("participant_b").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastMessageAt: timestamp("last_message_at").defaultNow(),
+});
+
+export const messages = pgTable("messages", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id").notNull().references(() => conversations.id, { onDelete: "cascade" }),
+  senderId: integer("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// 북마크
+export const bookmarks = pgTable("bookmarks", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  itemId: integer("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  uniq: unique().on(t.userId, t.itemId),
+}));
+
+export const insertItemSchema = createInsertSchema(items).omit({ id: true, date: true });
+export const updateItemSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  location: z.string().optional(),
+  contactInfo: z.string().optional(),
+  status: z.enum(["active", "resolved"]).optional(),
 });
 
 export type Item = typeof items.$inferSelect;
 export type InsertItem = z.infer<typeof insertItemSchema>;
+export type UpdateItem = z.infer<typeof updateItemSchema>;
 export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
+export type Conversation = typeof conversations.$inferSelect;
+export type Message = typeof messages.$inferSelect;
+export type Bookmark = typeof bookmarks.$inferSelect;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password").notNull().default(""),
   name: text("name"),
   createdAt: timestamp("created_at").defaultNow(),
+  provider: text("provider").default("local"),
+  providerId: text("provider_id"),
+  avatarUrl: text("avatar_url"),
+  role: text("role").default("user"),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({
-  id: true,
-  createdAt: true,
-});
-
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true });
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
