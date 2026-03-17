@@ -25,6 +25,7 @@ const navigation = [
     ],
   },
   { href: "/search", label: "분실물 찾기" },
+  { href: "/items?type=found", label: "물건 목록" },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -54,11 +55,12 @@ export function Layout({ children }: { children: ReactNode }) {
 
             <nav className="hidden items-center rounded-full border border-border/55 bg-white/80 p-0.5 shadow-[0_10px_22px_-20px_rgba(27,31,59,0.14)] lg:flex">
               {navigation.map((item) => {
-                const active = item.href === "/"
-                  ? location === item.href
-                  : location === item.href ||
-                    location.startsWith(`${item.href}?`) ||
-                    location.startsWith(`${item.href}/`);
+                const itemPath = item.href.split("?")[0];
+                const active = itemPath === "/"
+                  ? location === itemPath
+                  : location === itemPath ||
+                    location.startsWith(`${itemPath}?`) ||
+                    location.startsWith(`${itemPath}/`);
 
                 if (item.children) {
                   return (
