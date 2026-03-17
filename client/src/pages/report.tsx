@@ -170,23 +170,18 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
 
     try {
       setIsAnalyzing(true);
-      // 1. 처음엔 사용자가 올린 원본 이미지를 프리뷰와 폼에 세팅 (스피너가 도는 동안 보임)
       const base64 = await optimizeImageForUpload(file);
       setImagePreview(base64);
       form.setValue("imageUrl", base64);
 
-      // 2. 백엔드로 원본 이미지 전송 (이때 서버에서 Qwen + 구글 비전 마스킹이 돌아감)
       const analysis = await analyzeMutation.mutateAsync({ imageUrl: base64 });
 
       const responseData = analysis as any;
-      // ✨ [추가된 핵심 로직]
-      // 3. 서버가 '모자이크 처리된 이미지'를 돌려줬다면, 원본을 안전한 이미지로 싹 교체!
       if (responseData.maskedImage) {
         setImagePreview(responseData.maskedImage);
         form.setValue("imageUrl", responseData.maskedImage);
       }
 
-      // 4. 나머지 AI 분석 텍스트 데이터 폼에 채우기
       form.setValue("itemCategory", analysis.itemCategory);
       form.setValue("color", analysis.color);
       form.setValue("size", analysis.size);
