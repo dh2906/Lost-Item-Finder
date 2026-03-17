@@ -1,4 +1,4 @@
-import { items, itemEmbeddings, users, type Item, type InsertItem, type User, type InsertUser } from "@shared/schema";
+import { items, itemEmbeddings, users, type Item, type InsertItem, type UpdateItem, type User, type InsertUser } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, ilike, and, isNull, cosineDistance, sql } from "drizzle-orm";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
@@ -24,10 +24,13 @@ export interface IStorage {
   getItems(type?: "lost" | "found", search?: string): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem): Promise<Item>;
+  updateItem(id: number, data: UpdateItem): Promise<Item | undefined>;
+  deleteItem(id: number): Promise<boolean>;
+  getItemsByUser(userId: number): Promise<Item[]>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
   getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
   searchFoundItemsByEmbedding(embedding: number[], limit?: number): Promise<Array<{ item: Item; score: number }>>;
-  
+
   // Users
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -38,10 +41,12 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getItems(type?: "lost" | "found", search?: string): Promise<Item[]> {
-    let conditions = [];
+    const conditions = [];
     if (type) conditions.push(eq(items.reportType, type));
     if (search) conditions.push(ilike(items.title, `%${search}%`));
-    
+    // 완료된 게시물은 목록에서 제외
+    conditions.push(sql`(${items.status} IS NULL OR ${items.status} = 'active')`);
+
     return await db.select().from(items)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(items.date));
@@ -57,17 +62,33 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
+  async updateItem(id: number, data: UpdateItem): Promise<Item | undefined> {
+    const [item] = await db
+      .update(items)
+      .set(data)
+      .where(eq(items.id, id))
+      .returning();
+    return item;
+  }
+
+  async deleteItem(id: number): Promise<boolean> {
+    const result = await db.delete(items).where(eq(items.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getItemsByUser(userId: number): Promise<Item[]> {
+    return await db.select().from(items)
+      .where(eq(items.userId, userId))
+      .orderBy(desc(items.date));
+  }
+
   async upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void> {
     await db
       .insert(itemEmbeddings)
       .values({ itemId, content, embedding, updatedAt: new Date() })
       .onConflictDoUpdate({
         target: itemEmbeddings.itemId,
-        set: {
-          content,
-          embedding,
-          updatedAt: new Date(),
-        },
+        set: { content, embedding, updatedAt: new Date() },
       });
   }
 
@@ -78,31 +99,27 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
       .where(and(eq(items.reportType, "found"), isNull(itemEmbeddings.itemId)))
       .orderBy(desc(items.date));
-
     return rows.map((row) => row.item);
   }
 
   async searchFoundItemsByEmbedding(embedding: number[], limit = 12): Promise<Array<{ item: Item; score: number }>> {
     const distance = cosineDistance(itemEmbeddings.embedding, embedding);
-
     const rows = await db
-      .select({
-        item: items,
-        distance,
-      })
+      .select({ item: items, distance })
       .from(itemEmbeddings)
       .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
-      .where(eq(items.reportType, "found"))
+      .where(and(
+        eq(items.reportType, "found"),
+        sql`(${items.status} IS NULL OR ${items.status} = 'active')`
+      ))
       .orderBy(distance)
       .limit(limit);
-
     return rows.map((row) => ({
       item: row.item,
       score: Math.max(0, 1 - Number(row.distance ?? 1)),
     }));
   }
 
-  // Users
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;

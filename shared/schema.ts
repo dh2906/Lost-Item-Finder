@@ -11,12 +11,15 @@ export const items = pgTable("items", {
   itemCategory: text("item_category"),
   color: text("color"),
   size: text("size"),
-  tags: jsonb("tags").$type<string[]>(), 
+  tags: jsonb("tags").$type<string[]>(),
   location: text("location"),
-  latitude: text("latitude"), // 위도
-  longitude: text("longitude"), // 경도
+  latitude: text("latitude"),
+  longitude: text("longitude"),
   date: timestamp("date").defaultNow(),
   contactInfo: text("contact_info"),
+  // 판배자 정보 및 상태
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  status: text("status").default("active"), // 'active' | 'resolved'
 });
 
 export const itemEmbeddings = pgTable("item_embeddings", {
@@ -31,8 +34,15 @@ export const insertItemSchema = createInsertSchema(items).omit({
   date: true,
 });
 
+export const updateItemSchema = createInsertSchema(items).partial().omit({
+  id: true,
+  date: true,
+  userId: true,
+});
+
 export type Item = typeof items.$inferSelect;
 export type InsertItem = z.infer<typeof insertItemSchema>;
+export type UpdateItem = z.infer<typeof updateItemSchema>;
 export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
 
 export const users = pgTable("users", {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertItemSchema, items, User } from './schema';
+import { insertItemSchema, updateItemSchema, items, User } from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -86,13 +86,43 @@ export const api = {
         400: errorSchemas.validation,
       },
     },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/items/:id' as const,
+      input: updateItemSchema,
+      responses: {
+        200: z.custom<typeof items.$inferSelect>(),
+        400: errorSchemas.validation,
+        401: errorSchemas.validation,
+        403: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/items/:id' as const,
+      responses: {
+        200: z.object({ message: z.string() }),
+        401: errorSchemas.validation,
+        403: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    myItems: {
+      method: 'GET' as const,
+      path: '/api/items/my' as const,
+      responses: {
+        200: z.array(z.custom<typeof items.$inferSelect>()),
+        401: errorSchemas.validation,
+      },
+    },
   },
   ai: {
     analyzeImage: {
       method: 'POST' as const,
       path: '/api/ai/analyze-image' as const,
       input: z.object({
-        imageUrl: z.string() // base64 string
+        imageUrl: z.string()
       }),
       responses: {
         200: z.object({
@@ -111,7 +141,7 @@ export const api = {
       path: '/api/ai/search' as const,
       input: z.object({
         prompt: z.string().optional(),
-        imageUrl: z.string().optional(), // base64 string
+        imageUrl: z.string().optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),
       }),
@@ -142,6 +172,7 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
 }
 
 export type ItemInput = z.infer<typeof api.items.create.input>;
+export type ItemUpdateInput = z.infer<typeof api.items.update.input>;
 export type ItemResponse = z.infer<typeof api.items.create.responses[201]>;
 export type ItemsListResponse = z.infer<typeof api.items.list.responses[200]>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
