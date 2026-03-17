@@ -1,5 +1,5 @@
-import { z } from 'zod';
-import { insertItemSchema, items, User } from './schema';
+import { z } from "zod";
+import { insertItemSchema, items, User } from "./schema";
 
 export const errorSchemas = {
   validation: z.object({
@@ -17,11 +17,11 @@ export const errorSchemas = {
 export const api = {
   auth: {
     register: {
-      method: 'POST' as const,
-      path: '/api/auth/register' as const,
+      method: "POST" as const,
+      path: "/api/auth/register" as const,
       input: z.object({
-        username: z.string().min(3, '아이디는 3자 이상이어야 합니다'),
-        password: z.string().min(4, '비밀번호는 4자 이상이어야 합니다'),
+        username: z.string().min(3, "아이디는 3자 이상이어야 합니다"),
+        password: z.string().min(4, "비밀번호는 4자 이상이어야 합니다"),
         name: z.string().optional(),
       }),
       responses: {
@@ -30,8 +30,8 @@ export const api = {
       },
     },
     login: {
-      method: 'POST' as const,
-      path: '/api/auth/login' as const,
+      method: "POST" as const,
+      path: "/api/auth/login" as const,
       input: z.object({
         username: z.string(),
         password: z.string(),
@@ -42,16 +42,16 @@ export const api = {
       },
     },
     logout: {
-      method: 'POST' as const,
-      path: '/api/auth/logout' as const,
+      method: "POST" as const,
+      path: "/api/auth/logout" as const,
       input: z.void(),
       responses: {
         200: z.object({ message: z.string() }),
       },
     },
     me: {
-      method: 'GET' as const,
-      path: '/api/auth/me' as const,
+      method: "GET" as const,
+      path: "/api/auth/me" as const,
       responses: {
         200: z.custom<User>().nullable(),
       },
@@ -59,27 +59,29 @@ export const api = {
   },
   items: {
     list: {
-      method: 'GET' as const,
-      path: '/api/items' as const,
-      input: z.object({
-        type: z.enum(['lost', 'found']).optional(),
-        search: z.string().optional()
-      }).optional(),
+      method: "GET" as const,
+      path: "/api/items" as const,
+      input: z
+        .object({
+          type: z.enum(["lost", "found"]).optional(),
+          search: z.string().optional(),
+        })
+        .optional(),
       responses: {
         200: z.array(z.custom<typeof items.$inferSelect>()),
       },
     },
     get: {
-      method: 'GET' as const,
-      path: '/api/items/:id' as const,
+      method: "GET" as const,
+      path: "/api/items/:id" as const,
       responses: {
         200: z.custom<typeof items.$inferSelect>(),
         404: errorSchemas.notFound,
       },
     },
     create: {
-      method: 'POST' as const,
-      path: '/api/items' as const,
+      method: "POST" as const,
+      path: "/api/items" as const,
       input: insertItemSchema,
       responses: {
         201: z.custom<typeof items.$inferSelect>(),
@@ -89,10 +91,10 @@ export const api = {
   },
   ai: {
     analyzeImage: {
-      method: 'POST' as const,
-      path: '/api/ai/analyze-image' as const,
+      method: "POST" as const,
+      path: "/api/ai/analyze-image" as const,
       input: z.object({
-        imageUrl: z.string() // base64 string
+        imageUrl: z.string(), // base64 string
       }),
       responses: {
         200: z.object({
@@ -100,15 +102,16 @@ export const api = {
           color: z.string(),
           size: z.string(),
           tags: z.array(z.string()),
-          description: z.string()
+          description: z.string(),
+          maskedImage: z.string().optional(),
         }),
         400: errorSchemas.validation,
-        500: errorSchemas.internal
-      }
+        500: errorSchemas.internal,
+      },
     },
     searchSimilar: {
-      method: 'POST' as const,
-      path: '/api/ai/search' as const,
+      method: "POST" as const,
+      path: "/api/ai/search" as const,
       input: z.object({
         prompt: z.string().optional(),
         imageUrl: z.string().optional(), // base64 string
@@ -116,20 +119,25 @@ export const api = {
         longitude: z.string().optional(),
       }),
       responses: {
-        200: z.array(z.object({
-          item: z.custom<typeof items.$inferSelect>(),
-          score: z.number(),
-          reasoning: z.string(),
-          distanceKm: z.number().nullable().optional(),
-        })),
+        200: z.array(
+          z.object({
+            item: z.custom<typeof items.$inferSelect>(),
+            score: z.number(),
+            reasoning: z.string(),
+            distanceKm: z.number().nullable().optional(),
+          })
+        ),
         400: errorSchemas.validation,
-        500: errorSchemas.internal
-      }
-    }
-  }
+        500: errorSchemas.internal,
+      },
+    },
+  },
 };
 
-export function buildUrl(path: string, params?: Record<string, string | number>): string {
+export function buildUrl(
+  path: string,
+  params?: Record<string, string | number>
+): string {
   let url = path;
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
@@ -142,9 +150,13 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
 }
 
 export type ItemInput = z.infer<typeof api.items.create.input>;
-export type ItemResponse = z.infer<typeof api.items.create.responses[201]>;
-export type ItemsListResponse = z.infer<typeof api.items.list.responses[200]>;
+export type ItemResponse = z.infer<(typeof api.items.create.responses)[201]>;
+export type ItemsListResponse = z.infer<(typeof api.items.list.responses)[200]>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
-export type AnalyzeImageResponse = z.infer<typeof api.ai.analyzeImage.responses[200]>;
+export type AnalyzeImageResponse = z.infer<
+  (typeof api.ai.analyzeImage.responses)[200]
+>;
 export type SearchSimilarInput = z.infer<typeof api.ai.searchSimilar.input>;
-export type SearchSimilarResponse = z.infer<typeof api.ai.searchSimilar.responses[200]>;
+export type SearchSimilarResponse = z.infer<
+  (typeof api.ai.searchSimilar.responses)[200]
+>;
