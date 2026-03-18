@@ -356,7 +356,7 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                         <Upload className="h-8 w-8 text-muted-foreground" />
                       </div>
                       <p className="text-sm font-semibold leading-none">
-                        클릭하여 사진 업로드
+                        클릭하거나 드래그해서 사진 업로드
                       </p>
                       <p className="mt-0.5 text-xs leading-[1.4] text-muted-foreground">
                         정면이 잘 보이는 사진일수록 정확도가 높아요.

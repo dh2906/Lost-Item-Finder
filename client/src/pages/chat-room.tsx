@@ -32,7 +32,7 @@ export default function ChatRoomPage() {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextValue = content.trim();
-    if (!nextValue) {
+    if (!nextValue || sendMessage.isPending) {
       return;
     }
 
@@ -50,9 +50,7 @@ export default function ChatRoomPage() {
         return;
       }
 
-      sendMessage.mutate(nextValue, {
-        onSuccess: () => setContent(""),
-      });
+      event.currentTarget.form?.requestSubmit();
     }
   };
 
