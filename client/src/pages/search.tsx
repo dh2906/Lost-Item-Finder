@@ -229,7 +229,7 @@ export default function SearchPage() {
 
               <div className="px-2">
                 <Textarea
-                  placeholder={imagePreview ? "" : "예: 검은색 모자, 학생회관 근처에서 잃어버렸어요"}
+                  placeholder="예: 검은색 모자, 학생회관 근처에서 잃어버렸어요"
                   className="min-h-[88px] resize-none rounded-[24px] border border-border/70 bg-white px-4 py-3.5 text-base shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 sm:min-h-[104px]"
                   onKeyDown={handlePromptKeyDown}
                   {...form.register("prompt")}
