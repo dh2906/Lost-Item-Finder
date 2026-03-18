@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type ChangeEvent } from "react";
+import { useEffect, useState, useRef, type ChangeEvent, type DragEvent } from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -108,6 +108,7 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
     useState<ReportType>(getInitialReportType);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isDragActive, setIsDragActive] = useState(false);
 
   const analyzeMutation = useAnalyzeImage();
   const createMutation = useSaveItem();
@@ -214,6 +215,28 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
     e.target.value = "";
   };
 
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragActive(true);
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsDragActive(false);
+    }
+  };
+
+  const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragActive(false);
+
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+
+    await processSelectedFile(file);
+  };
+
   const onSubmit = async (data: FormValues) => {
     if (reportType === "found" && !data.imageUrl) {
       toast({ title: "사진을 업로드해주세요", variant: "destructive" });
@@ -311,11 +334,15 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                 <div
                   className={cn(
                     "relative min-h-[240px] cursor-pointer overflow-hidden rounded-[22px] border-2 border-dashed transition-all xl:min-h-[300px]",
+                    isDragActive && "border-primary bg-primary/10 shadow-[0_0_0_4px_hsl(var(--primary)/0.12)]",
                     imagePreview
                       ? "border-primary bg-primary/5"
                       : "border-muted-foreground/25 bg-muted/50 hover:border-primary/50 hover:bg-muted"
                   )}
                   onClick={() => fileInputRef.current?.click()}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
                 >
                   {imagePreview ? (
                     <img
