@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, type KeyboardEvent } from "react";
+import { useEffect, useState, useRef, type ChangeEvent, type DragEvent, type KeyboardEvent } from "react";
 import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { ItemCard } from "@/components/item-card";
 import { useSearchSimilar } from "@/hooks/use-ai";
 import { optimizeImageForUpload } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LocationPicker } from "@/components/location-picker";
 
@@ -39,6 +40,7 @@ type SearchFormValues = z.infer<typeof searchSchema>;
 export default function SearchPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
   const [showLocation, setShowLocation] = useState(false);
   const { toast } = useToast();
   const searchMutation = useSearchSimilar();
@@ -53,9 +55,15 @@ export default function SearchPage() {
     },
   });
 
-  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processSelectedFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast({
+        variant: "destructive",
+        title: "이미지 파일만 업로드 가능",
+        description: "사진 파일을 선택하거나 드래그해 주세요.",
+      });
+      return;
+    }
 
     try {
       const base64 = await optimizeImageForUpload(file);
@@ -69,6 +77,37 @@ export default function SearchPage() {
         description: "이미지를 처리하는 중 오류가 발생했습니다.",
       });
     }
+  };
+
+  const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    await processSelectedFile(file);
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragActive(true);
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsDragActive(false);
+    }
+  };
+
+  const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragActive(false);
+
+    const file = event.dataTransfer.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    await processSelectedFile(file);
   };
 
   const removeImage = () => {
@@ -156,35 +195,45 @@ export default function SearchPage() {
             </p>
           </div>
 
-          <Card className="mx-auto max-w-3xl rounded-[30px] border-border/70 bg-white/90 p-2 backdrop-blur-sm transition-all duration-300 focus-within:border-primary/20 focus-within:ring-2 focus-within:ring-primary/15 sm:p-3">
+          <Card
+            className={cn(
+              "mx-auto max-w-3xl rounded-[30px] border-border/70 bg-white/90 p-2 backdrop-blur-sm transition-all duration-300 focus-within:border-primary/20 focus-within:ring-2 focus-within:ring-primary/15 sm:p-3",
+              isDragActive && "border-primary/45 bg-primary/5 ring-2 ring-primary/15"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
             <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-3">
-              <div className="relative">
-                <Textarea
-                  placeholder="예: 검은색 모자, 학생회관 근처에서 잃어버렸어요"
-                  className="min-h-[88px] resize-none border-0 bg-transparent px-4 py-3.5 text-base shadow-none focus-visible:ring-0 sm:min-h-[104px]"
-                  onKeyDown={handlePromptKeyDown}
-                  {...form.register("prompt")}
-                />
-                
-                {imagePreview && (
-                  <div className="absolute bottom-4 left-4">
-                    <div className="group relative inline-flex">
+              {imagePreview && (
+                <div className="px-2 pt-2">
+                  <div className="flex items-start">
+                    <div className="group relative shrink-0 overflow-hidden rounded-[20px] border border-border/70 bg-white shadow-sm">
                       <img
                         src={imagePreview}
                         alt="미리보기"
-                        className="h-16 w-16 rounded-[18px] border border-border/70 object-cover shadow-sm sm:h-20 sm:w-20"
+                        className="h-16 w-16 object-cover sm:h-20 sm:w-20"
                       />
                       <button
                         type="button"
                         onClick={removeImage}
-                        className="absolute -right-2 -top-2 rounded-full bg-foreground p-1.5 text-white opacity-0 shadow-sm transition-opacity hover:bg-foreground/85 group-hover:opacity-100"
+                        className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-foreground shadow-sm transition-colors hover:bg-white"
                         aria-label="이미지 제거"
                       >
-                        <X className="h-3 w-3" />
+                        <X className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
-                )}
+                </div>
+              )}
+
+              <div className="px-2">
+                <Textarea
+                  placeholder="예: 검은색 모자, 학생회관 근처에서 잃어버렸어요"
+                  className="min-h-[88px] resize-none rounded-[24px] border border-border/70 bg-white px-4 py-3.5 text-base shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 sm:min-h-[104px]"
+                  onKeyDown={handlePromptKeyDown}
+                  {...form.register("prompt")}
+                />
               </div>
 
               <div className="flex flex-col items-stretch justify-between gap-3 border-t border-border/80 px-2 pb-2 pt-3 sm:flex-row sm:items-center sm:gap-4">
@@ -217,11 +266,10 @@ export default function SearchPage() {
                     <span>위치 설정</span>
                   </Button>
                 </div>
-
                 <Button 
                   type="submit" 
                   size="lg" 
-                  className="h-12 rounded-full px-8 font-semibold shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.4)] sm:ml-auto" 
+                  className="h-12 rounded-full px-8 font-semibold shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.4)]" 
                   disabled={searchMutation.isPending}
                 >
                   {searchMutation.isPending ? (
