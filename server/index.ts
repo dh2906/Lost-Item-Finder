@@ -34,9 +34,18 @@ const allowedOrigins = (process.env.CORS_ORIGIN
       "http://127.0.0.1:8080",
     ]);
 
+const allowedOriginPatterns = [
+  /^https:\/\/[a-z0-9-]+\.ngrok-free\.dev$/i,
+  /^https:\/\/[a-z0-9-]+\.ngrok\.io$/i,
+];
+
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    const isPatternAllowed = origin
+      ? allowedOriginPatterns.some((pattern) => pattern.test(origin))
+      : false;
+
+    if (!origin || allowedOrigins.includes(origin) || isPatternAllowed) {
       callback(null, true);
       return;
     }

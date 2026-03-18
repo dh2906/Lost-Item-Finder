@@ -321,7 +321,7 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                     <img
                       src={imagePreview}
                       alt="Preview"
-                      className="absolute inset-0 h-full w-full object-cover"
+                      className="absolute inset-0 h-full w-full rounded-[22px] object-cover"
                     />
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center py-7 text-center">
@@ -337,7 +337,7 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                     </div>
                   )}
                   {isAnalyzing && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center rounded-[22px] bg-background/90 backdrop-blur-sm">
                       <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
                       <p className="text-sm font-semibold">AI 분석 중...</p>
                       <p className="text-xs text-muted-foreground">
