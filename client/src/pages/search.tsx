@@ -105,7 +105,7 @@ export default function SearchPage() {
           shouldTouch: false,
         });
       },
-      () => {},
+      () => { },
       { enableHighAccuracy: true, timeout: 10000 },
     );
   }, [form]);
@@ -160,12 +160,12 @@ export default function SearchPage() {
             <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-3">
               <div className="relative">
                 <Textarea
-                  placeholder="예: 검은색 모자, 학생회관 근처에서 잃어버렸어요"
+                  placeholder={imagePreview ? "" : "예: 검은색 모자, 학생회관 근처에서 잃어버렸어요"}
                   className="min-h-[88px] resize-none border-0 bg-transparent px-4 py-3.5 text-base shadow-none focus-visible:ring-0 sm:min-h-[104px]"
                   onKeyDown={handlePromptKeyDown}
                   {...form.register("prompt")}
                 />
-                
+
                 {imagePreview && (
                   <div className="absolute bottom-4 left-4">
                     <div className="group relative inline-flex">
@@ -218,10 +218,10 @@ export default function SearchPage() {
                   </Button>
                 </div>
 
-                <Button 
-                  type="submit" 
-                  size="lg" 
-                  className="h-12 rounded-full px-8 font-semibold shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.4)] sm:ml-auto" 
+                <Button
+                  type="submit"
+                  size="lg"
+                  className="h-12 rounded-full px-8 font-semibold shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.4)] sm:ml-auto"
                   disabled={searchMutation.isPending}
                 >
                   {searchMutation.isPending ? (
@@ -307,7 +307,7 @@ export default function SearchPage() {
                     설명을 조금 더 구체적으로 적어보시거나, 위치 범위를 넓혀서 다시 검색해보세요.
                   </p>
                   <Button asChild variant="outline" className="h-11 rounded-full px-6 font-medium">
-                        <Link href="/report/lost">
+                    <Link href="/report/lost">
                       <PlusCircle className="mr-2 h-4 w-4" />
                       분실물 신고하기
                     </Link>
@@ -333,7 +333,7 @@ export default function SearchPage() {
                       직접 분실물 신고를 등록하시면, 누군가 비슷한 물건을 습득했을 때 알림을 보내드릴 수 있어요.
                     </p>
                     <Button asChild className="h-11 rounded-full px-6 font-medium">
-                    <Link href="/report/lost">
+                      <Link href="/report/lost">
                         <PlusCircle className="mr-2 h-4 w-4" />
                         분실물 신고 등록하기
                       </Link>
@@ -343,15 +343,15 @@ export default function SearchPage() {
               )}
             </div>
           ) : (
-              <div className="py-12 text-center sm:py-14">
-                <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-border/70 bg-white shadow-sm">
-                  <SearchIcon className="h-6 w-6 text-muted-foreground/50" />
-                </div>
-                <h3 className="mb-2 text-lg font-bold text-foreground">AI 검색을 시작해보세요</h3>
-                <p className="font-medium text-muted-foreground">
-                  위에서 물건 특징을 입력하고 검색해보세요
-                </p>
+            <div className="py-12 text-center sm:py-14">
+              <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-border/70 bg-white shadow-sm">
+                <SearchIcon className="h-6 w-6 text-muted-foreground/50" />
               </div>
+              <h3 className="mb-2 text-lg font-bold text-foreground">AI 검색을 시작해보세요</h3>
+              <p className="font-medium text-muted-foreground">
+                위에서 물건 특징을 입력하고 검색해보세요
+              </p>
+            </div>
           )}
         </div>
       </section>
