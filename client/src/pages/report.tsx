@@ -86,6 +86,7 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasUserEditedTitleRef = useRef(false);
 
   const getInitialReportType = (): ReportType => {
     if (forcedType) {
@@ -109,6 +110,7 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [latestAnalyzedTitle, setLatestAnalyzedTitle] = useState<string>("");
 
   const analyzeMutation = useAnalyzeImage();
   const createMutation = useSaveItem();
@@ -130,6 +132,7 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
       longitude: "",
     },
   });
+  const titleField = form.register("title");
 
   useEffect(() => {
     const nextReportType = getInitialReportType();
@@ -189,11 +192,12 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
       form.setValue("description", analysis.description);
       form.setValue("tags", analysis.tags);
 
-      if (!form.getValues("title")) {
-        form.setValue(
-          "title",
-          analysis.title || `${analysis.color} ${analysis.itemCategory}`
-        );
+      const suggestedTitle =
+        analysis.title || `${analysis.color} ${analysis.itemCategory}`;
+      setLatestAnalyzedTitle(suggestedTitle);
+
+      if (!hasUserEditedTitleRef.current) {
+        form.setValue("title", suggestedTitle);
       }
 
       toast({
@@ -428,15 +432,45 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
                   </p>
 
                   <div>
-                    <Label htmlFor="title" className="text-sm font-semibold">
-                      제목 <span className="text-destructive">*</span>
-                    </Label>
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="title" className="text-sm font-semibold">
+                        제목 <span className="text-destructive">*</span>
+                      </Label>
+                      {latestAnalyzedTitle ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-0 text-xs font-medium text-primary hover:bg-transparent hover:text-primary/80"
+                          onClick={() => {
+                            hasUserEditedTitleRef.current = false;
+                            form.setValue("title", latestAnalyzedTitle, {
+                              shouldDirty: true,
+                              shouldTouch: true,
+                            });
+                          }}
+                        >
+                          AI 제목 다시 적용
+                        </Button>
+                      ) : null}
+                    </div>
                     <Input
-                      id="title"
+                      id={titleField.name}
                       placeholder="예: 검은색 가죽 지갑"
                       className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                      {...form.register("title")}
+                      name={titleField.name}
+                      ref={titleField.ref}
+                      onBlur={titleField.onBlur}
+                      onChange={(event) => {
+                        hasUserEditedTitleRef.current = true;
+                        titleField.onChange(event);
+                      }}
                     />
+                    {latestAnalyzedTitle && form.getValues("title") !== latestAnalyzedTitle ? (
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        최신 AI 추천 제목: {latestAnalyzedTitle}
+                      </p>
+                    ) : null}
                     {form.formState.errors.title && (
                       <p className="mt-1.5 text-sm text-destructive">
                         {form.formState.errors.title.message}
