@@ -190,7 +190,10 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
       form.setValue("tags", analysis.tags);
 
       if (!form.getValues("title")) {
-        form.setValue("title", `${analysis.color} ${analysis.itemCategory}`);
+        form.setValue(
+          "title",
+          analysis.title || `${analysis.color} ${analysis.itemCategory}`
+        );
       }
 
       toast({

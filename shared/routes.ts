@@ -98,6 +98,7 @@ export const api = {
       }),
       responses: {
         200: z.object({
+          title: z.string(),
           itemCategory: z.string(),
           color: z.string(),
           size: z.string(),

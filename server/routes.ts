@@ -24,7 +24,7 @@ const qwen = process.env.QWEN_API_KEY
     })
   : null;
 
-const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-4o-mini";
+const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5.4-mini";
 const QWEN_VISION_MODEL = process.env.QWEN_VISION_MODEL ?? "qwen3.5-plus";
 const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
@@ -673,14 +673,14 @@ export async function registerRoutes(
           {
             role: "system",
             content:
-              "너는 분실물 보관 시스템에서 습득물을 분류하는 AI 도우미다. 이미지를 분석해서 다음 메타데이터를 한국어로 추출해라: itemCategory, color, size, tags, description, requiresMasking(개인정보, 얼굴, 신분증, 카드 등이 포함되어 있는지 여부 boolean). 사진 속에 사람의 이름, 주민등록번호, 카드 번호, 상세 주소, 발급일자는 절대 출력하지 마라. 반드시 JSON 객체만 반환해라.",
+              "너는 분실물 보관 시스템에서 습득물을 분류하는 AI 도우미다. 이미지를 분석해서 다음 메타데이터를 한국어로 추출해라: title(목록에 표시할 짧고 구체적인 제목. 브랜드나 물건 종류가 보이면 포함), itemCategory, color, size, tags, description, requiresMasking(개인정보, 얼굴, 신분증, 카드 등이 포함되어 있는지 여부 boolean). description은 자연스러운 한국어 1~2문장으로 작성하고, title은 20자 안팎의 간결한 명사구로 작성해라. 사진 속에 사람의 이름, 주민등록번호, 카드 번호, 상세 주소, 발급일자는 절대 출력하지 마라. 반드시 JSON 객체만 반환해라.",
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "이 이미지를 분석하고 메타데이터를 JSON 형식으로 한국어로 반환해줘.",
+                text: "이 이미지를 분석하고 제목과 메타데이터를 JSON 형식의 한국어로 반환해줘. title은 목록에서 바로 알아볼 수 있게 짧고 정확하게 써줘.",
               },
               { type: "image_url", image_url: { url: input.imageUrl } },
             ],
@@ -695,6 +695,9 @@ export async function registerRoutes(
       }
 
       const result = JSON.parse(content);
+      const fallbackTitle = [result.color, result.itemCategory]
+        .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+        .join(" ") || "분실물";
 
       let finalImageBase64 = input.imageUrl;
 
@@ -712,6 +715,10 @@ export async function registerRoutes(
       }
 
       res.json({
+        title:
+          typeof result.title === "string" && result.title.trim().length > 0
+            ? result.title.trim()
+            : fallbackTitle,
         itemCategory: result.itemCategory || "알 수 없음",
         color: result.color || "알 수 없음",
         size: result.size || "알 수 없음",
