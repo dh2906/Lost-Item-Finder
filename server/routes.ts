@@ -717,22 +717,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  // --- Firebase config 엔드포인트 (SW의 importScripts용) ---
-  // SW는 Vite 환경변수를 직접 읽을 수 없으므로 서버에서 동적으로 서빙
-  app.get("/firebase-config.js", (req, res) => {
-    const config = {
-      apiKey: process.env.VITE_FIREBASE_API_KEY ?? "",
-      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN ?? "",
-      projectId: process.env.VITE_FIREBASE_PROJECT_ID ?? "",
-      storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET ?? "",
-      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
-      appId: process.env.VITE_FIREBASE_APP_ID ?? "",
-    };
-    res.type("application/javascript");
-    res.set("Cache-Control", "no-store"); // 환경변수 변경 시 즉시 반영
-    res.send(`self.FIREBASE_CONFIG = ${JSON.stringify(config)};`);
-  });
-
   // --- Auth API ---
   app.post(api.auth.register.path, async (req, res) => {
     try {
@@ -1277,14 +1261,15 @@ export async function registerRoutes(
       ]);
       if (receiver?.fcmToken) {
         const senderName = sender?.name ?? sender?.username ?? "누군가";
-        sendFcmNotification({
+        // sendFcmNotification은 내부적으로 에러를 처리하므로 void로 fire-and-forget
+        void sendFcmNotification({
           fcmToken: receiver.fcmToken,
           title: `${senderName}님의 새 메시지`,
           body: content.trim().length > 50
             ? content.trim().slice(0, 50) + "..."
             : content.trim(),
           data: { roomId: String(roomId) },
-        }).catch((err) => console.error("[FCM] 알림 발송 실패:", err));
+        });
       }
 
       res.status(201).json(message);
