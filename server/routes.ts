@@ -25,7 +25,7 @@ const qwen = process.env.QWEN_API_KEY
     })
   : null;
 
-const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-4o-mini";
+const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5.4-mini";
 const QWEN_VISION_MODEL = process.env.QWEN_VISION_MODEL ?? "qwen3.5-plus";
 const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
@@ -60,6 +60,60 @@ function getErrorMessage(error: unknown): string {
   }
 
   return "Internal server error";
+}
+
+function extractCompletionMessageContent(content: unknown): string | null {
+  if (typeof content === "string") {
+    const trimmed = content.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (Array.isArray(content)) {
+    const textParts = content
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+
+        if (
+          typeof part === "object" &&
+          part !== null &&
+          "text" in part &&
+          typeof (part as { text?: unknown }).text === "string"
+        ) {
+          return (part as { text: string }).text;
+        }
+
+        return "";
+      })
+      .join("")
+      .trim();
+
+    return textParts.length > 0 ? textParts : null;
+  }
+
+  if (typeof content === "object" && content !== null) {
+    return JSON.stringify(content);
+  }
+
+  return null;
+}
+
+function getCompletionText(
+  response: { choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }> },
+  emptyContentErrorMessage: string
+): string {
+  const message = response.choices?.[0]?.message;
+  const content = extractCompletionMessageContent(message?.content);
+  if (content) {
+    return content;
+  }
+
+  if (typeof message?.refusal === "string" && message.refusal.trim().length > 0) {
+    throw new Error(`${emptyContentErrorMessage}: ${message.refusal.trim()}`);
+  }
+
+  throw new Error(emptyContentErrorMessage);
 }
 
 function validateSearchPrompt(prompt: string): string | null {
@@ -343,6 +397,146 @@ function buildReasoningFromEvidence(params: {
     .join(" ");
 }
 
+const rawAnalyzeImageSchema = z.object({
+  itemCategory: z.string().optional(),
+  color: z.string().optional(),
+  size: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  description: z.string().optional(),
+  requiresMasking: z.boolean().optional(),
+});
+
+const normalizedAnalyzeImageSchema = z.object({
+  title: z.string().min(1),
+  itemCategory: z.string().min(1),
+  color: z.string().min(1),
+  size: z.string().min(1),
+  tags: z.array(z.string()),
+  description: z.string().min(1),
+});
+
+type RawAnalyzeImageResult = z.infer<typeof rawAnalyzeImageSchema>;
+type NormalizedAnalyzeImageResult = z.infer<typeof normalizedAnalyzeImageSchema>;
+
+function buildLocalAnalyzeImageResult(
+  rawResult: RawAnalyzeImageResult
+): NormalizedAnalyzeImageResult {
+  return {
+    title: buildAnalyzedTitle(rawResult),
+    itemCategory: rawResult.itemCategory?.trim() || "알 수 없음",
+    color: rawResult.color?.trim() || "알 수 없음",
+    size: rawResult.size?.trim() || "알 수 없음",
+    tags: Array.isArray(rawResult.tags)
+      ? rawResult.tags
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0)
+      : [],
+    description: rawResult.description?.trim() || "설명이 없습니다",
+  };
+}
+
+function buildAnalyzedTitle(result: {
+  description?: unknown;
+  color?: unknown;
+  itemCategory?: unknown;
+}): string {
+  const description =
+    typeof result.description === "string" ? result.description.trim() : "";
+  const color = typeof result.color === "string" ? result.color.trim() : "";
+  const itemCategory =
+    typeof result.itemCategory === "string" ? result.itemCategory.trim() : "";
+
+  const cleanedDescriptionTitle = description
+    .split(/[.!?\n]/)[0]
+    ?.trim()
+    .replace(/[()\[\]{}]/g, " ")
+    .replace(/[,/]+/g, " ")
+    .replace(
+      /(?:으로\s*보이며|로\s*보이며|으로\s*보입니다|로\s*보입니다|으로\s*추정됩니다|로\s*추정됩니다|으로\s*추정됨|로\s*추정됨|으로\s*판단됩니다|로\s*판단됩니다|입니다|같습니다).*$/,
+      ""
+    )
+    .replace(/^(?:이 물건은|해당 물건은|사진 속 물건은)\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const titleSource =
+    cleanedDescriptionTitle && cleanedDescriptionTitle.length >= 2
+      ? cleanedDescriptionTitle
+      : [color, itemCategory]
+          .filter((value) => value.length > 0)
+          .join(" ")
+          .trim();
+
+  if (!titleSource) {
+    return "분실물";
+  }
+
+  const includesColor = color.length > 0 && titleSource.includes(color);
+  const simplifiedTitle = includesColor
+    ? titleSource
+    : [color, titleSource].filter((value) => value.length > 0).join(" ");
+
+  if (simplifiedTitle.length > 30) {
+    return simplifiedTitle.slice(0, 30).trim();
+  }
+
+  return simplifiedTitle;
+}
+
+async function normalizeAnalyzeImageMetadata(
+  rawResult: RawAnalyzeImageResult
+): Promise<NormalizedAnalyzeImageResult> {
+  const fallbackResult = buildLocalAnalyzeImageResult(rawResult);
+
+  const response = await openai.chat.completions.create({
+    model: GPT_TEXT_MODEL,
+    messages: [
+      {
+        role: "system",
+        content: [
+          "너는 분실물 이미지 분석 결과를 정규화하는 도우미다.",
+          '반드시 JSON 객체만 반환하고 형식은 {"title":"...","itemCategory":"...","color":"...","size":"...","tags":["..."],"description":"..."} 이어야 한다.',
+          "각 필드는 다음 규칙을 따른다.",
+          "- title: 물건이 무엇인지 바로 알 수 있는 짧은 한국어 명사구. 문장형 표현 금지. 색상과 브랜드/종류가 중요하면 포함.",
+          "- itemCategory: 가장 적절한 물건 카테고리 하나.",
+          "- color: 대표 색상 1~2개를 짧게 정리.",
+          "- size: 보이면 구체적으로, 없으면 '알 수 없음'.",
+          "- tags: 검색에 도움이 되는 짧은 키워드 배열. 중복 금지.",
+          "- description: 자연스러운 한국어 1~2문장. 첫 문장에서 물건의 정체를 먼저 설명.",
+          "불확실한 정보는 과장하지 말고, 알 수 없으면 보수적으로 정리해라.",
+        ].join("\n"),
+      },
+      {
+        role: "user",
+        content: [
+          `원본 분석 JSON:\n${JSON.stringify(rawResult, null, 2)}`,
+          `안전 fallback JSON:\n${JSON.stringify(fallbackResult, null, 2)}`,
+          "fallback은 참고용이며, 원본 분석을 바탕으로 가장 자연스럽고 검색 친화적인 최종 JSON을 만들어라.",
+        ].join("\n\n"),
+      },
+    ],
+    response_format: { type: "json_object" },
+  });
+
+  const content = getCompletionText(
+    response,
+    "이미지 메타데이터 정규화 응답을 받지 못했습니다"
+  );
+
+  const normalized = normalizedAnalyzeImageSchema.parse(JSON.parse(content));
+
+  return {
+    title: normalized.title.trim(),
+    itemCategory: normalized.itemCategory.trim(),
+    color: normalized.color.trim(),
+    size: normalized.size.trim(),
+    tags: normalized.tags
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0),
+    description: normalized.description.trim(),
+  };
+}
+
 async function createEmbedding(text: string): Promise<number[]> {
   const normalized = text.replace(/\s+/g, " ").trim();
 
@@ -386,10 +580,7 @@ async function createImageSearchText(imageUrl: string): Promise<string> {
     response_format: { type: "json_object" },
   });
 
-  const content = response.choices[0].message.content;
-  if (!content) {
-    throw new Error("이미지 검색 텍스트 생성에 실패했습니다");
-  }
+  const content = getCompletionText(response, "이미지 검색 텍스트 생성에 실패했습니다");
 
   const parsed = JSON.parse(content);
   return buildItemSearchText({
@@ -495,10 +686,7 @@ async function rerankCandidates(params: {
     response_format: { type: "json_object" },
   });
 
-  const content = response.choices[0].message.content;
-  if (!content) {
-    throw new Error("재랭킹 응답을 받지 못했습니다");
-  }
+  const content = getCompletionText(response, "재랭킹 응답을 받지 못했습니다");
 
   const parsed = JSON.parse(content);
   const matches: unknown[] = Array.isArray(parsed)
@@ -690,14 +878,14 @@ export async function registerRoutes(
           {
             role: "system",
             content:
-              "너는 분실물 보관 시스템에서 습득물을 분류하는 AI 도우미다. 이미지를 분석해서 다음 메타데이터를 한국어로 추출해라: itemCategory, color, size, tags, description, requiresMasking(개인정보, 얼굴, 신분증, 카드 등이 포함되어 있는지 여부 boolean). 사진 속에 사람의 이름, 주민등록번호, 카드 번호, 상세 주소, 발급일자는 절대 출력하지 마라. 반드시 JSON 객체만 반환해라.",
+              "너는 분실물 보관 시스템에서 습득물을 분류하는 AI 도우미다. 이미지를 분석해서 다음 메타데이터를 한국어로 추출해라: itemCategory, color, size, tags, description, requiresMasking(개인정보, 얼굴, 신분증, 카드 등이 포함되어 있는지 여부 boolean). description은 자연스러운 한국어 1~2문장으로 작성해라. 사진 속에 사람의 이름, 주민등록번호, 카드 번호, 상세 주소, 발급일자는 절대 출력하지 마라. 반드시 JSON 객체만 반환해라.",
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "이 이미지를 분석하고 메타데이터를 JSON 형식으로 한국어로 반환해줘.",
+                text: "이 이미지를 분석하고 메타데이터를 JSON 형식의 한국어로 반환해줘.",
               },
               { type: "image_url", image_url: { url: input.imageUrl } },
             ],
@@ -706,16 +894,22 @@ export async function registerRoutes(
         response_format: { type: "json_object" },
       });
 
-      const content = response.choices[0].message.content;
-      if (!content) {
-        throw new Error("Failed to get response from AI");
-      }
+      const content = getCompletionText(response, "Failed to get response from AI");
 
-      const result = JSON.parse(content);
+      const rawResult = rawAnalyzeImageSchema.parse(JSON.parse(content));
+      const normalizedResult = await normalizeAnalyzeImageMetadata(rawResult).catch(
+        (normalizationError) => {
+          console.error(
+            "Failed to normalize image metadata:",
+            normalizationError
+          );
+          return buildLocalAnalyzeImageResult(rawResult);
+        }
+      );
 
       let finalImageBase64 = input.imageUrl;
 
-      if (result.requiresMasking === true) {
+      if (rawResult.requiresMasking === true) {
         console.log("🔒 [보안] 개인정보 감지! 마스킹 처리를 시작합니다.");
         const base64Data = input.imageUrl.replace(
           /^data:image\/\w+;base64,/,
@@ -729,11 +923,7 @@ export async function registerRoutes(
       }
 
       res.json({
-        itemCategory: result.itemCategory || "알 수 없음",
-        color: result.color || "알 수 없음",
-        size: result.size || "알 수 없음",
-        tags: Array.isArray(result.tags) ? result.tags : [],
-        description: result.description || "설명이 없습니다",
+        ...normalizedResult,
         maskedImage: finalImageBase64,
       });
     } catch (err) {
