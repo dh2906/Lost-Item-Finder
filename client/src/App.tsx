@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { initFcm, onForegroundMessage } from "@/lib/fcm";
+import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import ReportPage from "@/pages/report";
@@ -87,7 +88,7 @@ function FcmInitializer() {
       if (Notification.permission === "granted") {
         new Notification(title, {
           body,
-          icon: "/icon-192.png",
+          icon: "/favicon.png",
         });
       } else {
         // Notification 권한이 없으면 토스트로 대체
@@ -113,6 +114,8 @@ function App() {
         <Toaster />
         <FcmInitializer />
         <Router />
+        {/* PWA 설치 유도 배너 (installable 상태일 때만 노출) */}
+        <PWAInstallBanner />
       </TooltipProvider>
     </QueryClientProvider>
   );
