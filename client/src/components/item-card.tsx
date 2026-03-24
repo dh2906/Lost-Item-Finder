@@ -45,11 +45,11 @@ export function ItemCard({ item, score, reasoning, distanceText, className, vari
     if (scoreValue === undefined) return null;
     const percentage = Math.round(scoreValue * 100);
     if (percentage >= 70) {
-      return { text: `${percentage}%`, className: "bg-purple-600 hover:bg-purple-700 text-white border-purple-600" };
+      return { text: `매칭 ${percentage}점`, className: "bg-purple-600 hover:bg-purple-700 text-white border-purple-600" };
     } else if (percentage >= 40) {
-      return { text: `${percentage}%`, className: "bg-blue-500 hover:bg-blue-600 text-white border-blue-500" };
+      return { text: `매칭 ${percentage}점`, className: "bg-blue-500 hover:bg-blue-600 text-white border-blue-500" };
     } else {
-      return { text: `${percentage}%`, className: "bg-gray-500 hover:bg-gray-600 text-white border-gray-500" };
+      return { text: `매칭 ${percentage}점`, className: "bg-gray-500 hover:bg-gray-600 text-white border-gray-500" };
     }
   };
 

@@ -27,6 +27,7 @@ const navigation = [
   },
   { href: "/search", label: "분실물 찾기" },
   { href: "/items?type=found", label: "물건 목록" },
+  { href: "/matches", label: "내 매칭" },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -170,6 +171,9 @@ export function Layout({ children }: { children: ReactNode }) {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/matches">내 매칭</Link>
+                    </DropdownMenuItem>
                     <DropdownMenuItem asChild>
                       <Link href="/chats">채팅 목록</Link>
                     </DropdownMenuItem>

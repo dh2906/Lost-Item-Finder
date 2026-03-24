@@ -15,6 +15,7 @@ import ItemsPage from "@/pages/items";
 import ItemDetail from "@/pages/item-detail";
 import ChatsPage from "@/pages/chats";
 import ChatRoomPage from "@/pages/chat-room";
+import MatchesPage from "@/pages/matches";
 import { LoginPage } from "@/pages/login";
 import { RegisterPage } from "@/pages/register";
 import { useLocation } from "wouter";
@@ -55,6 +56,7 @@ function Router() {
           <Route path="/search" component={SearchPage} />
           <Route path="/items" component={ItemsPage} />
           <Route path="/item/:id" component={ItemDetail} />
+          <Route path="/matches" component={MatchesPage} />
           <Route path="/chats" component={ChatsPage} />
           <Route path="/chat/:id" component={ChatRoomPage} />
           <Route path="/login" component={LoginPage} />
