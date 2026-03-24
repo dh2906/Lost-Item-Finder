@@ -32,6 +32,10 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    proxy: {
+      "/api": { target: "http://localhost:8080", changeOrigin: true },
+      "/firebase-config.js": { target: "http://localhost:8080", changeOrigin: true },
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],
