@@ -529,6 +529,22 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // --- Firebase config 엔드포인트 (SW의 importScripts용) ---
+  // SW는 Vite 환경변수를 직접 읽을 수 없으므로 서버에서 동적으로 서빙
+  app.get("/firebase-config.js", (req, res) => {
+    const config = {
+      apiKey: process.env.VITE_FIREBASE_API_KEY ?? "",
+      authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN ?? "",
+      projectId: process.env.VITE_FIREBASE_PROJECT_ID ?? "",
+      storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET ?? "",
+      messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
+      appId: process.env.VITE_FIREBASE_APP_ID ?? "",
+    };
+    res.type("application/javascript");
+    res.set("Cache-Control", "no-store"); // 환경변수 변경 시 즉시 반영
+    res.send(`self.FIREBASE_CONFIG = ${JSON.stringify(config)};`);
+  });
+
   // --- Auth API ---
   app.post(api.auth.register.path, async (req, res) => {
     try {
@@ -878,7 +894,7 @@ export async function registerRoutes(
     }
   });
 
-  // FCM 토큰 등록
+  // --- FCM 토큰 등록 API ---
   app.post("/api/fcm/token", isAuthenticated, async (req, res) => {
     try {
       const { token } = req.body;
@@ -893,6 +909,7 @@ export async function registerRoutes(
     }
   });
 
+  // --- Chat API ---
   app.post("/api/chat/rooms", isAuthenticated, async (req, res) => {
     try {
       const { itemId, receiverId } = req.body;
