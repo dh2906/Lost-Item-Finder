@@ -1,26 +1,42 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Smartphone, Download, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 
+const DISMISSED_KEY = "pwa-install-dismissed";
+
 /**
  * PWA 앱 설치를 유도하는 하단 배너 컴포넌트
  *
  * - Android Chrome / Edge 등 beforeinstallprompt 지원 브라우저에서만 표시
- * - 이미 설치됐거나 사용자가 닫으면 숨김
+ * - 이미 설치됐거나 사용자가 닫으면 숨김 (sessionStorage로 세션 내 재노출 방지)
  * - 모바일: 화면 하단 고정 (하단 네비게이션 위)
  * - 데스크톱: 우측 하단 플로팅
  */
 export function PWAInstallBanner() {
   const { isInstallable, install } = usePWAInstall();
-  const [dismissed, setDismissed] = useState(false);
+  // sessionStorage로 초기화: 탭을 닫기 전까지 dismissed 상태 유지
+  const [dismissed, setDismissed] = useState(
+    () => sessionStorage.getItem(DISMISSED_KEY) === "true"
+  );
 
   const handleInstall = async () => {
     const accepted = await install();
-    // 거절해도 반복 노출 방지
-    if (!accepted) setDismissed(true);
+    if (!accepted) dismiss();
   };
+
+  const dismiss = () => {
+    sessionStorage.setItem(DISMISSED_KEY, "true");
+    setDismissed(true);
+  };
+
+  // 설치 완료 시 배너 자동 숨김
+  useEffect(() => {
+    if (!isInstallable) {
+      sessionStorage.removeItem(DISMISSED_KEY);
+    }
+  }, [isInstallable]);
 
   return (
     <AnimatePresence>
@@ -35,7 +51,7 @@ export function PWAInstallBanner() {
             "bottom-20 left-4 right-4 " +       // 모바일: 하단 네비게이션 위
             "md:bottom-6 md:left-auto md:right-6 md:w-80" // 데스크톱: 우측 하단
           }
-          role="banner"
+          role="region"
           aria-label="앱 설치 안내"
         >
           {/* 아이콘 */}
@@ -64,7 +80,7 @@ export function PWAInstallBanner() {
 
           {/* 닫기 버튼 */}
           <button
-            onClick={() => setDismissed(true)}
+            onClick={dismiss}
             className="shrink-0 rounded-full p-1 transition-colors hover:bg-blue-500"
             aria-label="배너 닫기"
           >
