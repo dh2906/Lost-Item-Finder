@@ -85,10 +85,11 @@ function FcmInitializer() {
       console.log("[FCM] 포그라운드 메시지 수신:", { title, body, data });
 
       // 브라우저 Notification API로 직접 알림 표시
+      // /icons/icon-192.png: 알림 아이콘은 192px 이상 PNG를 사용 (favicon.png는 48px으로 부적합)
       if (Notification.permission === "granted") {
         new Notification(title, {
           body,
-          icon: "/favicon.png",
+          icon: "/icons/icon-192.png",
         });
       } else {
         // Notification 권한이 없으면 토스트로 대체
