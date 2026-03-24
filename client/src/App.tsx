@@ -2,9 +2,10 @@ import { useEffect } from "react";
 import { Switch, Route } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { initFcm } from "@/lib/fcm";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import ReportPage from "@/pages/report";
@@ -64,11 +65,26 @@ function Router() {
   );
 }
 
+function FcmInitializer() {
+  const { data: user } = useQuery<{ id: number } | null>({
+    queryKey: ["/api/auth/me"],
+  });
+
+  useEffect(() => {
+    if (user?.id) {
+      initFcm().catch((err) => console.error("[FCM] 초기화 실패:", err));
+    }
+  }, [user?.id]);
+
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
+        <FcmInitializer />
         <Router />
       </TooltipProvider>
     </QueryClientProvider>
