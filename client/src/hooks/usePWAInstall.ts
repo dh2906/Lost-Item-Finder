@@ -9,7 +9,7 @@ interface BeforeInstallPromptEvent extends Event {
  * PWA 설치 프롬프트를 관리하는 훅
  *
  * - `isInstallable`: 설치 가능 상태 (beforeinstallprompt 이벤트 수신 시 true)
- * - `isInstalled`  : 이미 홈 화면에 설치된 상태 (standalone 모드 감지)
+ * - `isInstalled`  : 이미 홈 화면에 설치된 상태 (standalone 모드 감지, iOS 포함)
  * - `install`      : 설치 프롬프트를 띄우는 비동기 함수 (수락 시 true 반환)
  *
  * 지원 브라우저: Chrome, Edge, Samsung Internet (Android)
@@ -22,8 +22,13 @@ export function usePWAInstall() {
   const [isInstallable, setIsInstallable] = useState(false);
 
   useEffect(() => {
-    // 이미 standalone(홈 화면 앱) 모드로 실행 중이면 설치된 것으로 간주
-    if (window.matchMedia("(display-mode: standalone)").matches) {
+    // iOS Safari는 navigator.standalone === true 로 홈 화면 추가 여부를 감지
+    // Android/Chrome은 (display-mode: standalone) media query로 감지
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone === true;
+
+    if (isStandalone) {
       setIsInstalled(true);
       return;
     }
@@ -51,20 +56,23 @@ export function usePWAInstall() {
 
   /**
    * 설치 프롬프트를 표시합니다.
-   * @returns 사용자가 수락하면 true, 거절/불가 시 false
+   * @returns 사용자가 수락하면 true, 거절/오류 시 false
    */
   const install = async (): Promise<boolean> => {
     if (!installPrompt) return false;
 
-    await installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-
-    if (outcome === "accepted") {
+    try {
+      await installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      return outcome === "accepted";
+    } catch {
+      // prompt() 또는 userChoice 처리 중 예외 발생 시 설치 실패로 간주
+      return false;
+    } finally {
+      // outcome과 무관하게 상태를 초기화 (beforeinstallprompt는 1회성이므로)
       setInstallPrompt(null);
       setIsInstallable(false);
     }
-
-    return outcome === "accepted";
   };
 
   return { isInstallable, isInstalled, install };
