@@ -9,3 +9,4 @@ vite.config.ts.*
 !.env.example
 .postgres-data
 google-key.json
+.idea/
