@@ -9,7 +9,14 @@ import OpenAI from "openai";
 import { isAuthenticated } from "./auth";
 import { db } from "./db";
 import { and, eq, ne, or, desc, asc, isNull } from "drizzle-orm";
-import { chatRooms, chatMessages, users } from "@shared/schema";
+import {
+  chatRooms,
+  chatMessages,
+  updateItemMatchStatusSchema,
+  users,
+  type Item,
+  type ItemMatchStatus,
+} from "@shared/schema";
 import { sendFcmNotification } from "./fcm";
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -38,6 +45,14 @@ const MIN_FINAL_MATCH_SCORE = Number(process.env.MIN_FINAL_MATCH_SCORE ?? 0.42);
 const MIN_FALLBACK_MATCH_SCORE = Number(
   process.env.MIN_FALLBACK_MATCH_SCORE ?? 0.3
 );
+const AUTO_MATCH_CANDIDATE_LIMIT = Number(
+  process.env.AUTO_MATCH_CANDIDATE_LIMIT ?? 120
+);
+const AUTO_MATCH_MIN_SCORE = Number(process.env.AUTO_MATCH_MIN_SCORE ?? 0.42);
+const AUTO_MATCH_MIN_VECTOR_SCORE = Number(process.env.AUTO_MATCH_MIN_VECTOR_SCORE ?? 0.3);
+const AUTO_MATCH_MIN_KEYWORD_SCORE = Number(process.env.AUTO_MATCH_MIN_KEYWORD_SCORE ?? 0.12);
+const AUTO_MATCH_MIN_CATEGORY_SCORE = Number(process.env.AUTO_MATCH_MIN_CATEGORY_SCORE ?? 0.2);
+const AUTO_MATCH_MAX_RESULTS = Number(process.env.AUTO_MATCH_MAX_RESULTS ?? 12);
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -255,22 +270,23 @@ function buildItemSearchText(item: {
   latitude?: string | null;
   longitude?: string | null;
 }): string {
+  const normalizedItem = normalizeItemMetadata(item);
   const coordinateSummary = [
     formatCoordinateForEmbedding(item.latitude),
     formatCoordinateForEmbedding(item.longitude),
   ].filter((value): value is string => Boolean(value));
 
   const sections = [
-    item.title ? `제목: ${item.title}` : null,
-    item.itemCategory ? `카테고리: ${item.itemCategory}` : null,
-    item.color ? `색상: ${item.color}` : null,
-    item.size ? `크기: ${item.size}` : null,
-    item.description ? `설명: ${item.description}` : null,
-    item.location ? `위치: ${item.location}` : null,
+    normalizedItem.title ? `제목: ${normalizedItem.title}` : null,
+    normalizedItem.itemCategory ? `카테고리: ${normalizedItem.itemCategory}` : null,
+    normalizedItem.color ? `색상: ${normalizedItem.color}` : null,
+    normalizedItem.size ? `크기: ${normalizedItem.size}` : null,
+    normalizedItem.description ? `설명: ${normalizedItem.description}` : null,
+    normalizedItem.location ? `위치: ${normalizedItem.location}` : null,
     coordinateSummary.length === 2
       ? `위치 좌표(근사): ${coordinateSummary.join(", ")}`
       : null,
-    item.tags?.length ? `태그: ${item.tags.join(", ")}` : null,
+    normalizedItem.tags?.length ? `태그: ${normalizedItem.tags.join(", ")}` : null,
   ].filter((value): value is string => Boolean(value));
 
   return sections.join("\n");
@@ -302,14 +318,15 @@ function getItemEvidenceText(item: {
   tags?: string[] | null;
   location?: string | null;
 }): string {
+  const normalizedItem = normalizeItemMetadata(item);
   return [
-    item.title,
-    item.description,
-    item.itemCategory,
-    item.color,
-    item.size,
-    item.location,
-    item.tags?.join(" "),
+    normalizedItem.title,
+    normalizedItem.description,
+    normalizedItem.itemCategory,
+    normalizedItem.color,
+    normalizedItem.size,
+    normalizedItem.location,
+    normalizedItem.tags?.join(" "),
   ]
     .filter((value): value is string => Boolean(value))
     .join(" ");
@@ -367,9 +384,9 @@ function buildReasoningFromEvidence(params: {
 
   const scoreSummary =
     normalizedScore >= 0.75
-      ? `최종 매칭 점수가 약 ${scorePercent}%로 높아, 실제 동일 물건일 가능성이 큽니다.`
+      ? `최종 매칭 점수는 약 ${scorePercent}%로 높습니다. 핵심 특징이 많이 겹치는 강한 후보입니다.`
       : normalizedScore >= 0.45
-      ? `최종 매칭 점수는 약 ${scorePercent}%로 중간 수준입니다. 일부 특징은 맞지만 추가 확인이 필요합니다.`
+      ? `최종 매칭 점수는 약 ${scorePercent}%로 중간 수준입니다. 일부 특징이 맞아 추가 확인이 필요한 후보입니다.`
       : normalizedScore >= 0.25
       ? `최종 매칭 점수는 약 ${scorePercent}%로 낮은 편이라 참고용 후보로 보는 것이 좋습니다.`
       : `최종 매칭 점수는 약 ${scorePercent}%로 매우 낮아, 관련성이 약한 후보일 수 있습니다.`;
@@ -397,6 +414,441 @@ function buildReasoningFromEvidence(params: {
     .join(" ");
 }
 
+function normalizeComparableText(value?: string | null): string {
+  return normalizeKoreanText(value ?? "");
+}
+
+const CATEGORY_SYNONYM_GROUPS = [
+  ["지갑", "반지갑", "장지갑", "카드지갑", "wallet", "card wallet"],
+  ["가방", "백팩", "배낭", "숄더백", "토트백", "크로스백", "bag", "backpack"],
+  ["핸드폰", "휴대폰", "스마트폰", "폰", "phone", "smartphone", "iphone", "galaxy"],
+  ["이어폰", "에어팟", "헤드폰", "무선이어폰", "earbuds", "airpods"],
+  ["키", "열쇠", "차키", "key", "car key"],
+  ["노트북", "랩탑", "laptop", "macbook"],
+  ["모자", "캡", "cap", "hat"],
+] as const;
+
+const COLOR_SYNONYM_GROUPS = [
+  ["검정", "검은색", "블랙", "까만색", "black", "dark"],
+  ["흰색", "화이트", "하양", "white", "ivory", "cream"],
+  ["회색", "그레이", "gray", "grey", "은색", "실버", "silver"],
+  ["갈색", "브라운", "brown", "베이지", "tan", "camel"],
+  ["파랑", "파란색", "블루", "남색", "네이비", "blue", "navy"],
+  ["빨강", "빨간색", "레드", "red", "burgundy", "와인"],
+  ["초록", "초록색", "그린", "green", "olive", "khaki", "카키"],
+  ["노랑", "노란색", "옐로", "yellow", "gold", "골드"],
+  ["보라", "보라색", "퍼플", "purple", "violet"],
+] as const;
+
+const LOCATION_SYNONYM_GROUPS = [
+  ["지하철", "역", "출구", "station", "subway"],
+  ["버스", "정류장", "bus", "stop"],
+  ["학교", "캠퍼스", "college", "campus"],
+  ["카페", "커피숍", "coffee", "cafe"],
+  ["강남역", "2호선강남역", "강남역출구"],
+  ["홍대입구역", "홍대역", "홍대입구"],
+  ["잠실역", "잠실"],
+] as const;
+
+const KEYWORD_SYNONYM_GROUPS = [
+  ...CATEGORY_SYNONYM_GROUPS,
+  ...COLOR_SYNONYM_GROUPS,
+  ...LOCATION_SYNONYM_GROUPS,
+  ["주움", "주웠", "발견", "습득", "found"],
+  ["잃어", "분실", "없어졌", "lost"],
+  ["가죽", "레더", "leather"],
+  ["충전케이스", "케이스", "case"],
+  ["노트북가방", "노트북", "랩탑가방"],
+] as const;
+
+type NormalizableItemMetadata = {
+  title?: string | null;
+  description?: string | null;
+  itemCategory?: string | null;
+  color?: string | null;
+  size?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+};
+
+function canonicalizeWithGroups(
+  value: string | null | undefined,
+  groups: readonly (readonly string[])[]
+): string {
+  const normalizedValue = normalizeComparableText(value);
+
+  if (!normalizedValue) {
+    return "";
+  }
+
+  const matchedGroup = groups.find((group) =>
+    group.some((token) => normalizedValue.includes(normalizeComparableText(token)))
+  );
+
+  if (matchedGroup) {
+    return normalizeComparableText(matchedGroup[0]);
+  }
+
+  return normalizedValue;
+}
+
+function normalizeMetadataTags(tags?: string[] | null): string[] {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  const normalizedTags = tags
+    .map((tag) => canonicalizeWithGroups(tag, KEYWORD_SYNONYM_GROUPS))
+    .filter((tag) => tag.length > 0);
+
+  return Array.from(new Set(normalizedTags));
+}
+
+function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
+  const normalizedCategory = canonicalizeWithGroups(item.itemCategory, CATEGORY_SYNONYM_GROUPS);
+  const normalizedColor = canonicalizeWithGroups(item.color, COLOR_SYNONYM_GROUPS);
+  const normalizedLocation = canonicalizeWithGroups(item.location, LOCATION_SYNONYM_GROUPS);
+  const normalizedTags = normalizeMetadataTags(item.tags);
+
+  const normalizedTitle = normalizeKoreanText(
+    [item.title, normalizedCategory, normalizedColor].filter(Boolean).join(" ") || item.title || ""
+  );
+  const normalizedDescription = normalizeKoreanText(item.description ?? "");
+
+  return {
+    ...item,
+    title: normalizedTitle || item.title || undefined,
+    description: normalizedDescription || item.description || undefined,
+    itemCategory: normalizedCategory || item.itemCategory || undefined,
+    color: normalizedColor || item.color || undefined,
+    location: normalizedLocation || item.location || undefined,
+    tags: normalizedTags.length > 0 ? normalizedTags : item.tags,
+  };
+}
+
+function areSameNormalizedValue(
+  left?: string | null,
+  right?: string | null
+): boolean {
+  const normalizedLeft = normalizeComparableText(left);
+  const normalizedRight = normalizeComparableText(right);
+
+  return Boolean(normalizedLeft) && normalizedLeft === normalizedRight;
+}
+
+function hasTokenContainment(left?: string | null, right?: string | null): boolean {
+  const normalizedLeft = normalizeComparableText(left);
+  const normalizedRight = normalizeComparableText(right);
+
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+
+  return normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft);
+}
+
+function hasSynonymGroupMatch(
+  left: string | null | undefined,
+  right: string | null | undefined,
+  groups: readonly (readonly string[])[]
+): boolean {
+  const normalizedLeft = normalizeComparableText(left);
+  const normalizedRight = normalizeComparableText(right);
+
+  if (!normalizedLeft || !normalizedRight) {
+    return false;
+  }
+
+  return groups.some((group) => {
+    const matchedLeft = group.some((token) => normalizedLeft.includes(normalizeComparableText(token)));
+    const matchedRight = group.some((token) => normalizedRight.includes(normalizeComparableText(token)));
+    return matchedLeft && matchedRight;
+  });
+}
+
+function calculateFieldSimilarity(
+  left: string | null | undefined,
+  right: string | null | undefined,
+  groups: readonly (readonly string[])[] = []
+): number {
+  const normalizedLeft = normalizeComparableText(left);
+  const normalizedRight = normalizeComparableText(right);
+
+  if (!normalizedLeft || !normalizedRight) {
+    return 0;
+  }
+
+  if (normalizedLeft === normalizedRight) {
+    return 1;
+  }
+
+  if (hasSynonymGroupMatch(normalizedLeft, normalizedRight, groups)) {
+    return 0.82;
+  }
+
+  if (hasTokenContainment(normalizedLeft, normalizedRight)) {
+    return 0.64;
+  }
+
+  return 0;
+}
+
+function calculateTokenSimilarity(
+  left: string,
+  right: string,
+  groups: readonly (readonly string[])[] = []
+): number {
+  if (left === right) {
+    return 1;
+  }
+
+  if (hasSynonymGroupMatch(left, right, groups)) {
+    return 0.88;
+  }
+
+  if (left.includes(right) || right.includes(left)) {
+    return 0.68;
+  }
+
+  const shorterLength = Math.min(left.length, right.length);
+  if (shorterLength >= 3) {
+    const prefixLength = Array.from({ length: shorterLength }).findIndex(
+      (_, index) => left[index] !== right[index]
+    );
+    const sharedPrefix = prefixLength === -1 ? shorterLength : prefixLength;
+    if (sharedPrefix / shorterLength >= 0.6) {
+      return 0.48;
+    }
+  }
+
+  return 0;
+}
+
+function calculateTokenSetSimilarity(
+  leftTokens: string[],
+  rightTokens: string[],
+  groups: readonly (readonly string[])[] = []
+): number {
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return 0;
+  }
+
+  const scoreDirection = (sourceTokens: string[], candidateTokens: string[]) => {
+    const total = sourceTokens.reduce((sum, sourceToken) => {
+      const bestMatch = candidateTokens.reduce((best, candidateToken) => {
+        return Math.max(best, calculateTokenSimilarity(sourceToken, candidateToken, groups));
+      }, 0);
+      return sum + bestMatch;
+    }, 0);
+
+    return total / sourceTokens.length;
+  };
+
+  return Number(
+    ((scoreDirection(leftTokens, rightTokens) + scoreDirection(rightTokens, leftTokens)) / 2).toFixed(4)
+  );
+}
+
+function calculateKeywordOverlapScore(source: Item, candidate: Item): number {
+  const sourceKeywords = Array.from(new Set(
+    extractQueryKeywords(getItemEvidenceText(source)).concat(
+      (source.tags ?? []).map((tag) => normalizeComparableText(tag)).filter(Boolean)
+    )
+  ));
+  const candidateKeywords = Array.from(new Set(
+    extractQueryKeywords(getItemEvidenceText(candidate)).concat(
+      (candidate.tags ?? [])
+        .map((tag) => normalizeComparableText(tag))
+        .filter(Boolean)
+    )
+  ));
+
+  if (sourceKeywords.length === 0 || candidateKeywords.length === 0) {
+    return 0;
+  }
+
+  return calculateTokenSetSimilarity(sourceKeywords, candidateKeywords, KEYWORD_SYNONYM_GROUPS);
+}
+
+function calculateLocationTextSimilarity(source: Item, candidate: Item): number {
+  const normalizedSource = normalizeItemMetadata(source);
+  const normalizedCandidate = normalizeItemMetadata(candidate);
+  const sourceTokens = extractQueryKeywords(normalizedSource.location ?? "");
+  const candidateTokens = extractQueryKeywords(normalizedCandidate.location ?? "");
+  return calculateTokenSetSimilarity(sourceTokens, candidateTokens, LOCATION_SYNONYM_GROUPS);
+}
+
+function calculateDateClosenessScore(source: Item, candidate: Item): number {
+  if (!source.date || !candidate.date) {
+    return 0;
+  }
+
+  const sourceTime = new Date(source.date).getTime();
+  const candidateTime = new Date(candidate.date).getTime();
+  const diffDays = Math.abs(sourceTime - candidateTime) / (1000 * 60 * 60 * 24);
+
+  if (diffDays <= 3) {
+    return 1;
+  }
+  if (diffDays <= 14) {
+    return 0.75;
+  }
+  if (diffDays <= 30) {
+    return 0.45;
+  }
+  if (diffDays <= 90) {
+    return 0.2;
+  }
+
+  return 0;
+}
+
+function calculateDistanceScore(distanceKm: number | null): number {
+  if (distanceKm === null) {
+    return 0;
+  }
+  if (distanceKm <= 1) {
+    return 1;
+  }
+  if (distanceKm <= 3) {
+    return 0.8;
+  }
+  if (distanceKm <= 10) {
+    return 0.55;
+  }
+  if (distanceKm <= 30) {
+    return 0.25;
+  }
+
+  return 0;
+}
+
+function calculateCosineSimilarity(
+  left: number[] | undefined,
+  right: number[] | undefined
+): number {
+  if (!left || !right || left.length === 0 || right.length === 0) {
+    return 0;
+  }
+
+  const dimensions = Math.min(left.length, right.length);
+  let dotProduct = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+
+  for (let index = 0; index < dimensions; index += 1) {
+    dotProduct += left[index] * right[index];
+    leftNorm += left[index] * left[index];
+    rightNorm += right[index] * right[index];
+  }
+
+  if (leftNorm === 0 || rightNorm === 0) {
+    return 0;
+  }
+
+  const similarity = dotProduct / Math.sqrt(leftNorm * rightNorm);
+  return Math.max(0, Math.min(1, similarity));
+}
+
+function calculateMatchDistanceKm(source: Item, candidate: Item): number | null {
+  const sourceLatitude = parseCoordinate(source.latitude);
+  const sourceLongitude = parseCoordinate(source.longitude);
+  const candidateLatitude = parseCoordinate(candidate.latitude);
+  const candidateLongitude = parseCoordinate(candidate.longitude);
+
+  if (
+    sourceLatitude === null ||
+    sourceLongitude === null ||
+    candidateLatitude === null ||
+    candidateLongitude === null
+  ) {
+    return null;
+  }
+
+  return calculateDistanceKm(
+    { latitude: sourceLatitude, longitude: sourceLongitude },
+    { latitude: candidateLatitude, longitude: candidateLongitude }
+  );
+}
+
+function calculateAutomaticMatchScore(params: {
+  sourceItem: Item;
+  candidateItem: Item;
+  sourceEmbedding?: number[];
+  candidateEmbedding?: number[];
+  distanceKm: number | null;
+}): number {
+  const { sourceEmbedding, candidateEmbedding, distanceKm } = params;
+  const sourceItem = normalizeItemMetadata(params.sourceItem);
+  const candidateItem = normalizeItemMetadata(params.candidateItem);
+
+  const categoryScore = calculateFieldSimilarity(
+    sourceItem.itemCategory,
+    candidateItem.itemCategory,
+    CATEGORY_SYNONYM_GROUPS
+  );
+  const colorScore = calculateFieldSimilarity(
+    sourceItem.color,
+    candidateItem.color,
+    COLOR_SYNONYM_GROUPS
+  );
+  const keywordScore = calculateKeywordOverlapScore(sourceItem, candidateItem);
+  const dateScore = calculateDateClosenessScore(sourceItem, candidateItem);
+  const locationScore = Math.max(
+    calculateDistanceScore(distanceKm),
+    calculateLocationTextSimilarity(sourceItem, candidateItem)
+  );
+  const vectorScore = calculateCosineSimilarity(sourceEmbedding, candidateEmbedding);
+
+  if (categoryScore === 0 && keywordScore === 0 && vectorScore < 0.18) {
+    return 0;
+  }
+
+  if (dateScore === 0 && locationScore === 0 && vectorScore < 0.28) {
+    return 0;
+  }
+
+  const blendedScore =
+    categoryScore * 0.16 +
+    colorScore * 0.08 +
+    keywordScore * 0.22 +
+    dateScore * 0.18 +
+    locationScore * 0.12 +
+    vectorScore * 0.24;
+
+  return Math.max(0, Math.min(1, Number(blendedScore.toFixed(4))));
+}
+
+function formatStoredMatchScore(score: number): number {
+  return Math.max(0, Math.min(1, score / 100));
+}
+
+function buildAutomaticMatchReason(params: {
+  sourceItem: Item;
+  candidateItem: Item;
+  score: number;
+  distanceKm: number | null;
+}): string {
+  const { sourceItem, candidateItem, score, distanceKm } = params;
+
+  return buildReasoningFromEvidence({
+    queryText: buildItemSearchText(sourceItem),
+    item: candidateItem,
+    matchScore: score,
+    distanceKm,
+  });
+}
+
+async function ensureEmbeddingsForItems(itemsToEnsure: Item[]): Promise<void> {
+  for (const item of itemsToEnsure) {
+    try {
+      await ensureItemEmbedding(item);
+    } catch (error) {
+      console.error(`Failed to ensure embedding for item ${item.id}:`, error);
+    }
+  }
+}
+
 const rawAnalyzeImageSchema = z.object({
   itemCategory: z.string().optional(),
   color: z.string().optional(),
@@ -421,7 +873,7 @@ type NormalizedAnalyzeImageResult = z.infer<typeof normalizedAnalyzeImageSchema>
 function buildLocalAnalyzeImageResult(
   rawResult: RawAnalyzeImageResult
 ): NormalizedAnalyzeImageResult {
-  return {
+  return normalizeItemMetadata({
     title: buildAnalyzedTitle(rawResult),
     itemCategory: rawResult.itemCategory?.trim() || "알 수 없음",
     color: rawResult.color?.trim() || "알 수 없음",
@@ -432,7 +884,7 @@ function buildLocalAnalyzeImageResult(
           .filter((tag) => tag.length > 0)
       : [],
     description: rawResult.description?.trim() || "설명이 없습니다",
-  };
+  });
 }
 
 function buildAnalyzedTitle(result: {
@@ -525,7 +977,7 @@ async function normalizeAnalyzeImageMetadata(
 
   const normalized = normalizedAnalyzeImageSchema.parse(JSON.parse(content));
 
-  return {
+  return normalizeItemMetadata({
     title: normalized.title.trim(),
     itemCategory: normalized.itemCategory.trim(),
     color: normalized.color.trim(),
@@ -534,7 +986,7 @@ async function normalizeAnalyzeImageMetadata(
       .map((tag) => tag.trim())
       .filter((tag) => tag.length > 0),
     description: normalized.description.trim(),
-  };
+  });
 }
 
 async function createEmbedding(text: string): Promise<number[]> {
@@ -582,7 +1034,7 @@ async function createImageSearchText(imageUrl: string): Promise<string> {
 
   const content = getCompletionText(response, "이미지 검색 텍스트 생성에 실패했습니다");
 
-  const parsed = JSON.parse(content);
+  const parsed = normalizeItemMetadata(JSON.parse(content));
   return buildItemSearchText({
     itemCategory: parsed.itemCategory,
     color: parsed.color,
@@ -604,17 +1056,211 @@ async function ensureItemEmbedding(item: {
   latitude?: string | null;
   longitude?: string | null;
 }): Promise<void> {
-  const content = buildItemSearchText(item);
+  const normalizedItem = normalizeItemMetadata(item);
+  const content = buildItemSearchText(normalizedItem);
   const embedding = await createEmbedding(content);
   await storage.upsertItemEmbedding(item.id, content, embedding);
 }
 
 async function backfillFoundItemEmbeddings(): Promise<void> {
-  const missingItems = await storage.getFoundItemsWithoutEmbeddings();
+  const missingItems = await storage.getItemsWithoutEmbeddings("found");
 
   for (const item of missingItems) {
     await ensureItemEmbedding(item);
   }
+}
+
+async function renormalizeExistingItems(): Promise<void> {
+  const existingItems = await storage.getItems();
+
+  for (const item of existingItems) {
+    const normalizedItem = normalizeItemMetadata(item);
+
+    await storage.updateItem(item.id, {
+      title: normalizedItem.title ?? item.title ?? "",
+      description: normalizedItem.description ?? item.description ?? "",
+      itemCategory: normalizedItem.itemCategory ?? item.itemCategory ?? "",
+      color: normalizedItem.color ?? item.color ?? "",
+      size: normalizedItem.size ?? item.size ?? "",
+      location: normalizedItem.location ?? item.location ?? "",
+      tags: normalizedItem.tags ?? item.tags ?? [],
+      latitude: normalizedItem.latitude ?? item.latitude ?? "",
+      longitude: normalizedItem.longitude ?? item.longitude ?? "",
+      imageUrl: normalizedItem.imageUrl ?? item.imageUrl ?? "",
+      reportType: normalizedItem.reportType ?? item.reportType,
+      contactInfo: normalizedItem.contactInfo ?? item.contactInfo ?? "",
+      userId: normalizedItem.userId ?? item.userId ?? undefined,
+    });
+
+    await ensureItemEmbedding({
+      ...item,
+      ...normalizedItem,
+    });
+  }
+}
+
+function mapMatchResponse(match: {
+  match: {
+    id: number;
+    lostItemId: number;
+    foundItemId: number;
+    score: number;
+    matchReason: string;
+    status: string;
+    notifiedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  lostItem: Item;
+  foundItem: Item;
+}) {
+  return {
+    ...match.match,
+    status: match.match.status as ItemMatchStatus,
+    score: formatStoredMatchScore(match.match.score),
+    lostItem: match.lostItem,
+    foundItem: match.foundItem,
+  };
+}
+
+async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number> {
+  const candidateLostItems = await storage.getCandidateItemsForAutoMatch(
+    foundItem,
+    AUTO_MATCH_CANDIDATE_LIMIT
+  );
+
+  if (candidateLostItems.length === 0) {
+    return 0;
+  }
+
+  const relatedItems = [foundItem, ...candidateLostItems];
+  let embeddingsByItemId = await storage.getItemEmbeddings(
+    relatedItems.map((item) => item.id)
+  );
+
+  if (!embeddingsByItemId.has(foundItem.id)) {
+    await ensureEmbeddingsForItems([foundItem]);
+    embeddingsByItemId = await storage.getItemEmbeddings(
+      relatedItems.map((item) => item.id)
+    );
+  }
+
+  const sourceEmbedding = embeddingsByItemId.get(foundItem.id);
+  const matchesToPersist = candidateLostItems
+    .map((lostItem) => {
+      const distanceKm = calculateMatchDistanceKm(foundItem, lostItem);
+      const normalizedScore = calculateAutomaticMatchScore({
+        sourceItem: foundItem,
+        candidateItem: lostItem,
+        sourceEmbedding,
+        candidateEmbedding: embeddingsByItemId.get(lostItem.id),
+        distanceKm,
+      });
+
+      if (normalizedScore < AUTO_MATCH_MIN_SCORE) {
+        return null;
+      }
+
+      return {
+        lostItemId: lostItem.id,
+        foundItemId: foundItem.id,
+        score: Math.round(normalizedScore * 100),
+        matchReason: buildAutomaticMatchReason({
+          sourceItem: foundItem,
+          candidateItem: lostItem,
+          score: normalizedScore,
+          distanceKm,
+        }),
+        status: "new" as const,
+      };
+    })
+    .filter(
+      (
+        match
+      ): match is {
+        lostItemId: number;
+        foundItemId: number;
+        score: number;
+        matchReason: string;
+        status: "new";
+      } => Boolean(match)
+    )
+    .sort((left, right) => right.score - left.score)
+    .slice(0, AUTO_MATCH_MAX_RESULTS);
+
+  await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
+
+  return matchesToPersist.length;
+}
+
+async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> {
+  const candidateFoundItems = await storage.getCandidateItemsForAutoMatch(
+    lostItem,
+    AUTO_MATCH_CANDIDATE_LIMIT
+  );
+
+  if (candidateFoundItems.length === 0) {
+    return 0;
+  }
+
+  const relatedItems = [lostItem, ...candidateFoundItems];
+  let embeddingsByItemId = await storage.getItemEmbeddings(
+    relatedItems.map((item) => item.id)
+  );
+
+  if (!embeddingsByItemId.has(lostItem.id)) {
+    await ensureEmbeddingsForItems([lostItem]);
+    embeddingsByItemId = await storage.getItemEmbeddings(
+      relatedItems.map((item) => item.id)
+    );
+  }
+
+  const sourceEmbedding = embeddingsByItemId.get(lostItem.id);
+  const matchesToPersist = candidateFoundItems
+    .map((foundItem) => {
+      const distanceKm = calculateMatchDistanceKm(lostItem, foundItem);
+      const normalizedScore = calculateAutomaticMatchScore({
+        sourceItem: lostItem,
+        candidateItem: foundItem,
+        sourceEmbedding,
+        candidateEmbedding: embeddingsByItemId.get(foundItem.id),
+        distanceKm,
+      });
+
+      if (normalizedScore < AUTO_MATCH_MIN_SCORE) {
+        return null;
+      }
+
+      return {
+        lostItemId: lostItem.id,
+        foundItemId: foundItem.id,
+        score: Math.round(normalizedScore * 100),
+        matchReason: buildAutomaticMatchReason({
+          sourceItem: lostItem,
+          candidateItem: foundItem,
+          score: normalizedScore,
+          distanceKm,
+        }),
+        status: "new" as const,
+      };
+    })
+    .filter(
+      (
+        match
+      ): match is {
+        lostItemId: number;
+        foundItemId: number;
+        score: number;
+        matchReason: string;
+        status: "new";
+      } => Boolean(match)
+    )
+    .sort((left, right) => right.score - left.score)
+    .slice(0, AUTO_MATCH_MAX_RESULTS);
+
+  await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
+
+  return matchesToPersist.length;
 }
 
 type VectorCandidate = Awaited<
@@ -717,6 +1363,8 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  await renormalizeExistingItems();
+
   // --- Auth API ---
   app.post(api.auth.register.path, async (req, res) => {
     try {
@@ -826,20 +1474,38 @@ export async function registerRoutes(
   app.post(api.items.create.path, async (req, res) => {
     try {
       const input = api.items.create.input.parse(req.body);
+      const normalizedInput = normalizeItemMetadata(input);
       const item = await storage.createItem({
-        ...input,
+        ...normalizedInput,
         userId: req.user?.id,
       });
 
+      let automaticMatchCount = 0;
+
+      try {
+        await ensureItemEmbedding(item);
+      } catch (embeddingError) {
+        console.error("Failed to store item embedding:", embeddingError);
+      }
+
       if (item.reportType === "found") {
         try {
-          await ensureItemEmbedding(item);
-        } catch (embeddingError) {
-          console.error("Failed to store item embedding:", embeddingError);
+          automaticMatchCount = await findAutomaticMatchesForFoundItem(item);
+        } catch (matchError) {
+          console.error("Failed to create automatic matches for found item:", matchError);
+        }
+      } else if (item.reportType === "lost") {
+        try {
+          automaticMatchCount = await findAutomaticMatchesForLostItem(item);
+        } catch (matchError) {
+          console.error("Failed to create automatic matches for lost item:", matchError);
         }
       }
 
-      res.status(201).json(item);
+      res.status(201).json({
+        ...item,
+        automaticMatchCount,
+      });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -848,6 +1514,68 @@ export async function registerRoutes(
         });
       }
       res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get(api.matches.list.path, isAuthenticated, async (req, res) => {
+    try {
+      const matches = await storage.getMatchesForUser(req.user!.id);
+      res.json(matches.map(mapMatchResponse));
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get(api.matches.getByItem.path, isAuthenticated, async (req, res) => {
+    try {
+      const itemId = Number(req.params.id);
+      const item = await storage.getItem(itemId);
+      if (!item) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+      if (item.userId !== req.user!.id || item.reportType !== "lost") {
+        return res.status(404).json({ message: "Match not found" });
+      }
+
+      const matches = await storage.getMatchesForItem(itemId, req.user!.id);
+      res.json(matches.map(mapMatchResponse));
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.patch(api.matches.updateStatus.path, isAuthenticated, async (req, res) => {
+    try {
+      const matchId = Number(req.params.id);
+      const input = updateItemMatchStatusSchema.parse(req.body);
+      const updatedMatch = await storage.updateItemMatchStatus(
+        matchId,
+        req.user!.id,
+        input.status
+      );
+
+      if (!updatedMatch) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+
+      const matches = await storage.getMatchesForUser(req.user!.id);
+      const hydratedMatch = matches.find(({ match }) => match.id === updatedMatch.id);
+      if (!hydratedMatch) {
+        return res.status(404).json({ message: "Match not found" });
+      }
+
+      res.json(mapMatchResponse(hydratedMatch));
+    } catch (err) {
+      console.error(err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      res.status(500).json({ message: getErrorMessage(err) });
     }
   });
 

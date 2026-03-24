@@ -1,5 +1,44 @@
 import { z } from "zod";
-import { insertItemSchema, items, User } from "./schema";
+import {
+  insertItemSchema,
+  items,
+  itemMatchStatuses,
+  updateItemMatchStatusSchema,
+  User,
+} from "./schema";
+
+const matchResponseSchema = z.object({
+  id: z.number(),
+  lostItemId: z.number(),
+  foundItemId: z.number(),
+  score: z.number().min(0).max(1),
+  matchReason: z.string(),
+  status: z.enum(itemMatchStatuses),
+  notifiedAt: z.union([z.string(), z.date()]).nullable(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
+  lostItem: z.custom<typeof items.$inferSelect>(),
+  foundItem: z.custom<typeof items.$inferSelect>(),
+});
+
+const createdItemResponseSchema = z.object({
+  id: z.number(),
+  userId: z.number().nullable(),
+  reportType: z.string(),
+  title: z.string(),
+  description: z.string().nullable(),
+  imageUrl: z.string().nullable(),
+  itemCategory: z.string().nullable(),
+  color: z.string().nullable(),
+  size: z.string().nullable(),
+  tags: z.array(z.string()).nullable(),
+  location: z.string().nullable(),
+  latitude: z.string().nullable(),
+  longitude: z.string().nullable(),
+  date: z.union([z.string(), z.date()]).nullable(),
+  contactInfo: z.string().nullable(),
+  automaticMatchCount: z.number().optional(),
+});
 
 export const errorSchemas = {
   validation: z.object({
@@ -84,7 +123,34 @@ export const api = {
       path: "/api/items" as const,
       input: insertItemSchema,
       responses: {
-        201: z.custom<typeof items.$inferSelect>(),
+        201: createdItemResponseSchema,
+        400: errorSchemas.validation,
+      },
+    },
+  },
+  matches: {
+    list: {
+      method: "GET" as const,
+      path: "/api/matches" as const,
+      responses: {
+        200: z.array(matchResponseSchema),
+      },
+    },
+    getByItem: {
+      method: "GET" as const,
+      path: "/api/items/:id/matches" as const,
+      responses: {
+        200: z.array(matchResponseSchema),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateStatus: {
+      method: "PATCH" as const,
+      path: "/api/matches/:id" as const,
+      input: updateItemMatchStatusSchema,
+      responses: {
+        200: matchResponseSchema,
+        404: errorSchemas.notFound,
         400: errorSchemas.validation,
       },
     },
@@ -157,6 +223,9 @@ export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<
   (typeof api.ai.analyzeImage.responses)[200]
 >;
+export type MatchListResponse = z.infer<(typeof api.matches.list.responses)[200]>;
+export type MatchResponse = MatchListResponse[number];
+export type UpdateMatchStatusInput = z.infer<typeof api.matches.updateStatus.input>;
 export type SearchSimilarInput = z.infer<typeof api.ai.searchSimilar.input>;
 export type SearchSimilarResponse = z.infer<
   (typeof api.ai.searchSimilar.responses)[200]

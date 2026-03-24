@@ -1,5 +1,15 @@
 import { relations } from "drizzle-orm";
-import { pgTable, text, serial, timestamp, jsonb, integer, vector } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  serial,
+  timestamp,
+  jsonb,
+  integer,
+  vector,
+  uniqueIndex,
+  index,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -28,6 +38,34 @@ export const itemEmbeddings = pgTable("item_embeddings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const itemMatches = pgTable(
+  "item_matches",
+  {
+    id: serial("id").primaryKey(),
+    lostItemId: integer("lost_item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    foundItemId: integer("found_item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    score: integer("score").notNull(),
+    matchReason: text("match_reason").notNull(),
+    status: text("status").notNull().default("new"),
+    notifiedAt: timestamp("notified_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    lostFoundUnique: uniqueIndex("item_matches_lost_found_unique").on(
+      table.lostItemId,
+      table.foundItemId
+    ),
+    lostItemIndex: index("item_matches_lost_item_idx").on(table.lostItemId),
+    foundItemIndex: index("item_matches_found_item_idx").on(table.foundItemId),
+    statusIndex: index("item_matches_status_idx").on(table.status),
+  })
+);
+
 export const insertItemSchema = createInsertSchema(items).omit({
   id: true,
   date: true,
@@ -36,6 +74,22 @@ export const insertItemSchema = createInsertSchema(items).omit({
 export type Item = typeof items.$inferSelect;
 export type InsertItem = z.infer<typeof insertItemSchema>;
 export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
+export type ItemMatch = typeof itemMatches.$inferSelect;
+
+export const itemMatchStatuses = ["new", "viewed", "dismissed", "confirmed"] as const;
+export type ItemMatchStatus = (typeof itemMatchStatuses)[number];
+
+export const insertItemMatchSchema = createInsertSchema(itemMatches).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateItemMatchStatusSchema = z.object({
+  status: z.enum(itemMatchStatuses),
+});
+
+export type InsertItemMatch = z.infer<typeof insertItemMatchSchema>;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -94,6 +148,21 @@ export const itemsRelations = relations(items, ({ one, many }) => ({
     references: [users.id],
   }),
   chatRooms: many(chatRooms),
+  lostMatches: many(itemMatches, { relationName: "lost_item_matches" }),
+  foundMatches: many(itemMatches, { relationName: "found_item_matches" }),
+}));
+
+export const itemMatchesRelations = relations(itemMatches, ({ one }) => ({
+  lostItem: one(items, {
+    fields: [itemMatches.lostItemId],
+    references: [items.id],
+    relationName: "lost_item_matches",
+  }),
+  foundItem: one(items, {
+    fields: [itemMatches.foundItemId],
+    references: [items.id],
+    relationName: "found_item_matches",
+  }),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({

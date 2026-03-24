@@ -56,3 +56,29 @@ export async function ensureChatSchema(): Promise<void> {
     );
   `);
 }
+
+export async function ensureItemMatchSchema(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS item_matches (
+      id serial PRIMARY KEY,
+      lost_item_id integer NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      found_item_id integer NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      score integer NOT NULL,
+      match_reason text NOT NULL,
+      status text NOT NULL DEFAULT 'new',
+      notified_at timestamp,
+      created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      CONSTRAINT item_matches_lost_found_unique UNIQUE (lost_item_id, found_item_id)
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS item_matches_lost_item_idx ON item_matches (lost_item_id);`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS item_matches_found_item_idx ON item_matches (found_item_id);`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS item_matches_status_idx ON item_matches (status);`
+  );
+}

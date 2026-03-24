@@ -1,4 +1,11 @@
-import { useEffect, useState, useRef, type ChangeEvent, type DragEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  useRef,
+  type ChangeEvent,
+  type DragEvent,
+} from "react";
 import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -155,13 +162,13 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
     form.setValue("contactInfo", formatted.replace(/-/g, ""));
   };
 
-  const handleLocationChange = (location: {
-    latitude: string;
-    longitude: string;
-  }) => {
-    form.setValue("latitude", location.latitude);
-    form.setValue("longitude", location.longitude);
-  };
+  const handleLocationChange = useCallback(
+    (location: { latitude: string; longitude: string }) => {
+      form.setValue("latitude", location.latitude);
+      form.setValue("longitude", location.longitude);
+    },
+    [form]
+  );
 
   const processSelectedFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
@@ -252,7 +259,11 @@ export default function ReportPage({ forcedType }: ReportPageProps) {
 
     try {
       const result = await createMutation.mutateAsync({ ...data, reportType });
-      toast({ title: "신고 완료", description: "게시물이 등록되었습니다." });
+      const matchDescription =
+        result.reportType === "found" && result.automaticMatchCount
+          ? `게시물이 등록되었고 ${result.automaticMatchCount}개의 자동 매칭 후보를 저장했어요.`
+          : "게시물이 등록되었습니다.";
+      toast({ title: "신고 완료", description: matchDescription });
       setLocation(`/item/${result.id}`);
     } catch (error) {
       const description =
