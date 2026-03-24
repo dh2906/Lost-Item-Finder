@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!--
+    Maskable 아이콘: 배경이 전체 캔버스를 채워야 함
+    안전 영역(Safe Zone)은 중앙 80% = 반지름 204.8px 원형 내부
+    아이콘 내용물을 안전 영역 안에 배치
+  -->
+  <rect width="512" height="512" fill="#2563EB"/>
+
+  <!-- 돋보기 원 (안전 영역 내에 살짝 축소 배치) -->
+  <circle cx="218" cy="218" r="92" stroke="white" stroke-width="38"/>
+
+  <!-- 돋보기 손잡이 -->
+  <line x1="288" y1="288" x2="372" y2="372" stroke="white" stroke-width="38" stroke-linecap="round"/>
+
+  <!-- 위치 핀 (머리 부분) -->
+  <circle cx="218" cy="202" r="38" fill="white"/>
+
+  <!-- 위치 핀 (꼬리 부분) -->
+  <path d="M218 240 L218 264" stroke="white" stroke-width="24" stroke-linecap="round"/>
+</svg>
