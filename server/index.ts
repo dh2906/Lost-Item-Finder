@@ -57,6 +57,22 @@ app.use(cors({
 
 app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
 
+// SW의 importScripts()가 동기적으로 로드하는 Firebase config 엔드포인트.
+// Vite 미들웨어보다 반드시 먼저 등록해야 가로채기가 안 됨.
+app.get("/firebase-config.js", (_req, res) => {
+  const config = {
+    apiKey: process.env.VITE_FIREBASE_API_KEY ?? "",
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN ?? "",
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID ?? "",
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET ?? "",
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
+    appId: process.env.VITE_FIREBASE_APP_ID ?? "",
+  };
+  res.type("application/javascript");
+  res.set("Cache-Control", "no-store");
+  res.send(`self.FIREBASE_CONFIG = ${JSON.stringify(config)};`);
+});
+
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",

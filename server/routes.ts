@@ -9,7 +9,8 @@ import OpenAI from "openai";
 import { isAuthenticated } from "./auth";
 import { db } from "./db";
 import { and, eq, ne, or, desc, asc, isNull } from "drizzle-orm";
-import { chatRooms, chatMessages } from "@shared/schema";
+import { chatRooms, chatMessages, users } from "@shared/schema";
+import { sendFcmNotification } from "./fcm";
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -1067,6 +1068,22 @@ export async function registerRoutes(
     }
   });
 
+  // --- FCM 토큰 등록 API ---
+  app.post("/api/fcm/token", isAuthenticated, async (req, res) => {
+    try {
+      const { token } = req.body;
+      if (!token || typeof token !== "string") {
+        return res.status(400).json({ message: "FCM 토큰이 필요합니다" });
+      }
+      await db.update(users).set({ fcmToken: token }).where(eq(users.id, req.user!.id));
+      res.json({ message: "FCM 토큰이 등록되었습니다" });
+    } catch (err) {
+      console.error("[FCM] 토큰 등록 오류:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // --- Chat API ---
   app.post("/api/chat/rooms", isAuthenticated, async (req, res) => {
     try {
       const { itemId, receiverId } = req.body;
@@ -1235,6 +1252,25 @@ export async function registerRoutes(
       await db.update(chatRooms).set({
         updatedAt: new Date(),
       }).where(eq(chatRooms.id, roomId));
+
+      // 수신자에게 FCM 알림 발송 (실패해도 메시지 전송은 성공 처리)
+      const receiverId = room.senderId === senderId ? room.receiverId : room.senderId;
+      const [receiver, sender] = await Promise.all([
+        db.query.users.findFirst({ where: eq(users.id, receiverId) }),
+        db.query.users.findFirst({ where: eq(users.id, senderId) }),
+      ]);
+      if (receiver?.fcmToken) {
+        const senderName = sender?.name ?? sender?.username ?? "누군가";
+        // sendFcmNotification은 내부적으로 에러를 처리하므로 void로 fire-and-forget
+        void sendFcmNotification({
+          fcmToken: receiver.fcmToken,
+          title: `${senderName}님의 새 메시지`,
+          body: content.trim().length > 50
+            ? content.trim().slice(0, 50) + "..."
+            : content.trim(),
+          data: { roomId: String(roomId) },
+        });
+      }
 
       res.status(201).json(message);
     } catch (err) {
