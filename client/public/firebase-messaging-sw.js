@@ -3,6 +3,11 @@
 // Firebase가 즉시 초기화되어 onBackgroundMessage 핸들러가 항상 등록됩니다.
 importScripts('/firebase-config.js');
 
+// NOTE: Service Worker는 npm 속 compat CDN 빌드를 importScripts로 직접 받아야 합니다.
+// CDN 버전(10.12.2)은 앱 의존성(package.json firebase: ^12.x)과 다릅니다.
+// 이는 해당 리전이 gstatic CDN에서 안정적으로 검증된 비전이기 때문입니다.
+// 버전 업그레이드 시 아래 URL에서 해당 버전 존재 여부를 확인하세요:
+// https://www.gstatic.com/firebasejs/{version}/firebase-app-compat.js
 importScripts(
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'
 );
