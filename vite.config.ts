@@ -9,14 +9,24 @@ export default defineConfig({
     react(),
     runtimeErrorOverlay(),
     VitePWA({
-      registerType: "autoUpdate",
+      // injectManifest 전략:
+      //   firebase-messaging-sw.js 하나로 Workbox precache + FCM을 통합합니다.
+      //   (generateSW를 쓰면 두 SW가 같은 루트 스코프에 등록되어 충돌이 발생합니다.)
+      strategies: "injectManifest",
+      srcDir: "public",
+      filename: "firebase-messaging-sw.js",
+      // 사전 캐시 대상 파일 패턴 (런타임 캐싱은 SW 파일 내부에서 직접 정의)
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+      },
       // 개발 환경에서도 SW 활성화 (테스트용)
+      // importScripts 기반 클래식 SW이므로 type은 'classic'
       devOptions: {
         enabled: true,
-        type: "module",
+        type: "classic",
       },
       // 정적 에셋 포함 목록
-      includeAssets: ["favicon.png", "icons/*.svg"],
+      includeAssets: ["favicon.png", "icons/*.svg", "icons/*.png"],
       // Web App Manifest 설정
       manifest: {
         name: "ReturnIt - 분실물 찾기",
@@ -45,58 +55,24 @@ export default defineConfig({
             type: "image/svg+xml",
             purpose: "maskable",
           },
+          // PNG 아이콘: client/public/icons/ 에 수동으로 추가해야 합니다.
+          // (npm run pwa:generate 또는 outputs 폴더에서 복사)
+          {
+            src: "/icons/icon-192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "any",
+          },
+          {
+            src: "/icons/icon-512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
           {
             src: "/favicon.png",
             sizes: "48x48",
             type: "image/png",
-          },
-        ],
-      },
-      // Workbox 캐싱 전략
-      workbox: {
-        // 사전 캐시 대상 파일 패턴
-        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
-        // SPA 라우팅 폴백 (API 경로 제외)
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [
-          /^\/api\//,
-          /^\/firebase-config\.js$/,
-          /^\/firebase-messaging-sw\.js$/,
-        ],
-        // 런타임 캐싱 전략
-        runtimeCaching: [
-          {
-            // API 응답: NetworkFirst (항상 최신 데이터 우선, 오프라인 시 캐시)
-            urlPattern: /^\/api\/.*/i,
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              networkTimeoutSeconds: 10,
-              expiration: {
-                maxEntries: 64,
-                maxAgeSeconds: 60 * 5, // 5분
-              },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            // Google Fonts CSS: StaleWhileRevalidate
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: "StaleWhileRevalidate",
-            options: { cacheName: "google-fonts-stylesheets" },
-          },
-          {
-            // Google Fonts 웹폰트: CacheFirst (1년)
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts-webfonts",
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-              cacheableResponse: { statuses: [0, 200] },
-            },
           },
         ],
       },
