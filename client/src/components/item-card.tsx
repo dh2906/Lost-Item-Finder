@@ -15,21 +15,39 @@ interface ItemCardProps {
   reasoning?: string;
   distanceText?: string;
   className?: string;
-  variant?: "default" | "compact";
+  variant?: "default" | "compact" | "list";
 }
 
-function getDisplayTitle(item: Item) {
+function dedupeRepeatedTitleTokens(title: string) {
+  const tokens = title.split(" ").filter(Boolean);
+
+  if (tokens.length < 4) {
+    return title;
+  }
+
+  const uniqueTokens = tokens.filter((token, index) => tokens.indexOf(token) === index);
+
+  if (uniqueTokens.length <= Math.ceil(tokens.length / 2)) {
+    return uniqueTokens.join(" ");
+  }
+
+  return title;
+}
+
+export function getDisplayTitle(item: Pick<Item, "title" | "reportType">) {
   const strippedTitle = item.title
     .replace(/^(습득|분실)\s*[:\-]\s*/i, "")
     .replace(/^(found|lost)\s*[:\-]\s*/i, "")
     .trim();
 
   if (strippedTitle.length > 0) {
-    return strippedTitle
+    return dedupeRepeatedTitleTokens(
+      strippedTitle
       .replace(/^black cap$/i, "검은색 모자")
       .replace(/^담요주웠어요$/i, "파란색 별무늬 담요")
       .replace(/\s+/g, " ")
-      .trim();
+      .trim()
+    );
   }
 
   return item.reportType === "found" ? "등록된 습득물" : "등록된 분실물";
@@ -39,6 +57,7 @@ export function ItemCard({ item, score, reasoning, distanceText, className, vari
   const [isReasonExpanded, setIsExpanded] = useState(false);
   const reportLabel = item.reportType === "found" ? "습득" : "분실";
   const isCompact = variant === "compact";
+  const isList = variant === "list";
   const displayTitle = getDisplayTitle(item);
 
   const getMatchBadge = (scoreValue?: number) => {
@@ -69,74 +88,94 @@ export function ItemCard({ item, score, reasoning, distanceText, className, vari
         className="h-full"
       >
         <Card className="h-full overflow-hidden rounded-[24px] border border-border/70 bg-white/92 shadow-[0_14px_28px_-24px_rgba(27,31,59,0.16)] transition-all duration-300 group-hover:border-primary/20 group-hover:bg-white group-hover:shadow-[0_22px_36px_-28px_hsl(var(--primary)/0.2)] group-active:translate-y-0.5">
-          <div className={cn("relative overflow-hidden bg-[hsl(var(--primary-light))]", isCompact ? "aspect-[5/4]" : "aspect-[4/3]")}>
-            {item.imageUrl ? (
-              <img
-                src={item.imageUrl}
-                alt={displayTitle}
-                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                 <TagIcon className="h-10 w-10 text-primary/25" />
-               </div>
-             )}
+          <div className={cn(isList ? "grid gap-0 sm:grid-cols-[132px_minmax(0,1fr)] lg:grid-cols-[148px_minmax(0,1fr)]" : "") }>
+            <div className={cn(
+              "relative overflow-hidden bg-[hsl(var(--primary-light))]",
+              isList ? "aspect-[4/3] h-full min-h-[132px] sm:w-[132px] lg:w-[148px]" : isCompact ? "aspect-[5/4]" : "aspect-[4/3]"
+            )}>
+              {item.imageUrl ? (
+                <img
+                  src={item.imageUrl}
+                  alt={displayTitle}
+                  className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center">
+                  <TagIcon className="h-10 w-10 text-primary/25" />
+                </div>
+              )}
 
-            <div className="absolute left-3 top-3 flex flex-wrap gap-2">
-              <Badge
-                className={cn(
-                  "border-0 font-medium shadow-sm",
-                  item.reportType === "found"
-                    ? "bg-emerald-500 hover:bg-emerald-600 text-white"
-                    : "bg-rose-500 hover:bg-rose-600 text-white"
+              <div className="absolute left-3 top-3 flex flex-wrap gap-2">
+                <Badge
+                  className={cn(
+                    "border-0 font-medium shadow-sm",
+                    item.reportType === "found"
+                      ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                      : "bg-rose-500 hover:bg-rose-600 text-white"
+                  )}
+                >
+                  {reportLabel}
+                </Badge>
+
+                {!isCompact && !isList && matchBadge && (
+                  <Badge variant="outline" className={cn("font-medium shadow-sm border", matchBadge.className)}>
+                    <Sparkles className="mr-1 h-3 w-3" />
+                    {matchBadge.text}
+                  </Badge>
                 )}
-              >
-                {reportLabel}
-              </Badge>
 
-              {!isCompact && matchBadge && (
-                <Badge variant="outline" className={cn("font-medium shadow-sm border", matchBadge.className)}>
-                  <Sparkles className="mr-1 h-3 w-3" />
-                  {matchBadge.text}
-                </Badge>
-              )}
-
-              {!isCompact && distanceText && (
-                <Badge variant="outline" className="border-border/70 bg-white/95 font-medium text-slate-700 shadow-sm">
-                  <MapPin className="mr-1 h-3 w-3 text-primary/70" />
-                  {distanceText}
-                </Badge>
-              )}
+                {!isCompact && !isList && distanceText && (
+                  <Badge variant="outline" className="border-border/70 bg-white/95 font-medium text-slate-700 shadow-sm">
+                    <MapPin className="mr-1 h-3 w-3 text-primary/70" />
+                    {distanceText}
+                  </Badge>
+                )}
+              </div>
             </div>
-          </div>
 
-          <CardContent className={cn("flex flex-col p-4", isCompact ? "space-y-2.5" : "space-y-3")}>
-            <div className="space-y-2">
+            <CardContent className={cn("min-w-0 flex flex-col p-4", isCompact ? "space-y-2.5" : isList ? "space-y-2.5" : "space-y-3")}>
+              {isList && (matchBadge || distanceText) && (
+                <div className="flex flex-wrap gap-2">
+                  {matchBadge && (
+                    <Badge variant="outline" className={cn("font-medium shadow-sm border", matchBadge.className)}>
+                      <Sparkles className="mr-1 h-3 w-3" />
+                      {matchBadge.text}
+                    </Badge>
+                  )}
+                  {distanceText && (
+                    <Badge variant="outline" className="border-border/70 bg-white/95 font-medium text-slate-700 shadow-sm">
+                      <MapPin className="mr-1 h-3 w-3 text-primary/70" />
+                      {distanceText}
+                    </Badge>
+                  )}
+                </div>
+              )}
+            <div className="min-w-0 space-y-2">
               <h3 className={cn(
                  "text-base font-semibold leading-6 text-foreground transition-colors group-hover:text-primary",
-                 isCompact ? "line-clamp-2 min-h-[3rem]" : "line-clamp-2 min-h-[3rem]"
-               )}>
+                  isList ? "line-clamp-2" : isCompact ? "line-clamp-2 min-h-[3rem]" : "line-clamp-2 min-h-[3rem]"
+                )}>
                 {displayTitle}
               </h3>
               
-              <div className="flex flex-col gap-1.5 pt-0.5 text-sm text-slate-600">
+               <div className="min-w-0 flex flex-col gap-1.5 pt-0.5 text-sm text-slate-600">
                 {item.location && (
-                   <div className="flex items-center gap-2 leading-none">
+                   <div className="min-w-0 flex items-center gap-2 leading-none">
                      <MapPin className="h-3.5 w-3.5 shrink-0 text-primary/50" />
                      <span className="truncate pt-px font-medium text-slate-600">{item.location}</span>
                    </div>
                  )}
                  {item.date && (
-                    <div className="flex items-center gap-2 leading-none">
+                     <div className="min-w-0 flex items-center gap-2 leading-none">
                      <Calendar className="h-3.5 w-3.5 shrink-0 text-primary/50" />
-                      <span className="pt-px font-medium text-slate-600">{format(new Date(item.date), "PPP", { locale: ko })}</span>
+                       <span className="truncate pt-px font-medium text-slate-600">{format(new Date(item.date), "PPP", { locale: ko })}</span>
                     </div>
                   )}
                </div>
             </div>
 
-            {!isCompact && item.tags && item.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
+             {!isCompact && !isList && item.tags && item.tags.length > 0 && (
+               <div className="flex flex-wrap gap-1.5 pt-1">
                 {item.tags.slice(0, 3).map((tag) => (
                   <span
                     key={tag}
@@ -153,8 +192,8 @@ export function ItemCard({ item, score, reasoning, distanceText, className, vari
                </div>
              )}
 
-             {!isCompact && reasoning && (
-               <div className="mt-2 overflow-hidden rounded-[18px] border border-primary/10 bg-[hsl(var(--primary-light))/0.7] transition-colors hover:bg-[hsl(var(--primary-light))]">
+              {!isCompact && reasoning && (
+                <div className="mt-2 overflow-hidden rounded-[18px] border border-primary/10 bg-[hsl(var(--primary-light))/0.7] transition-colors hover:bg-[hsl(var(--primary-light))]">
                  <button
                    type="button"
                    onClick={toggleReason}
@@ -186,7 +225,8 @@ export function ItemCard({ item, score, reasoning, distanceText, className, vari
                 </AnimatePresence>
               </div>
             )}
-          </CardContent>
+            </CardContent>
+          </div>
         </Card>
       </motion.div>
     </Link>

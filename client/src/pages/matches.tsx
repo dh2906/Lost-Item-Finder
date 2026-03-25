@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { BellRing, CheckCircle2, Eye, Loader2, SearchX, XCircle } from "lucide-react";
 import { Layout } from "@/components/layout";
-import { ItemCard } from "@/components/item-card";
+import { getDisplayTitle, ItemCard } from "@/components/item-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -126,27 +126,27 @@ export default function MatchesPage() {
             <div className="space-y-6">
               {matches.map((match) => (
                 <Card key={match.id} className="border-border/70 bg-white/92">
-                  <CardContent className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-start">
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                        <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">
-                          {statusLabels[match.status]}
-                        </Badge>
-                        <span>내 분실물: {match.lostItem.title}</span>
+                    <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                          <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">
+                            {statusLabels[match.status]}
+                          </Badge>
+                          <span>내 분실물: {getDisplayTitle(match.lostItem)}</span>
+                        </div>
+                        <ItemCard
+                          item={match.foundItem}
+                          score={match.score}
+                          reasoning={match.matchReason}
+                          variant="list"
+                        />
                       </div>
-                      <ItemCard
-                        item={match.foundItem}
-                        score={match.score}
-                        reasoning={match.matchReason}
-                        variant="compact"
-                      />
-                    </div>
 
-                    <div className="space-y-3 rounded-[22px] border border-border/70 bg-secondary/35 p-4">
-                      <div>
+                      <div className="space-y-3 rounded-[22px] border border-border/70 bg-secondary/35 p-4 lg:sticky lg:top-24">
+                       <div>
                         <p className="text-sm font-semibold">빠른 처리</p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                          실제로 내 물건에 가까운지 판단한 결과를 남겨 두면 이후 푸시 기준을 조정하기 쉬워집니다.
+                          이 후보가 내 물건과 비슷한지 표시해 두면, 다음부터 더 정확한 자동 매칭과 알림을 보내는 데 도움이 됩니다.
                         </p>
                       </div>
                       <Button
