@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { BellRing, CheckCircle2, Eye, Loader2, SearchX, XCircle } from "lucide-react";
+import { BellRing, CheckCircle2, Loader2, SearchX, XCircle } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { getDisplayTitle, ItemCard } from "@/components/item-card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 const statusLabels = {
   new: "새 매칭",
   viewed: "확인함",
-  dismissed: "관련 없음",
+  dismissed: "숨김",
   confirmed: "가능성 높음",
 } as const;
 
@@ -21,16 +21,17 @@ export default function MatchesPage() {
   const { toast } = useToast();
   const { data: matches = [], isLoading, isError } = useMatches(isAuthenticated);
   const updateMatchStatus = useUpdateMatchStatus();
+  const activeMatches = matches.filter((match) => match.status !== "dismissed");
 
-  const handleStatusUpdate = async (
-    matchId: number,
-    status: "viewed" | "dismissed" | "confirmed"
-  ) => {
+  const handleStatusUpdate = async (matchId: number, status: "dismissed" | "confirmed") => {
     try {
       await updateMatchStatus.mutateAsync({ matchId, status });
       toast({
-        title: "매칭 상태를 업데이트했어요",
-        description: statusLabels[status],
+        title: status === "confirmed" ? "후보를 저장했어요" : "후보를 목록에서 숨겼어요",
+        description:
+          status === "confirmed"
+            ? "가능성 높은 후보로 표시했습니다."
+            : "아니오로 표시한 후보는 이 목록에서 제외됩니다.",
       });
     } catch (error) {
       toast({
@@ -87,7 +88,7 @@ export default function MatchesPage() {
                 내 분실물과 연결된 습득물
               </h1>
               <Badge variant="secondary" className="rounded-full px-3 py-1 text-sm font-semibold">
-                {matches.length}건
+                {activeMatches.length}건
               </Badge>
             </div>
             <p className="max-w-2xl text-base leading-7 text-muted-foreground">
@@ -109,13 +110,13 @@ export default function MatchesPage() {
                 매칭 결과를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.
               </CardContent>
             </Card>
-          ) : matches.length === 0 ? (
+          ) : activeMatches.length === 0 ? (
             <Card className="border-dashed border-border/80 bg-secondary/35">
               <CardContent className="flex flex-col items-center py-16 text-center">
                 <SearchX className="mb-4 h-10 w-10 text-muted-foreground/55" />
-                <h2 className="text-xl font-semibold">아직 자동 매칭 결과가 없어요</h2>
+                <h2 className="text-xl font-semibold">지금 확인할 후보가 없어요</h2>
                 <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                  분실물을 먼저 등록해 두면 이후 들어오는 습득물과 자동으로 비교해 보여드릴게요.
+                  새 매칭이 생기면 여기에서 다시 보여드릴게요. 필요하면 분실물 정보를 더 자세히 보완해 보세요.
                 </p>
                 <Button asChild className="mt-6 rounded-full px-6">
                   <Link href="/report/lost">분실물 신고하기</Link>
@@ -124,7 +125,7 @@ export default function MatchesPage() {
             </Card>
           ) : (
             <div className="space-y-6">
-              {matches.map((match) => (
+              {activeMatches.map((match) => (
                 <Card key={match.id} className="border-border/70 bg-white/92">
                     <CardContent className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-start">
                       <div className="space-y-3">
@@ -144,9 +145,9 @@ export default function MatchesPage() {
 
                       <div className="space-y-3 rounded-[22px] border border-border/70 bg-secondary/35 p-4 lg:sticky lg:top-24">
                        <div>
-                        <p className="text-sm font-semibold">빠른 처리</p>
+                        <p className="text-sm font-semibold">이 물건이 맞나요?</p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                          이 후보가 내 물건과 비슷한지 표시해 두면, 다음부터 더 정확한 자동 매칭과 알림을 보내는 데 도움이 됩니다.
+                          맞으면 저장하고, 아니면 이 목록에서 바로 숨길 수 있어요.
                         </p>
                       </div>
                       <Button
@@ -155,25 +156,16 @@ export default function MatchesPage() {
                         onClick={() => handleStatusUpdate(match.id, "confirmed")}
                       >
                         <CheckCircle2 className="mr-2 h-4 w-4" />
-                        가능성 높음
+                        네
                       </Button>
                       <Button
                         variant="outline"
                         className="w-full rounded-full"
                         disabled={updateMatchStatus.isPending}
-                        onClick={() => handleStatusUpdate(match.id, "viewed")}
-                      >
-                        <Eye className="mr-2 h-4 w-4" />
-                        확인 완료
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        className="w-full rounded-full text-muted-foreground"
-                        disabled={updateMatchStatus.isPending}
                         onClick={() => handleStatusUpdate(match.id, "dismissed")}
                       >
                         <XCircle className="mr-2 h-4 w-4" />
-                        관련 없음
+                        아니요
                       </Button>
                     </div>
                   </CardContent>
