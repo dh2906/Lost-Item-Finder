@@ -708,16 +708,16 @@ function calculateDistanceScore(distanceKm: number | null): number {
     return 0;
   }
   if (distanceKm <= 1) {
-    return 1;
+    return 0.35;
   }
   if (distanceKm <= 3) {
-    return 0.8;
+    return 0.2;
   }
   if (distanceKm <= 10) {
-    return 0.55;
+    return 0.08;
   }
   if (distanceKm <= 30) {
-    return 0.25;
+    return 0.02;
   }
 
   return 0;
@@ -799,21 +799,29 @@ function calculateAutomaticMatchScore(params: {
     calculateLocationTextSimilarity(sourceItem, candidateItem)
   );
   const vectorScore = calculateCosineSimilarity(sourceEmbedding, candidateEmbedding);
+  const hasMinimumSemanticEvidence =
+    vectorScore >= AUTO_MATCH_MIN_VECTOR_SCORE ||
+    keywordScore >= AUTO_MATCH_MIN_KEYWORD_SCORE ||
+    categoryScore >= AUTO_MATCH_MIN_CATEGORY_SCORE;
 
-  if (categoryScore === 0 && keywordScore === 0 && vectorScore < 0.18) {
+  if (!hasMinimumSemanticEvidence) {
     return 0;
   }
 
-  if (dateScore === 0 && locationScore === 0 && vectorScore < 0.28) {
+  if (categoryScore === 0 && keywordScore < 0.2 && vectorScore < 0.38) {
+    return 0;
+  }
+
+  if (dateScore === 0 && locationScore === 0 && vectorScore < 0.34) {
     return 0;
   }
 
   const blendedScore =
-    categoryScore * 0.16 +
+    categoryScore * 0.18 +
     colorScore * 0.08 +
-    keywordScore * 0.22 +
+    keywordScore * 0.26 +
     dateScore * 0.18 +
-    locationScore * 0.12 +
+    locationScore * 0.06 +
     vectorScore * 0.24;
 
   return Math.max(0, Math.min(1, Number(blendedScore.toFixed(4))));

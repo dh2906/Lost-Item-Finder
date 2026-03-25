@@ -229,7 +229,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(itemMatches)
       .where(inArray(itemMatches.lostItemId, lostItemIds))
-      .orderBy(desc(itemMatches.createdAt));
+      .orderBy(desc(itemMatches.score), desc(itemMatches.updatedAt), desc(itemMatches.createdAt));
 
     if (matches.length === 0) {
       return [];
