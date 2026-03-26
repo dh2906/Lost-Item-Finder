@@ -19,10 +19,12 @@ export default defineConfig({
       injectManifest: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
       },
-      // 개발 환경에서도 SW 활성화 (테스트용)
+      // 개발 환경에서 SW는 기본 비활성화.
+      // VITE_PWA_DEV=true 일 때만 테스트용으로 활성화합니다.
+      // (항상 켜두면 HMR 캐시 오염으로 오래된 번들이 남는 문제 발생)
       // importScripts 기반 클래식 SW이므로 type은 'classic'
       devOptions: {
-        enabled: true,
+        enabled: process.env.VITE_PWA_DEV === "true",
         type: "classic",
       },
       // 정적 에셋 포함 목록
@@ -55,8 +57,8 @@ export default defineConfig({
             type: "image/svg+xml",
             purpose: "maskable",
           },
-          // PNG 아이콘: client/public/icons/ 에 수동으로 추가해야 합니다.
-          // (npm run pwa:generate 또는 outputs 폴더에서 복사)
+          // PNG 아이콘: npm run pwa:icons 실행 후 생성됩니다.
+          // 파일이 없으면 설치/알림 아이콘이 404로 깨지므로 반드시 생성 후 커밋하세요.
           {
             src: "/icons/icon-192.png",
             sizes: "192x192",

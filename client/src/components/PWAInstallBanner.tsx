@@ -15,7 +15,7 @@ const DISMISSED_KEY = "pwa-install-dismissed";
  * - 데스크톱: 우측 하단 플로팅
  */
 export function PWAInstallBanner() {
-  const { isInstallable, install } = usePWAInstall();
+  const { isInstallable, isInstalled, install } = usePWAInstall();
   // sessionStorage로 초기화: 탭을 닫기 전까지 dismissed 상태 유지
   const [dismissed, setDismissed] = useState(
     () => sessionStorage.getItem(DISMISSED_KEY) === "true"
@@ -31,12 +31,13 @@ export function PWAInstallBanner() {
     setDismissed(true);
   };
 
-  // 설치 완료 시 배너 자동 숨김
+  // 실제로 설치가 완료된 경우에만 DISMISSED_KEY 초기화
+  // (isInstallable이 false가 되는 시점은 거절/오류 후에도 발생하므로 그때는 초기화하지 않음)
   useEffect(() => {
-    if (!isInstallable) {
+    if (isInstalled) {
       sessionStorage.removeItem(DISMISSED_KEY);
     }
-  }, [isInstallable]);
+  }, [isInstalled]);
 
   return (
     <AnimatePresence>
@@ -80,6 +81,7 @@ export function PWAInstallBanner() {
 
           {/* 닫기 버튼 */}
           <button
+            type="button"
             onClick={dismiss}
             className="shrink-0 rounded-full p-1 transition-colors hover:bg-blue-500"
             aria-label="배너 닫기"
