@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <!-- 배경 (둥근 모서리는 OS가 알아서 처리) -->
+  <rect width="512" height="512" rx="80" fill="#2563EB"/>
+
+  <!-- 돋보기 원 -->
+  <circle cx="214" cy="214" r="108" stroke="white" stroke-width="44"/>
+
+  <!-- 돋보기 손잡이 -->
+  <line x1="292" y1="292" x2="392" y2="392" stroke="white" stroke-width="44" stroke-linecap="round"/>
+
+  <!-- 위치 핀 (머리 부분) -->
+  <circle cx="214" cy="196" r="46" fill="white"/>
+
+  <!-- 위치 핀 (꼬리 부분) -->
+  <path d="M214 242 L214 272" stroke="white" stroke-width="28" stroke-linecap="round"/>
+</svg>
