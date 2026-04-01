@@ -5,22 +5,14 @@ import {
   users,
   type Item,
   type InsertItem,
-  type User,
   type InsertUser,
+  type User,
   type UserRole,
   type UserStatus,
 } from "@shared/schema";
 import { db } from "./db";
-import {
-  eq,
-  desc,
-  ilike,
-  and,
-  isNull,
-  cosineDistance,
-  sql,
-} from "drizzle-orm";
-import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { and, cosineDistance, desc, eq, ilike, isNull, sql } from "drizzle-orm";
+import { randomBytes, scrypt, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 
 const scryptAsync = promisify(scrypt);
@@ -43,7 +35,6 @@ export interface AdminUserRecord extends Omit<User, "password"> {
 }
 
 export interface AdminItemRecord extends Item {
-  userId: number | null;
   ownerName: string | null;
   ownerUsername: string | null;
   statusLabel: string;
@@ -92,6 +83,19 @@ function applyConfiguredAdminRole<T extends User>(user: T): T {
   return user;
 }
 
+async function syncConfiguredAdminRoles(): Promise<void> {
+  const configuredAdminUsernames = getConfiguredAdminUsernames();
+
+  for (const username of configuredAdminUsernames) {
+    await db
+      .update(users)
+      .set({ role: "admin" })
+      .where(
+        sql`lower(${users.username}) = ${username} and ${users.role} <> 'admin'`
+      );
+  }
+}
+
 async function ensureConfiguredAdminRole(user: User): Promise<User> {
   if (!isConfiguredAdminUsername(user.username) || user.role === "admin") {
     return user;
@@ -106,7 +110,7 @@ async function ensureConfiguredAdminRole(user: User): Promise<User> {
   return updatedUser ?? user;
 }
 
-function sanitizeAdminUserRecord(user: User, itemCount = 0): AdminUserRecord {
+function sanitizeAdminUserRecord(user: User, itemCount: number): AdminUserRecord {
   const { password: _password, ...safeUser } = applyConfiguredAdminRole(user);
   return {
     ...safeUser,
@@ -117,7 +121,7 @@ function sanitizeAdminUserRecord(user: User, itemCount = 0): AdminUserRecord {
 export interface IStorage {
   getItems(type?: "lost" | "found", search?: string): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
-  createItem(item: InsertItem): Promise<Item>;
+  createItem(item: InsertItem & { userId?: number | null }): Promise<Item>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
   getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
   searchFoundItemsByEmbedding(
@@ -140,6 +144,7 @@ export interface IStorage {
     search?: string;
     role?: UserRole;
     status?: UserStatus;
+    limit?: number;
   }): Promise<AdminUserRecord[]>;
   updateUserByAdmin(
     userId: number,
@@ -151,6 +156,7 @@ export interface IStorage {
   getAdminItems(filters?: {
     search?: string;
     type?: "lost" | "found";
+    limit?: number;
   }): Promise<AdminItemRecord[]>;
   deleteItemByAdmin(itemId: number): Promise<boolean>;
 }
@@ -173,7 +179,7 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
-  async createItem(insertItem: InsertItem): Promise<Item> {
+  async createItem(insertItem: InsertItem & { userId?: number | null }): Promise<Item> {
     const [item] = await db.insert(items).values(insertItem).returning();
     return item;
   }
@@ -203,7 +209,10 @@ export class DatabaseStorage implements IStorage {
     return rows.map((row) => row.item);
   }
 
-  async searchFoundItemsByEmbedding(embedding: number[], limit = 12): Promise<Array<{ item: Item; score: number }>> {
+  async searchFoundItemsByEmbedding(
+    embedding: number[],
+    limit = 12
+  ): Promise<Array<{ item: Item; score: number }>> {
     const distance = cosineDistance(itemEmbeddings.embedding, embedding);
 
     const rows = await db
@@ -293,7 +302,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAdminDashboardData(): Promise<AdminDashboardData> {
-    const [userStats, itemStats, recentItems, recentUsers] = await Promise.all([
+    await syncConfiguredAdminRoles();
+
+    const [userStats, itemStats, recentUsers, recentItems] = await Promise.all([
       db
         .select({
           totalUsers: sql<number>`cast(count(*) as int)`,
@@ -310,8 +321,8 @@ export class DatabaseStorage implements IStorage {
           recentItems: sql<number>`cast(count(*) filter (where ${items.date} >= now() - interval '7 days') as int)`,
         })
         .from(items),
-      this.getAdminItems({}).then((list) => list.slice(0, 6)),
-      this.getAdminUsers({}).then((list) => list.slice(0, 6)),
+      this.getAdminUsers({ limit: 6 }),
+      this.getAdminItems({ limit: 6 }),
     ]);
 
     return {
@@ -334,7 +345,10 @@ export class DatabaseStorage implements IStorage {
     search?: string;
     role?: UserRole;
     status?: UserStatus;
+    limit?: number;
   }): Promise<AdminUserRecord[]> {
+    await syncConfiguredAdminRoles();
+
     const conditions = [];
 
     if (filters?.search?.trim()) {
@@ -352,13 +366,25 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(users.status, filters.status));
     }
 
-    const rows = await db
-      .select()
+    const baseQuery = db
+      .select({
+        user: users,
+        itemCount: sql<number>`cast(count(${items.id}) as int)`,
+      })
       .from(users)
+      .leftJoin(items, eq(items.userId, users.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .groupBy(users.id)
       .orderBy(desc(users.createdAt));
 
-    return rows.map((user) => sanitizeAdminUserRecord(user, 0));
+    const rows =
+      typeof filters?.limit === "number"
+        ? await baseQuery.limit(filters.limit)
+        : await baseQuery;
+
+    return rows.map((row) =>
+      sanitizeAdminUserRecord(row.user, Number(row.itemCount))
+    );
   }
 
   async updateUserByAdmin(
@@ -393,6 +419,7 @@ export class DatabaseStorage implements IStorage {
   async getAdminItems(filters?: {
     search?: string;
     type?: "lost" | "found";
+    limit?: number;
   }): Promise<AdminItemRecord[]> {
     const conditions = [];
 
@@ -407,18 +434,27 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
-    const rows = await db
-      .select()
+    const baseQuery = db
+      .select({
+        item: items,
+        ownerName: users.name,
+        ownerUsername: users.username,
+      })
       .from(items)
+      .leftJoin(users, eq(items.userId, users.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(items.date));
 
-    return rows.map((item) => ({
-      ...item,
-      userId: null,
-      ownerName: null,
-      ownerUsername: null,
-      statusLabel: item.reportType === "lost" ? "분실 접수" : "습득 접수",
+    const rows =
+      typeof filters?.limit === "number"
+        ? await baseQuery.limit(filters.limit)
+        : await baseQuery;
+
+    return rows.map((row) => ({
+      ...row.item,
+      ownerName: row.ownerName ?? null,
+      ownerUsername: row.ownerUsername ?? null,
+      statusLabel: row.item.reportType === "lost" ? "분실 접수" : "습득 접수",
     }));
   }
 

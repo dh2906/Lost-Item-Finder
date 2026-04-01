@@ -13,6 +13,7 @@ import { z } from "zod";
 
 export const items = pgTable("items", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
   reportType: text("report_type").notNull(),
   title: text("title").notNull(),
   description: text("description"),
@@ -37,8 +38,14 @@ export const itemEmbeddings = pgTable("item_embeddings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertItemSchema = createInsertSchema(items).omit({
+export const reportTypes = ["lost", "found"] as const;
+export type ReportType = (typeof reportTypes)[number];
+
+export const insertItemSchema = createInsertSchema(items, {
+  reportType: z.enum(reportTypes),
+}).omit({
   id: true,
+  userId: true,
   date: true,
 });
 

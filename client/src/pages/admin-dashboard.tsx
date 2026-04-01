@@ -557,10 +557,10 @@ export default function AdminDashboardPage() {
                             size="sm"
                             disabled={deleteItemMutation.isPending}
                             onClick={() => {
-                              const shouldDelete = window.confirm(
-                                "이 게시글을 삭제할까요? 연결된 채팅과 매칭도 함께 제거될 수 있습니다."
+                              const confirmedDelete = window.confirm(
+                                "\uC774 \uAC8C\uC2DC\uAE00\uC744 \uC0AD\uC81C\uD560\uAE4C\uC694? \uC774 \uC791\uC5C5\uC740 \uB418\uB3CC\uB9B4 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4."
                               );
-                              if (!shouldDelete) {
+                              if (!confirmedDelete) {
                                 return;
                               }
                               deleteItemMutation.mutate(item.id);

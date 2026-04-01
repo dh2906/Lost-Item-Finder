@@ -37,6 +37,7 @@ const MIN_FALLBACK_MATCH_SCORE = Number(
 const favoriteItemIdSchema = z.object({
   itemId: z.coerce.number().int().positive(),
 });
+const positiveIdSchema = z.coerce.number().int().positive();
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -641,13 +642,22 @@ export async function registerRoutes(
 
   app.patch(api.admin.updateUser.path, isAdmin, async (req, res) => {
     try {
-      const userId = Number(req.params.id);
+      const userId = positiveIdSchema.parse(req.params.id);
       const input = api.admin.updateUser.input.parse(req.body);
+      const isCurrentAdmin = req.user?.id === userId;
 
-      if (req.user?.id === userId && input.status === "suspended") {
-        return res
-          .status(400)
-          .json({ message: "현재 로그인한 관리자 계정은 정지할 수 없습니다." });
+      if (isCurrentAdmin && input.status === "suspended") {
+        return res.status(400).json({
+          message:
+            "\uD604\uC7AC \uB85C\uADF8\uC778\uD55C \uAD00\uB9AC\uC790 \uACC4\uC815\uC740 \uC815\uC9C0\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+        });
+      }
+
+      if (isCurrentAdmin && input.role && input.role !== "admin") {
+        return res.status(400).json({
+          message:
+            "\uD604\uC7AC \uB85C\uADF8\uC778\uD55C \uAD00\uB9AC\uC790 \uACC4\uC815\uC740 \uAD00\uB9AC\uC790 \uC5ED\uD560\uC5D0\uC11C \uAC15\uB4F1\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.",
+        });
       }
 
       const updatedUser = await storage.updateUserByAdmin(userId, input);
@@ -693,7 +703,7 @@ export async function registerRoutes(
 
   app.delete(api.admin.deleteItem.path, isAdmin, async (req, res) => {
     try {
-      const itemId = Number(req.params.id);
+      const itemId = positiveIdSchema.parse(req.params.id);
       const deleted = await storage.deleteItemByAdmin(itemId);
       if (!deleted) {
         return res.status(404).json({ message: "Item not found" });
@@ -702,6 +712,12 @@ export async function registerRoutes(
       res.json({ success: true });
     } catch (err) {
       console.error(err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });
@@ -733,7 +749,10 @@ export async function registerRoutes(
   app.post(api.items.create.path, async (req, res) => {
     try {
       const input = api.items.create.input.parse(req.body);
-      const item = await storage.createItem(input);
+      const item = await storage.createItem({
+        ...input,
+        userId: req.user?.id ?? null,
+      });
 
       if (item.reportType === "found") {
         try {

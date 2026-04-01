@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { insertItemSchema, items, userRoles, userStatuses } from "./schema";
+import { insertItemSchema, items, reportTypes, userRoles, userStatuses } from "./schema";
 
 const favoriteItemSchema = z.object({
   item: z.custom<typeof items.$inferSelect>(),
@@ -30,7 +30,7 @@ const adminItemResponseSchema = z.object({
   userId: z.number().nullable(),
   ownerName: z.string().nullable(),
   ownerUsername: z.string().nullable(),
-  reportType: z.enum(["lost", "found"]),
+  reportType: z.enum(reportTypes),
   title: z.string(),
   description: z.string().nullable(),
   itemCategory: z.string().nullable(),
@@ -116,7 +116,7 @@ export const api = {
       path: "/api/items" as const,
       input: z
         .object({
-          type: z.enum(["lost", "found"]).optional(),
+          type: z.enum(reportTypes).optional(),
           search: z.string().optional(),
         })
         .optional(),
@@ -248,7 +248,7 @@ export const api = {
           status: z.enum(userStatuses).optional(),
         })
         .refine((value) => value.role !== undefined || value.status !== undefined, {
-          message: "At least one field must be provided",
+          message: "최소 한 개 이상의 필드를 입력해야 합니다.",
         }),
       responses: {
         200: adminUserResponseSchema,
@@ -262,7 +262,7 @@ export const api = {
       input: z
         .object({
           search: z.string().optional(),
-          type: z.enum(["lost", "found"]).optional(),
+          type: z.enum(reportTypes).optional(),
         })
         .optional(),
       responses: {
