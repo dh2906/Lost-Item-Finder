@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { insertItemSchema, items, User } from "./schema";
 
+const favoriteItemSchema = z.object({
+  item: z.custom<typeof items.$inferSelect>(),
+  createdAt: z.string(),
+});
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -89,6 +94,38 @@ export const api = {
       },
     },
   },
+  favorites: {
+    list: {
+      method: "GET" as const,
+      path: "/api/favorites" as const,
+      responses: {
+        200: z.array(favoriteItemSchema),
+      },
+    },
+    add: {
+      method: "POST" as const,
+      path: "/api/favorites" as const,
+      input: z.object({
+        itemId: z.number().int().positive(),
+      }),
+      responses: {
+        201: z.object({
+          message: z.string(),
+        }),
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    remove: {
+      method: "DELETE" as const,
+      path: "/api/favorites/:itemId" as const,
+      responses: {
+        200: z.object({
+          message: z.string(),
+        }),
+      },
+    },
+  },
   ai: {
     analyzeImage: {
       method: "POST" as const,
@@ -156,6 +193,10 @@ export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<
   (typeof api.ai.analyzeImage.responses)[200]
 >;
+export type FavoriteItemsResponse = z.infer<
+  (typeof api.favorites.list.responses)[200]
+>;
+export type FavoriteInput = z.infer<typeof api.favorites.add.input>;
 export type SearchSimilarInput = z.infer<typeof api.ai.searchSimilar.input>;
 export type SearchSimilarResponse = z.infer<
   (typeof api.ai.searchSimilar.responses)[200]

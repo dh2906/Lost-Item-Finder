@@ -1,6 +1,12 @@
 import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MapPinCheckInside, ChevronDown, LogOut, User as UserIcon } from "lucide-react";
+import {
+  MapPinCheckInside,
+  ChevronDown,
+  Heart,
+  LogOut,
+  User as UserIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -149,6 +155,11 @@ export function Layout({ children }: { children: ReactNode }) {
                       <p className="text-xs leading-none text-muted-foreground">{user?.username}</p>
                     </div>
                   </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => void setLocation("/mypage")}>
+                    <Heart className="mr-2 h-4 w-4" />
+                    마이페이지
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
                     <LogOut className="mr-2 h-4 w-4" />

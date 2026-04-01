@@ -13,6 +13,7 @@ import SearchPage from "@/pages/search";
 import ItemsPage from "@/pages/items";
 import ItemDetail from "@/pages/item-detail";
 import { LoginPage } from "@/pages/login";
+import MyPage from "@/pages/mypage";
 import { RegisterPage } from "@/pages/register";
 import { useLocation } from "wouter";
 
@@ -58,6 +59,9 @@ function Router() {
           <Route path="/search" component={SearchPage} />
           <Route path="/items" component={ItemsPage} />
           <Route path="/item/:id" component={ItemDetail} />
+          <Route path="/mypage">
+            <ProtectedRoute><MyPage /></ProtectedRoute>
+          </Route>
           <Route path="/login" component={LoginPage} />
           <Route path="/register" component={RegisterPage} />
           <Route component={NotFound} />

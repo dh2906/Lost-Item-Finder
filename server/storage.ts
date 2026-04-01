@@ -1,6 +1,15 @@
-import { items, itemEmbeddings, users, type Item, type InsertItem, type User, type InsertUser } from "@shared/schema";
+import {
+  favorites,
+  items,
+  itemEmbeddings,
+  users,
+  type Item,
+  type InsertItem,
+  type User,
+  type InsertUser,
+} from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, ilike, and, isNull, cosineDistance, sql } from "drizzle-orm";
+import { eq, desc, ilike, and, isNull, cosineDistance } from "drizzle-orm";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 
@@ -27,7 +36,12 @@ export interface IStorage {
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
   getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
   searchFoundItemsByEmbedding(embedding: number[], limit?: number): Promise<Array<{ item: Item; score: number }>>;
-  
+
+  // Favorites
+  getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>>;
+  addFavorite(userId: number, itemId: number): Promise<void>;
+  removeFavorite(userId: number, itemId: number): Promise<boolean>;
+
   // Users
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
@@ -100,6 +114,39 @@ export class DatabaseStorage implements IStorage {
       item: row.item,
       score: Math.max(0, 1 - Number(row.distance ?? 1)),
     }));
+  }
+
+  async getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>> {
+    const rows = await db
+      .select({
+        item: items,
+        createdAt: favorites.createdAt,
+      })
+      .from(favorites)
+      .innerJoin(items, eq(favorites.itemId, items.id))
+      .where(eq(favorites.userId, userId))
+      .orderBy(desc(favorites.createdAt));
+
+    return rows.map((row) => ({
+      item: row.item,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  async addFavorite(userId: number, itemId: number): Promise<void> {
+    await db
+      .insert(favorites)
+      .values({ userId, itemId })
+      .onConflictDoNothing();
+  }
+
+  async removeFavorite(userId: number, itemId: number): Promise<boolean> {
+    const deletedRows = await db
+      .delete(favorites)
+      .where(and(eq(favorites.userId, userId), eq(favorites.itemId, itemId)))
+      .returning({ id: favorites.id });
+
+    return deletedRows.length > 0;
   }
 
   // Users

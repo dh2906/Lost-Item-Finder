@@ -43,6 +43,7 @@ export function useAuth() {
     },
     onSuccess: () => {
       queryClient.setQueryData(AUTH_QUERY_KEY, null);
+      queryClient.removeQueries({ queryKey: ["favorites"] });
       toast({ title: "로그아웃 되었습니다" });
       setLocation("/");
     },
