@@ -518,10 +518,10 @@ export class DatabaseStorage implements IStorage {
       ownerUsername: row.ownerUsername ?? null,
       statusLabel:
         row.item.status === "resolved"
-          ? "Resolved"
+          ? "해결됨"
           : row.item.reportType === "lost"
-          ? "Lost report"
-          : "Found report",
+          ? "분실 접수"
+          : "습득 접수",
     }));
   }
 

@@ -66,7 +66,7 @@ export const updateItemSchema = itemBaseSchema
   .refine(
     (value) => Object.values(value).some((field) => field !== undefined),
     {
-      message: "At least one field must be provided.",
+      message: "최소 한 개 이상의 필드를 입력해야 합니다",
     }
   );
 

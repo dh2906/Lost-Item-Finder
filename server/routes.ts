@@ -38,6 +38,17 @@ const favoriteItemIdSchema = z.object({
   itemId: z.coerce.number().int().positive(),
 });
 const positiveIdSchema = z.coerce.number().int().positive();
+const embeddingRelevantFields = new Set([
+  "title",
+  "description",
+  "itemCategory",
+  "color",
+  "size",
+  "tags",
+  "location",
+  "latitude",
+  "longitude",
+]);
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -805,7 +816,12 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Item not found" });
       }
 
-      if (item.reportType === "found") {
+      const shouldRefreshEmbedding =
+        item.reportType === "found" &&
+        item.status === "active" &&
+        Object.keys(input).some((field) => embeddingRelevantFields.has(field));
+
+      if (shouldRefreshEmbedding) {
         try {
           await ensureItemEmbedding(item);
         } catch (embeddingError) {
