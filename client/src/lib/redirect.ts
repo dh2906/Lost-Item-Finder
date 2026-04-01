@@ -14,7 +14,10 @@ export function sanitizeRedirect(value: string | null, fallback = "/"): string {
   }
 
   const pathname = getPathname(value);
-  if (AUTH_PAGE_PATHS.has(pathname)) {
+  const normalizedPathname =
+    pathname !== "/" ? pathname.replace(/\/+$/, "") || "/" : "/";
+
+  if (AUTH_PAGE_PATHS.has(normalizedPathname)) {
     return fallback;
   }
 

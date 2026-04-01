@@ -28,10 +28,6 @@ export function ProtectedRoute({ children, redirectTo = "/login" }: ProtectedRou
     );
   }
 
-  if (isAuthenticated) {
-    return <>{children}</>;
-  }
-
   if (isError) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
@@ -48,6 +44,10 @@ export function ProtectedRoute({ children, redirectTo = "/login" }: ProtectedRou
         </div>
       </div>
     );
+  }
+
+  if (isAuthenticated) {
+    return <>{children}</>;
   }
 
   if (!isAuthenticated) {
