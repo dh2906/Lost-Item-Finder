@@ -1,6 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type ItemInput, type ItemResponse, type ItemsListResponse } from "@shared/routes";
+import {
+  api,
+  buildUrl,
+  type ItemInput,
+  type ItemResponse,
+  type ItemsListResponse,
+  type MyItemsResponse,
+  type UpdateItemInput,
+} from "@shared/routes";
 import { z } from "zod";
+import { FAVORITES_QUERY_KEY, MY_ITEMS_QUERY_KEY } from "@/lib/query-keys";
 
 function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: string): T {
   const result = schema.safeParse(data);
@@ -26,6 +35,28 @@ export function useItems(filters?: { type?: 'lost' | 'found', search?: string })
       if (!res.ok) throw new Error("Failed to fetch items");
       const data = await res.json();
       return parseWithLogging(api.items.list.responses[200], data, "items.list");
+    },
+  });
+}
+
+export function useMyItems(filters?: {
+  type?: "lost" | "found";
+  status?: "active" | "resolved";
+}) {
+  const queryParams = new URLSearchParams();
+  if (filters?.type) queryParams.set("type", filters.type);
+  if (filters?.status) queryParams.set("status", filters.status);
+
+  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
+  const url = `${api.items.mine.path}${queryString}`;
+
+  return useQuery<MyItemsResponse>({
+    queryKey: [...MY_ITEMS_QUERY_KEY, filters],
+    queryFn: async () => {
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch my items");
+      const data = await res.json();
+      return parseWithLogging(api.items.mine.responses[200], data, "items.mine");
     },
   });
 }
@@ -71,6 +102,96 @@ export function useCreateItem() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.items.list.path] });
+      queryClient.invalidateQueries({ queryKey: MY_ITEMS_QUERY_KEY });
+    },
+  });
+}
+
+export function useUpdateItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      itemId,
+      data,
+    }: {
+      itemId: number;
+      data: UpdateItemInput;
+    }) => {
+      const validated = api.items.update.input.parse(data);
+      const res = await fetch(buildUrl(api.items.update.path, { id: itemId }), {
+        method: api.items.update.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+        credentials: "include",
+      });
+
+      const resData = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 400) {
+          const error = parseWithLogging(
+            api.items.update.responses[400],
+            resData,
+            "items.update.error"
+          );
+          throw new Error(error.message);
+        }
+
+        if (res.status === 404) {
+          const error = parseWithLogging(
+            api.items.update.responses[404],
+            resData,
+            "items.update.notFound"
+          );
+          throw new Error(error.message);
+        }
+
+        throw new Error("Failed to update item");
+      }
+
+      return parseWithLogging(api.items.update.responses[200], resData, "items.update");
+    },
+    onSuccess: (item) => {
+      queryClient.invalidateQueries({ queryKey: [api.items.list.path] });
+      queryClient.invalidateQueries({ queryKey: MY_ITEMS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: FAVORITES_QUERY_KEY });
+      queryClient.setQueryData([api.items.get.path, item.id], item);
+    },
+  });
+}
+
+export function useDeleteItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (itemId: number) => {
+      const res = await fetch(buildUrl(api.items.delete.path, { id: itemId }), {
+        method: api.items.delete.method,
+        credentials: "include",
+      });
+
+      const resData = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 404) {
+          const error = parseWithLogging(
+            api.items.delete.responses[404],
+            resData,
+            "items.delete.notFound"
+          );
+          throw new Error(error.message);
+        }
+
+        throw new Error("Failed to delete item");
+      }
+
+      return parseWithLogging(api.items.delete.responses[200], resData, "items.delete");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.items.list.path] });
+      queryClient.invalidateQueries({ queryKey: MY_ITEMS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: FAVORITES_QUERY_KEY });
     },
   });
 }

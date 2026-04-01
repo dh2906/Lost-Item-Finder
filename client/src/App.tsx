@@ -12,6 +12,7 @@ import ReportPage from "@/pages/report";
 import SearchPage from "@/pages/search";
 import ItemsPage from "@/pages/items";
 import ItemDetail from "@/pages/item-detail";
+import EditItemPage from "@/pages/edit-item";
 import { LoginPage } from "@/pages/login";
 import MyPage from "@/pages/mypage";
 import AdminDashboardPage from "@/pages/admin-dashboard";
@@ -59,6 +60,9 @@ function Router() {
           </Route>
           <Route path="/search" component={SearchPage} />
           <Route path="/items" component={ItemsPage} />
+          <Route path="/item/:id/edit">
+            <ProtectedRoute><EditItemPage /></ProtectedRoute>
+          </Route>
           <Route path="/item/:id" component={ItemDetail} />
           <Route path="/mypage">
             <ProtectedRoute><MyPage /></ProtectedRoute>

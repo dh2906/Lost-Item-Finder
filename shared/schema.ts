@@ -11,10 +11,17 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+export const reportTypes = ["lost", "found"] as const;
+export type ReportType = (typeof reportTypes)[number];
+
+export const itemStatuses = ["active", "resolved"] as const;
+export type ItemStatus = (typeof itemStatuses)[number];
+
 export const items = pgTable("items", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
   reportType: text("report_type").notNull(),
+  status: text("status").notNull().default("active"),
   title: text("title").notNull(),
   description: text("description"),
   imageUrl: text("image_url"),
@@ -38,19 +45,34 @@ export const itemEmbeddings = pgTable("item_embeddings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const reportTypes = ["lost", "found"] as const;
-export type ReportType = (typeof reportTypes)[number];
-
-export const insertItemSchema = createInsertSchema(items, {
+const itemBaseSchema = createInsertSchema(items, {
   reportType: z.enum(reportTypes),
+  status: z.enum(itemStatuses),
 }).omit({
   id: true,
   userId: true,
   date: true,
 });
 
+export const insertItemSchema = itemBaseSchema.omit({
+  status: true,
+});
+
+export const updateItemSchema = itemBaseSchema
+  .omit({
+    reportType: true,
+  })
+  .partial()
+  .refine(
+    (value) => Object.values(value).some((field) => field !== undefined),
+    {
+      message: "At least one field must be provided.",
+    }
+  );
+
 export type Item = typeof items.$inferSelect;
 export type InsertItem = z.infer<typeof insertItemSchema>;
+export type UpdateItem = z.infer<typeof updateItemSchema>;
 export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
 
 export const users = pgTable("users", {

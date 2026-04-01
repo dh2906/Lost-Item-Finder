@@ -29,7 +29,7 @@ export default function ItemDetail() {
   const [, params] = useRoute("/item/:id");
   const id = params?.id ? parseInt(params.id, 10) : 0;
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { data: item, isLoading, isError } = useItem(id);
   const { data: favoriteItems = [], isLoading: isFavoriteItemsLoading } =
     useFavoriteItems();
@@ -73,6 +73,7 @@ export default function ItemDetail() {
   const isFavorite = Boolean(favoriteEntry);
   const isFavoriteMutating =
     addFavoriteMutation.isPending || removeFavoriteMutation.isPending;
+  const isOwner = item.userId !== null && item.userId === user?.id;
 
   const handleFavoriteToggle = () => {
     if (isFavorite) {
@@ -193,6 +194,23 @@ export default function ItemDetail() {
                     Item record
                   </p>
                   <CardTitle className="text-2xl leading-tight">{item.title}</CardTitle>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        item.status === "resolved"
+                          ? "border-slate-300 text-slate-700"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
+                      )}
+                    >
+                      {item.status === "resolved" ? "해결 완료" : "진행 중"}
+                    </Badge>
+                    {isOwner && (
+                      <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+                        내 게시글
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
                   {item.location && (
@@ -210,6 +228,13 @@ export default function ItemDetail() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {isOwner && (
+                  <Button asChild variant="outline" className="w-full rounded-2xl">
+                    <Link href={`/item/${item.id}/edit`}>
+                      게시글 수정하기
+                    </Link>
+                  </Button>
+                )}
                 {isAuthenticated ? (
                   <>
                     <Button
