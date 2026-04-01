@@ -10,18 +10,22 @@ export interface User {
   createdAt: string | null;
 }
 
+/** 전역 공유 queryKey — 모든 곳에서 이 상수를 사용해 일관성 유지 */
+export const AUTH_QUERY_KEY = ["user"] as const;
+
 export function useAuth() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: user, isLoading } = useQuery<User | null>({
-    queryKey: ["user"],
+    queryKey: AUTH_QUERY_KEY,
     queryFn: async () => {
       const res = await fetch(api.auth.me.path, { credentials: "include" });
       if (!res.ok) return null;
       return res.json();
     },
+    staleTime: 5 * 60 * 1000, // 5분간 캐시 유지
     retry: false,
   });
 
@@ -35,7 +39,8 @@ export function useAuth() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.setQueryData(["user"], null);
+      queryClient.setQueryData(AUTH_QUERY_KEY, null);
+      queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
       toast({ title: "로그아웃 되었습니다" });
       setLocation("/");
     },

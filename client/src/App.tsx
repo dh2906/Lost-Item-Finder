@@ -8,6 +8,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { initFcm, onForegroundMessage } from "@/lib/fcm";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
+import { ProtectedRoute } from "@/components/protected-route";
+import { AUTH_QUERY_KEY } from "@/hooks/use-auth";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import ReportPage from "@/pages/report";
@@ -51,15 +53,27 @@ function Router() {
       >
         <Switch location={location}>
           <Route path="/" component={Home} />
-          <Route path="/report/found" component={FoundReportPage} />
-          <Route path="/report/lost" component={LostReportPage} />
-          <Route path="/report" component={DefaultReportPage} />
+          <Route path="/report/found">
+            <ProtectedRoute><FoundReportPage /></ProtectedRoute>
+          </Route>
+          <Route path="/report/lost">
+            <ProtectedRoute><LostReportPage /></ProtectedRoute>
+          </Route>
+          <Route path="/report">
+            <ProtectedRoute><DefaultReportPage /></ProtectedRoute>
+          </Route>
           <Route path="/search" component={SearchPage} />
           <Route path="/items" component={ItemsPage} />
           <Route path="/item/:id" component={ItemDetail} />
-          <Route path="/matches" component={MatchesPage} />
-          <Route path="/chats" component={ChatsPage} />
-          <Route path="/chat/:id" component={ChatRoomPage} />
+          <Route path="/matches">
+            <ProtectedRoute><MatchesPage /></ProtectedRoute>
+          </Route>
+          <Route path="/chats">
+            <ProtectedRoute><ChatsPage /></ProtectedRoute>
+          </Route>
+          <Route path="/chat/:id">
+            <ProtectedRoute><ChatRoomPage /></ProtectedRoute>
+          </Route>
           <Route path="/login" component={LoginPage} />
           <Route path="/register" component={RegisterPage} />
           <Route component={NotFound} />
@@ -70,8 +84,9 @@ function Router() {
 }
 
 function FcmInitializer() {
+  // AUTH_QUERY_KEY 상수로 통일 (기존 ["user"]와 동일)
   const { data: user } = useQuery<{ id: number } | null>({
-    queryKey: ["/api/auth/me"],
+    queryKey: AUTH_QUERY_KEY,
   });
   const { toast } = useToast();
 
@@ -82,19 +97,15 @@ function FcmInitializer() {
     initFcm().catch((err) => console.error("[FCM] 초기화 실패:", err));
 
     // 포그라운드 상태에서 메시지 수신 시 토스트 알림 표시
-    // (FCM은 앱이 포그라운드일 때 자동으로 알림을 띄우지 않으므로 직접 처리)
     const unsubscribe = onForegroundMessage(({ title, body, data }) => {
       console.log("[FCM] 포그라운드 메시지 수신:", { title, body, data });
 
-      // 브라우저 Notification API로 직접 알림 표시
-      // /icons/icon-192.png: 알림 아이콘은 192px 이상 PNG를 사용 (favicon.png는 48px으로 부적합)
       if (Notification.permission === "granted") {
         new Notification(title, {
           body,
           icon: "/icons/icon-192.png",
         });
       } else {
-        // Notification 권한이 없으면 토스트로 대체
         toast({
           title,
           description: body,
@@ -117,7 +128,6 @@ function App() {
         <Toaster />
         <FcmInitializer />
         <Router />
-        {/* PWA 설치 유도 배너 (installable 상태일 때만 노출) */}
         <PWAInstallBanner />
       </TooltipProvider>
     </QueryClientProvider>
