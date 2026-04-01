@@ -361,16 +361,37 @@ function buildReasoningFromEvidence(params: {
     .join(" ");
 }
 
-async function createEmbedding(text: string): Promise<number[]> {
+function abortIfNeeded(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new Error("Operation aborted");
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.name === "AbortError" || error.message === "Operation aborted";
+}
+
+async function createEmbedding(
+  text: string,
+  signal?: AbortSignal
+): Promise<number[]> {
   const normalized = text.replace(/\s+/g, " ").trim();
 
   if (!normalized) {
     throw new Error("임베딩할 검색 텍스트가 없습니다");
   }
 
+  abortIfNeeded(signal);
+
   const response = await openai.embeddings.create({
     model: OPENAI_EMBEDDING_MODEL,
     input: normalized,
+  }, {
+    signal,
   });
 
   const embedding = response.data[0]?.embedding;
@@ -381,7 +402,12 @@ async function createEmbedding(text: string): Promise<number[]> {
   return embedding;
 }
 
-async function createImageSearchText(imageUrl: string): Promise<string> {
+async function createImageSearchText(
+  imageUrl: string,
+  signal?: AbortSignal
+): Promise<string> {
+  abortIfNeeded(signal);
+
   const response = await getQwenClient().chat.completions.create({
     model: QWEN_VISION_MODEL,
     messages: [
@@ -402,6 +428,8 @@ async function createImageSearchText(imageUrl: string): Promise<string> {
       },
     ],
     response_format: { type: "json_object" },
+  }, {
+    signal,
   });
 
   const content = response.choices[0].message.content;
@@ -430,21 +458,35 @@ async function ensureItemEmbedding(item: {
   location?: string | null;
   latitude?: string | null;
   longitude?: string | null;
-}): Promise<number[]> {
+}, signal?: AbortSignal): Promise<number[]> {
   const content = buildItemSearchText(item);
-  const embedding = await createEmbedding(content);
+  const embedding = await createEmbedding(content, signal);
   await storage.upsertItemEmbedding(item.id, content, embedding);
   return embedding;
 }
 
 async function backfillItemEmbeddings(
   reportType: "lost" | "found",
-  limit?: number
+  limit?: number,
+  signal?: AbortSignal
 ): Promise<void> {
   const missingItems = await storage.getItemsWithoutEmbeddings(reportType, limit);
 
   for (const item of missingItems) {
-    await ensureItemEmbedding(item);
+    abortIfNeeded(signal);
+
+    try {
+      await ensureItemEmbedding(item, signal);
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+
+      console.error(
+        `Failed to backfill embedding for ${reportType} item ${item.id}:`,
+        error
+      );
+    }
   }
 }
 
@@ -473,22 +515,28 @@ type FoundItemForAutoMatch = {
 let automaticMatchQueue: Promise<void> = Promise.resolve();
 
 async function monitorAutomaticMatchJob<T>(
-  job: Promise<T>,
+  jobFactory: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
   label: string
 ): Promise<T> {
-  let didTimeout = false;
-  const timeoutId = setTimeout(() => {
-    didTimeout = true;
-    console.warn(`${label} is still running after ${timeoutMs}ms`);
-  }, timeoutMs);
+  const abortController = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      console.warn(`${label} exceeded timeout of ${timeoutMs}ms`);
+      abortController.abort();
+      reject(new Error(`${label} exceeded timeout of ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
 
   try {
-    return await job;
+    return await Promise.race([
+      jobFactory(abortController.signal),
+      timeoutPromise,
+    ]);
   } finally {
-    clearTimeout(timeoutId);
-    if (didTimeout) {
-      console.warn(`${label} completed after the soft timeout`);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
     }
   }
 }
@@ -501,7 +549,12 @@ function queueAutomaticMatchNotificationsForFoundItem(
     .catch(() => undefined)
     .then(() =>
       monitorAutomaticMatchJob(
-        runAutomaticMatchNotificationsForFoundItem(foundItem, existingEmbedding),
+        (signal) =>
+          runAutomaticMatchNotificationsForFoundItem(
+            foundItem,
+            existingEmbedding,
+            signal
+          ),
         AUTO_MATCH_JOB_TIMEOUT_MS,
         `Automatic match job for item ${foundItem.id}`
       )
@@ -513,20 +566,22 @@ function queueAutomaticMatchNotificationsForFoundItem(
 
 async function runAutomaticMatchNotificationsForFoundItem(
   foundItem: FoundItemForAutoMatch,
-  existingEmbedding?: number[]
+  existingEmbedding?: number[],
+  signal?: AbortSignal
 ): Promise<void> {
   if (foundItem.reportType !== "found" || foundItem.status !== "active") {
     return;
   }
 
+  abortIfNeeded(signal);
   const storedEmbedding = existingEmbedding
     ? undefined
     : await storage.getItemEmbedding(foundItem.id);
   const foundEmbedding =
     existingEmbedding ??
     storedEmbedding?.embedding ??
-    (await ensureItemEmbedding(foundItem));
-  await backfillItemEmbeddings("lost", AUTO_MATCH_BACKFILL_LIMIT);
+    (await ensureItemEmbedding(foundItem, signal));
+  await backfillItemEmbeddings("lost", AUTO_MATCH_BACKFILL_LIMIT, signal);
 
   const foundLatitude = parseCoordinate(foundItem.latitude);
   const foundLongitude = parseCoordinate(foundItem.longitude);
@@ -567,12 +622,14 @@ async function runAutomaticMatchNotificationsForFoundItem(
     return;
   }
 
+  abortIfNeeded(signal);
   const queryText = buildItemSearchText(foundItem);
   const rerankedMatches = await rerankCandidates({
     prompt: foundItem.description ?? undefined,
     imageUrl: qwen && foundItem.imageUrl ? foundItem.imageUrl : undefined,
     queryText,
     candidates: filteredVectorMatches,
+    signal,
   });
 
   const vectorMatchById = new Map(
@@ -639,10 +696,13 @@ async function rerankCandidates(params: {
   imageUrl?: string;
   queryText: string;
   candidates: VectorCandidate[];
+  signal?: AbortSignal;
 }): Promise<Array<{ itemId: number; score: number; reasoning: string }>> {
-  const { prompt, imageUrl, queryText, candidates } = params;
+  const { prompt, imageUrl, queryText, candidates, signal } = params;
   const aiClient = imageUrl ? getQwenClient() : openai;
   const model = imageUrl ? QWEN_VISION_MODEL : GPT_TEXT_MODEL;
+
+  abortIfNeeded(signal);
 
   const userContent: Array<
     | { type: "text"; text: string }
@@ -694,6 +754,8 @@ async function rerankCandidates(params: {
       },
     ],
     response_format: { type: "json_object" },
+  }, {
+    signal,
   });
 
   const content = response.choices[0].message.content;
