@@ -10,15 +10,7 @@ import { api } from "@shared/routes";
 import { Layout } from "@/components/layout";
 import { UserPlus, Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
-
-/**
- * redirect 쿼리 파라미터를 검증해 앱 내부 경로만 허용합니다.
- */
-function sanitizeRedirect(value: string | null): string {
-  if (!value) return "/";
-  if (value.startsWith("/") && !value.startsWith("//")) return value;
-  return "/";
-}
+import { sanitizeRedirect } from "@/lib/redirect";
 
 function PasswordStrengthIndicator({ password }: { password: string }) {
   if (!password) return null;
@@ -62,6 +54,7 @@ export function RegisterPage() {
   }
 
   const passwordsMatch = confirmPassword === "" || password === confirmPassword;
+  const confirmPasswordErrorId = "confirm-password-error";
 
   const registerMutation = useMutation({
     mutationFn: async (data: { username: string; password: string; name?: string }) => {
@@ -210,6 +203,8 @@ export function RegisterPage() {
                     autoComplete="new-password"
                     className={`h-12 pr-12 ${!passwordsMatch && confirmPassword ? "border-destructive focus-visible:ring-destructive" : ""}`}
                     disabled={registerMutation.isPending}
+                    aria-invalid={!passwordsMatch && !!confirmPassword}
+                    aria-describedby={!passwordsMatch && confirmPassword ? confirmPasswordErrorId : undefined}
                   />
                   <button
                     type="button"
@@ -222,7 +217,9 @@ export function RegisterPage() {
                   </button>
                 </div>
                 {!passwordsMatch && confirmPassword && (
-                  <p className="text-xs text-destructive">비밀번호가 일치하지 않습니다.</p>
+                  <p id={confirmPasswordErrorId} className="text-xs text-destructive">
+                    비밀번호가 일치하지 않습니다.
+                  </p>
                 )}
               </div>
 
