@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 import { Layout } from "@/components/layout";
 import { UserPlus, Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
-import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/use-auth";
+import { AUTH_QUERY_KEY } from "@/lib/query-keys";
 import { sanitizeRedirect } from "@/lib/redirect";
 
 function PasswordStrengthIndicator({ password }: { password: string }) {
