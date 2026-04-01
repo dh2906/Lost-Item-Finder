@@ -24,8 +24,8 @@ const matchNotificationResponseSchema = z.object({
   score: z.number(),
   reasoning: z.string(),
   isRead: z.boolean(),
-  createdAt: z.union([z.string(), z.date()]),
-  updatedAt: z.union([z.string(), z.date()]),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
   lostItem: itemResponseSchema,
   foundItem: itemResponseSchema,
 });

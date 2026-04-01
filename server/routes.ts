@@ -472,23 +472,25 @@ type FoundItemForAutoMatch = {
 };
 let automaticMatchQueue: Promise<void> = Promise.resolve();
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timeoutId = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
+async function monitorAutomaticMatchJob<T>(
+  job: Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<T> {
+  let didTimeout = false;
+  const timeoutId = setTimeout(() => {
+    didTimeout = true;
+    console.warn(`${label} is still running after ${timeoutMs}ms`);
+  }, timeoutMs);
 
-    promise.then(
-      (value) => {
-        clearTimeout(timeoutId);
-        resolve(value);
-      },
-      (error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      }
-    );
-  });
+  try {
+    return await job;
+  } finally {
+    clearTimeout(timeoutId);
+    if (didTimeout) {
+      console.warn(`${label} completed after the soft timeout`);
+    }
+  }
 }
 
 function queueAutomaticMatchNotificationsForFoundItem(
@@ -498,7 +500,7 @@ function queueAutomaticMatchNotificationsForFoundItem(
   automaticMatchQueue = automaticMatchQueue
     .catch(() => undefined)
     .then(() =>
-      withTimeout(
+      monitorAutomaticMatchJob(
         runAutomaticMatchNotificationsForFoundItem(foundItem, existingEmbedding),
         AUTO_MATCH_JOB_TIMEOUT_MS,
         `Automatic match job for item ${foundItem.id}`
@@ -517,7 +519,13 @@ async function runAutomaticMatchNotificationsForFoundItem(
     return;
   }
 
-  const foundEmbedding = existingEmbedding ?? (await ensureItemEmbedding(foundItem));
+  const storedEmbedding = existingEmbedding
+    ? undefined
+    : await storage.getItemEmbedding(foundItem.id);
+  const foundEmbedding =
+    existingEmbedding ??
+    storedEmbedding?.embedding ??
+    (await ensureItemEmbedding(foundItem));
   await backfillItemEmbeddings("lost", AUTO_MATCH_BACKFILL_LIMIT);
 
   const foundLatitude = parseCoordinate(foundItem.latitude);
@@ -977,7 +985,11 @@ export async function registerRoutes(
         }
       }
 
-      if (item.reportType === "found" && item.status === "active") {
+      if (
+        item.reportType === "found" &&
+        item.status === "active" &&
+        itemEmbedding !== undefined
+      ) {
         queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
       }
 
@@ -1024,8 +1036,10 @@ export async function registerRoutes(
           (field) => embeddingRelevantFields.has(field) || field === "imageUrl"
         ) ||
           input.status === "active");
+      const canQueueAutomaticMatching =
+        itemEmbedding !== undefined || !shouldRefreshEmbedding;
 
-      if (shouldRunAutomaticMatching) {
+      if (shouldRunAutomaticMatching && canQueueAutomaticMatching) {
         queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
       }
 

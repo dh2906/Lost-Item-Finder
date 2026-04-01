@@ -159,6 +159,9 @@ export interface IStorage {
   ): Promise<Item | undefined>;
   deleteOwnedItem(userId: number, itemId: number): Promise<boolean>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
+  getItemEmbedding(
+    itemId: number
+  ): Promise<{ content: string; embedding: number[] } | undefined>;
   getItemsWithoutEmbeddings(
     reportType: "lost" | "found",
     limit?: number
@@ -327,6 +330,20 @@ export class DatabaseStorage implements IStorage {
           updatedAt: new Date(),
         },
       });
+  }
+
+  async getItemEmbedding(
+    itemId: number
+  ): Promise<{ content: string; embedding: number[] } | undefined> {
+    const [row] = await db
+      .select({
+        content: itemEmbeddings.content,
+        embedding: itemEmbeddings.embedding,
+      })
+      .from(itemEmbeddings)
+      .where(eq(itemEmbeddings.itemId, itemId));
+
+    return row;
   }
 
   async getItemsWithoutEmbeddings(
