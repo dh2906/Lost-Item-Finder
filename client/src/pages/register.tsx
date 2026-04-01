@@ -187,6 +187,7 @@ export function RegisterPage() {
                     onClick={() => setShowPassword((v) => !v)}
                     className={toggleButtonClass}
                     aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    aria-pressed={showPassword}
                   >
                     {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
                   </button>
@@ -215,6 +216,7 @@ export function RegisterPage() {
                     onClick={() => setShowConfirm((v) => !v)}
                     className={toggleButtonClass}
                     aria-label={showConfirm ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    aria-pressed={showConfirm}
                   >
                     {showConfirm ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
                   </button>
