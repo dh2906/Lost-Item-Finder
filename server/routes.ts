@@ -27,6 +27,7 @@ const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
 const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 12);
+const AUTO_MATCH_RESULT_COUNT = Number(process.env.AUTO_MATCH_RESULT_COUNT ?? 5);
 const MIN_VECTOR_MATCH_SCORE = Number(
   process.env.MIN_VECTOR_MATCH_SCORE ?? 0.22
 );
@@ -423,14 +424,15 @@ async function ensureItemEmbedding(item: {
   location?: string | null;
   latitude?: string | null;
   longitude?: string | null;
-}): Promise<void> {
+}): Promise<number[]> {
   const content = buildItemSearchText(item);
   const embedding = await createEmbedding(content);
   await storage.upsertItemEmbedding(item.id, content, embedding);
+  return embedding;
 }
 
-async function backfillFoundItemEmbeddings(): Promise<void> {
-  const missingItems = await storage.getFoundItemsWithoutEmbeddings();
+async function backfillItemEmbeddings(reportType: "lost" | "found"): Promise<void> {
+  const missingItems = await storage.getItemsWithoutEmbeddings(reportType);
 
   for (const item of missingItems) {
     await ensureItemEmbedding(item);
@@ -438,11 +440,143 @@ async function backfillFoundItemEmbeddings(): Promise<void> {
 }
 
 type VectorCandidate = Awaited<
-  ReturnType<typeof storage.searchFoundItemsByEmbedding>
+  ReturnType<typeof storage.searchItemsByEmbedding>
 >[number];
 type RankedVectorCandidate = VectorCandidate & {
   distanceKm: number | null;
 };
+
+async function runAutomaticMatchNotificationsForFoundItem(
+  foundItem: {
+    id: number;
+    userId?: number | null;
+    reportType: string;
+    status?: string | null;
+    title?: string | null;
+    description?: string | null;
+    imageUrl?: string | null;
+    itemCategory?: string | null;
+    color?: string | null;
+    size?: string | null;
+    tags?: string[] | null;
+    location?: string | null;
+    latitude?: string | null;
+    longitude?: string | null;
+  },
+  existingEmbedding?: number[]
+): Promise<void> {
+  if (foundItem.reportType !== "found" || foundItem.status !== "active") {
+    return;
+  }
+
+  const foundEmbedding = existingEmbedding ?? (await ensureItemEmbedding(foundItem));
+  await backfillItemEmbeddings("lost");
+
+  const foundLatitude = parseCoordinate(foundItem.latitude);
+  const foundLongitude = parseCoordinate(foundItem.longitude);
+  const normalizedCoordinates =
+    foundLatitude !== null && foundLongitude !== null
+      ? {
+          latitude: foundLatitude,
+          longitude: foundLongitude,
+        }
+      : null;
+
+  const vectorMatches = await storage.searchItemsByEmbedding(
+    "lost",
+    foundEmbedding,
+    VECTOR_CANDIDATE_COUNT
+  );
+
+  const filteredVectorMatches: RankedVectorCandidate[] = vectorMatches
+    .filter((result) => result.score >= MIN_VECTOR_MATCH_SCORE)
+    .map((result) => {
+      const itemLatitude = parseCoordinate(result.item.latitude);
+      const itemLongitude = parseCoordinate(result.item.longitude);
+      const distanceKm =
+        normalizedCoordinates && itemLatitude !== null && itemLongitude !== null
+          ? calculateDistanceKm(normalizedCoordinates, {
+              latitude: itemLatitude,
+              longitude: itemLongitude,
+            })
+          : null;
+
+      return {
+        ...result,
+        distanceKm,
+      };
+    });
+
+  if (filteredVectorMatches.length === 0) {
+    return;
+  }
+
+  const queryText = buildItemSearchText(foundItem);
+  const rerankedMatches = await rerankCandidates({
+    prompt: foundItem.description ?? undefined,
+    imageUrl: qwen && foundItem.imageUrl ? foundItem.imageUrl : undefined,
+    queryText,
+    candidates: filteredVectorMatches,
+  });
+
+  const vectorMatchById = new Map(
+    filteredVectorMatches.map((candidate) => [candidate.item.id, candidate])
+  );
+
+  const matchedNotifications = rerankedMatches
+    .map((result) => {
+      const vectorMatch = vectorMatchById.get(result.itemId);
+      if (!vectorMatch) {
+        return null;
+      }
+
+      const llmScore = Math.max(0, Math.min(1, result.score));
+      const blendedScore = Number(
+        (vectorMatch.score * 0.35 + llmScore * 0.65).toFixed(4)
+      );
+
+      if (blendedScore < MIN_FINAL_MATCH_SCORE) {
+        return null;
+      }
+
+      if (!vectorMatch.item.userId || vectorMatch.item.userId === foundItem.userId) {
+        return null;
+      }
+
+      return {
+        userId: vectorMatch.item.userId,
+        lostItemId: vectorMatch.item.id,
+        foundItemId: foundItem.id,
+        score: blendedScore,
+        reasoning: buildReasoningFromEvidence({
+          queryText,
+          item: vectorMatch.item,
+          matchScore: blendedScore,
+          distanceKm: vectorMatch.distanceKm,
+          llmReasoning: result.reasoning,
+        }),
+      };
+    })
+    .filter(
+      (
+        notification
+      ): notification is {
+        userId: number;
+        lostItemId: number;
+        foundItemId: number;
+        score: number;
+        reasoning: string;
+      } => notification !== null
+    )
+    .sort((a, b) => b.score - a.score)
+    .slice(0, AUTO_MATCH_RESULT_COUNT);
+
+  await Promise.all(
+    matchedNotifications.map((notification) =>
+      storage.upsertMatchNotification(notification)
+    )
+  );
+}
 
 async function rerankCandidates(params: {
   prompt?: string;
@@ -786,11 +920,20 @@ export async function registerRoutes(
         userId: req.user?.id ?? null,
       });
 
-      if (item.reportType === "found") {
+      let itemEmbedding: number[] | undefined;
+      if (item.status === "active") {
         try {
-          await ensureItemEmbedding(item);
+          itemEmbedding = await ensureItemEmbedding(item);
         } catch (embeddingError) {
           console.error("Failed to store item embedding:", embeddingError);
+        }
+      }
+
+      if (item.reportType === "found" && item.status === "active") {
+        try {
+          await runAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
+        } catch (matchingError) {
+          console.error("Failed to create automatic match notifications:", matchingError);
         }
       }
 
@@ -817,15 +960,30 @@ export async function registerRoutes(
       }
 
       const shouldRefreshEmbedding =
-        item.reportType === "found" &&
         item.status === "active" &&
-        Object.keys(input).some((field) => embeddingRelevantFields.has(field));
+        (Object.keys(input).some((field) => embeddingRelevantFields.has(field)) ||
+          input.status === "active");
 
+      let itemEmbedding: number[] | undefined;
       if (shouldRefreshEmbedding) {
         try {
-          await ensureItemEmbedding(item);
+          itemEmbedding = await ensureItemEmbedding(item);
         } catch (embeddingError) {
           console.error("Failed to update item embedding:", embeddingError);
+        }
+      }
+
+      const shouldRunAutomaticMatching =
+        item.reportType === "found" &&
+        item.status === "active" &&
+        (Object.keys(input).some((field) => embeddingRelevantFields.has(field)) ||
+          input.status === "active");
+
+      if (shouldRunAutomaticMatching) {
+        try {
+          await runAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
+        } catch (matchingError) {
+          console.error("Failed to refresh automatic match notifications:", matchingError);
         }
       }
 
@@ -914,6 +1072,41 @@ export async function registerRoutes(
     }
   );
 
+  app.get(api.notifications.list.path, isAuthenticated, async (req, res) => {
+    try {
+      const notifications = await storage.getMatchNotifications(req.user!.id);
+      res.json(notifications);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.post(api.notifications.markRead.path, isAuthenticated, async (req, res) => {
+    try {
+      const notificationId = positiveIdSchema.parse(req.params.id);
+      const notification = await storage.markMatchNotificationAsRead(
+        req.user!.id,
+        notificationId
+      );
+
+      if (!notification) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+
+      res.json(notification);
+    } catch (err) {
+      console.error(err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
   // --- AI API ---
   app.post(api.ai.analyzeImage.path, async (req, res) => {
     try {
@@ -994,7 +1187,7 @@ export async function registerRoutes(
       }
 
       const searchCoordinates = getSearchCoordinates(input);
-      await backfillFoundItemEmbeddings();
+      await backfillItemEmbeddings("found");
 
       const queryParts: string[] = [];
       const trimmedPrompt = input.prompt?.trim();
@@ -1020,7 +1213,8 @@ export async function registerRoutes(
 
       const queryText = queryParts.join("\n\n").trim();
       const queryEmbedding = await createEmbedding(queryText);
-      const vectorMatches = await storage.searchFoundItemsByEmbedding(
+      const vectorMatches = await storage.searchItemsByEmbedding(
+        "found",
         queryEmbedding,
         VECTOR_CANDIDATE_COUNT
       );

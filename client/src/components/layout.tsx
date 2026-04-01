@@ -1,16 +1,18 @@
 import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  MapPinCheckInside,
+  Bell,
   ChevronDown,
   Heart,
   LogOut,
+  MapPinCheckInside,
   Shield,
   User as UserIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useMatchNotifications } from "@/hooks/use-notifications";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +39,12 @@ const navigation = [
 export function Layout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
+  const { data: notifications = [] } = useMatchNotifications();
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
+
+  const unreadNotificationCount = notifications.filter(
+    (notification) => !notification.isRead
+  ).length;
 
   const handleReportMenuNavigate = (href: string) => {
     setReportMenuOpen(false);
@@ -49,23 +56,29 @@ export function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/94 backdrop-blur supports-[backdrop-filter]:bg-background/78">
         <div className="container flex h-[68px] items-center justify-between gap-4 xl:max-w-[1440px]">
           <div className="flex items-center gap-3 md:gap-5">
-            <Link href="/" className="flex items-center gap-3 text-sm font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/80">
+            <Link
+              href="/"
+              className="flex items-center gap-3 text-sm font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/80"
+            >
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-primary to-primary/80 text-primary-foreground shadow-[0_12px_24px_-16px_hsl(var(--primary)/0.45)]">
                 <MapPinCheckInside className="h-5 w-5" />
               </span>
               <span className="flex flex-col leading-none">
                 <span className="text-base">ReturnIt</span>
-                <span className="mt-1 text-[11px] font-medium text-muted-foreground">분실물 연결 게시판</span>
+                <span className="mt-1 text-[11px] font-medium text-muted-foreground">
+                  분실물 연결 게시판
+                </span>
               </span>
             </Link>
 
             <nav className="hidden items-center rounded-full border border-border/55 bg-white/80 p-0.5 shadow-[0_10px_22px_-20px_rgba(27,31,59,0.14)] lg:flex">
               {navigation.map((item) => {
-                const active = item.href === "/"
-                  ? location === item.href
-                  : location === item.href ||
-                    location.startsWith(`${item.href}?`) ||
-                    location.startsWith(`${item.href}/`);
+                const active =
+                  item.href === "/"
+                    ? location === item.href
+                    : location === item.href ||
+                      location.startsWith(`${item.href}?`) ||
+                      location.startsWith(`${item.href}/`);
 
                 if (item.children) {
                   return (
@@ -88,33 +101,35 @@ export function Layout({ children }: { children: ReactNode }) {
                         <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
                       </button>
 
-                      {reportMenuOpen && (
-                        <div className="absolute inset-x-0 top-full h-4" aria-hidden="true" />
-                      )}
+                      {reportMenuOpen ? (
+                        <>
+                          <div
+                            className="absolute inset-x-0 top-full h-4"
+                            aria-hidden="true"
+                          />
+                          <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-1.5 text-popover-foreground shadow-md">
+                            {item.children.map((child) => {
+                              const childActive = location === child.href;
 
-                      {reportMenuOpen && (
-                        <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-1.5 text-popover-foreground shadow-md">
-                          {item.children.map((child) => {
-                            const childActive = location === child.href;
-
-                            return (
-                              <button
-                                key={child.href}
-                                type="button"
-                                onClick={() => handleReportMenuNavigate(child.href)}
-                                className={cn(
-                                  "block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
-                                  childActive
-                                    ? "bg-accent text-accent-foreground"
-                                    : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                                )}
-                              >
-                                {child.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                              return (
+                                <button
+                                  key={child.href}
+                                  type="button"
+                                  onClick={() => handleReportMenuNavigate(child.href)}
+                                  className={cn(
+                                    "block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
+                                    childActive
+                                      ? "bg-accent text-accent-foreground"
+                                      : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                                  )}
+                                >
+                                  {child.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   );
                 }
@@ -154,60 +169,106 @@ export function Layout({ children }: { children: ReactNode }) {
 
           <div className="flex items-center gap-3">
             {isAuthenticated ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary">
-                        {user?.name?.[0] || user?.username?.[0]?.toUpperCase() || <UserIcon className="h-4 w-4" />}
-                      </AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-semibold leading-none">{user?.name || user?.username}</p>
-                      <p className="text-xs leading-none text-muted-foreground">{user?.username}</p>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => void setLocation("/mypage")}>
-                    <Heart className="mr-2 h-4 w-4" />
-                    마이페이지
-                  </DropdownMenuItem>
-                  {user?.role === "admin" ? (
-                    <DropdownMenuItem onClick={() => void setLocation("/admin")}>
-                      <Shield className="mr-2 h-4 w-4" />
-                      관리자 대시보드
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  asChild
+                  className="relative h-10 w-10 rounded-xl border border-border/70 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
+                >
+                  <Link href="/mypage#alerts" aria-label="매칭 알림">
+                    <Bell className="h-5 w-5" />
+                    {unreadNotificationCount > 0 ? (
+                      <span className="absolute -right-1 -top-1 inline-flex min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                        {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+                      </span>
+                    ) : null}
+                  </Link>
+                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md"
+                    >
+                      <Avatar className="h-10 w-10">
+                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary">
+                          {user?.name?.[0] ||
+                            user?.username?.[0]?.toUpperCase() || (
+                              <UserIcon className="h-4 w-4" />
+                            )}
+                        </AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                    <DropdownMenuLabel className="font-normal">
+                      <div className="flex flex-col space-y-1">
+                        <p className="text-sm font-semibold leading-none">
+                          {user?.name || user?.username}
+                        </p>
+                        <p className="text-xs leading-none text-muted-foreground">
+                          {user?.username}
+                        </p>
+                      </div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => void setLocation("/mypage")}>
+                      <Heart className="mr-2 h-4 w-4" />
+                      마이페이지
                     </DropdownMenuItem>
-                  ) : null}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    로그아웃
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    {user?.role === "admin" ? (
+                      <DropdownMenuItem onClick={() => void setLocation("/admin")}>
+                        <Shield className="mr-2 h-4 w-4" />
+                        관리자 대시보드
+                      </DropdownMenuItem>
+                    ) : null}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={logout}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      로그아웃
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             ) : (
               <div className="hidden items-center gap-2 md:flex">
-                <Button variant="ghost" size="sm" asChild className="h-9 rounded-full px-4 text-muted-foreground hover:bg-accent/70 hover:text-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                  className="h-9 rounded-full px-4 text-muted-foreground hover:bg-accent/70 hover:text-foreground"
+                >
                   <Link href="/login">로그인</Link>
                 </Button>
-                <Button size="sm" asChild className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]">
+                <Button
+                  size="sm"
+                  asChild
+                  className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]"
+                >
                   <Link href="/register">회원가입</Link>
                 </Button>
               </div>
             )}
 
             <div className="flex items-center gap-1 md:hidden">
-              {!isAuthenticated && (
-                <Button variant="ghost" size="icon" asChild aria-label="로그인" className="h-10 w-10 rounded-xl">
+              {!isAuthenticated ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  asChild
+                  aria-label="로그인"
+                  className="h-10 w-10 rounded-xl"
+                >
                   <Link href="/login">
                     <UserIcon className="h-5 w-5" />
                   </Link>
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -223,7 +284,9 @@ export function Layout({ children }: { children: ReactNode }) {
             </span>
             <span>ReturnIt</span>
           </div>
-          <p className="text-center text-muted-foreground/42 md:text-right">© {new Date().getFullYear()} ReturnIt</p>
+          <p className="text-center text-muted-foreground/42 md:text-right">
+            © {new Date().getFullYear()} ReturnIt
+          </p>
         </div>
       </footer>
     </div>

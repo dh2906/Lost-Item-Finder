@@ -16,6 +16,20 @@ const favoriteItemSchema = z.object({
   createdAt: z.string().datetime(),
 });
 
+const matchNotificationResponseSchema = z.object({
+  id: z.number(),
+  userId: z.number(),
+  lostItemId: z.number(),
+  foundItemId: z.number(),
+  score: z.number(),
+  reasoning: z.string(),
+  isRead: z.boolean(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
+  lostItem: itemResponseSchema,
+  foundItem: itemResponseSchema,
+});
+
 const safeUserResponseSchema = z.object({
   id: z.number(),
   username: z.string(),
@@ -216,6 +230,23 @@ export const api = {
       },
     },
   },
+  notifications: {
+    list: {
+      method: "GET" as const,
+      path: "/api/notifications" as const,
+      responses: {
+        200: z.array(matchNotificationResponseSchema),
+      },
+    },
+    markRead: {
+      method: "POST" as const,
+      path: "/api/notifications/:id/read" as const,
+      responses: {
+        200: matchNotificationResponseSchema,
+        404: errorSchemas.notFound,
+      },
+    },
+  },
   ai: {
     analyzeImage: {
       method: "POST" as const,
@@ -354,6 +385,10 @@ export type SearchSimilarInput = z.infer<typeof api.ai.searchSimilar.input>;
 export type SearchSimilarResponse = z.infer<
   (typeof api.ai.searchSimilar.responses)[200]
 >;
+export type MatchNotificationsResponse = z.infer<
+  (typeof api.notifications.list.responses)[200]
+>;
+export type MatchNotificationResponse = MatchNotificationsResponse[number];
 export type AdminDashboardResponse = z.infer<
   (typeof api.admin.dashboard.responses)[200]
 >;
