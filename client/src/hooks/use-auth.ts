@@ -18,11 +18,14 @@ export function useAuth() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: user, isLoading } = useQuery<User | null>({
+  const { data: user, isLoading, isError, error, refetch } = useQuery<User | null>({
     queryKey: AUTH_QUERY_KEY,
     queryFn: async () => {
       const res = await fetch(api.auth.me.path, { credentials: "include" });
-      if (!res.ok) return null;
+      if (res.status === 401) return null;
+      if (!res.ok) {
+        throw new Error("사용자 정보를 불러오지 못했습니다.");
+      }
       return res.json();
     },
     staleTime: 5 * 60 * 1000, // 5분간 캐시 유지
@@ -52,7 +55,10 @@ export function useAuth() {
   return {
     user,
     isLoading,
+    isError,
+    error,
     isAuthenticated: !!user,
+    refetch,
     logout: () => logoutMutation.mutate(),
   };
 }

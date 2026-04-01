@@ -33,7 +33,7 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
 }
 
 export function RegisterPage() {
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading } = useAuth();
@@ -47,6 +47,7 @@ export function RegisterPage() {
   // 내부 경로만 허용
   const params = new URLSearchParams(location.split("?")[1] ?? "");
   const redirectTo = sanitizeRedirect(params.get("redirect"));
+  const loginHref = redirectTo === "/" ? "/login" : `/login?redirect=${encodeURIComponent(redirectTo)}`;
 
   // 이미 로그인된 경우 리다이렉트
   if (!isLoading && isAuthenticated) {
@@ -73,7 +74,6 @@ export function RegisterPage() {
     onSuccess: (user) => {
       queryClient.setQueryData(AUTH_QUERY_KEY, user);
       toast({ title: "회원가입 성공", description: "바로 서비스를 이용할 수 있습니다." });
-      setLocation(redirectTo);
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", title: "회원가입 실패", description: error.message });
@@ -250,7 +250,7 @@ export function RegisterPage() {
               <p className="text-center text-sm text-muted-foreground">
                 이미 계정이 있으신가요?{" "}
                 <Link
-                  href="/login"
+                  href={loginHref}
                   className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
                 >
                   로그인

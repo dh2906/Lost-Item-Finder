@@ -13,7 +13,7 @@ import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
 import { sanitizeRedirect } from "@/lib/redirect";
 
 export function LoginPage() {
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading } = useAuth();
@@ -24,6 +24,7 @@ export function LoginPage() {
   // 로그인 후 돌아갈 경로 파싱 — 내부 경로만 허용
   const params = new URLSearchParams(location.split("?")[1] ?? "");
   const redirectTo = sanitizeRedirect(params.get("redirect"));
+  const registerHref = redirectTo === "/" ? "/register" : `/register?redirect=${encodeURIComponent(redirectTo)}`;
 
   // 이미 로그인된 경우 리다이렉트
   if (!isLoading && isAuthenticated) {
@@ -47,7 +48,6 @@ export function LoginPage() {
     onSuccess: (user) => {
       queryClient.setQueryData(AUTH_QUERY_KEY, user);
       toast({ title: "로그인 성공", description: `${user.name || user.username}님, 환영합니다!` });
-      setLocation(redirectTo);
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", title: "로그인 실패", description: error.message });
@@ -159,7 +159,7 @@ export function LoginPage() {
               <p className="text-center text-sm text-muted-foreground">
                 계정이 없으신가요?{" "}
                 <Link
-                  href="/register"
+                  href={registerHref}
                   className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
                 >
                   회원가입
