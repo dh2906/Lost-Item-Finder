@@ -50,10 +50,8 @@ export function ProtectedRoute({ children, redirectTo = "/login" }: ProtectedRou
     return <>{children}</>;
   }
 
-  if (!isAuthenticated) {
-    // redirectTo에 이미 ?가 포함된 경우 &로 이어붙여 URL이 깨지지 않도록 처리
-    const separator = redirectTo.includes("?") ? "&" : "?";
-    const loginUrl = `${redirectTo}${separator}redirect=${encodeURIComponent(location)}`;
-    return <Redirect to={loginUrl} />;
-  }
+  // redirectTo에 이미 ?가 포함된 경우 &로 이어붙여 URL이 깨지지 않도록 처리
+  const separator = redirectTo.includes("?") ? "&" : "?";
+  const loginUrl = `${redirectTo}${separator}redirect=${encodeURIComponent(location)}`;
+  return <Redirect to={loginUrl} />;
 }
