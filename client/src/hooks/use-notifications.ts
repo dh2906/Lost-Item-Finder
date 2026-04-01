@@ -23,11 +23,11 @@ export function useMatchNotifications() {
 
       if (res.status === 401) {
         queryClient.setQueryData(AUTH_QUERY_KEY, null);
-        throw new Error("Session expired");
+        throw new Error("로그인 세션이 만료되었어요.");
       }
 
       if (!res.ok) {
-        throw new Error("Failed to fetch match notifications");
+        throw new Error("자동 매칭 알림을 불러오지 못했어요.");
       }
 
       return api.notifications.list.responses[200].parse(await res.json());
@@ -61,7 +61,7 @@ export function useMarkMatchNotificationAsRead() {
           throw new Error(error.message);
         }
 
-        throw new Error("Failed to mark notification as read");
+        throw new Error("알림을 읽음 처리하지 못했어요.");
       }
 
       return api.notifications.markRead.responses[200].parse(responseData);

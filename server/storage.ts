@@ -14,7 +14,16 @@ import {
   type UserStatus,
 } from "@shared/schema";
 import { db } from "./db";
-import { and, cosineDistance, desc, eq, ilike, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  cosineDistance,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 
@@ -150,7 +159,10 @@ export interface IStorage {
   ): Promise<Item | undefined>;
   deleteOwnedItem(userId: number, itemId: number): Promise<boolean>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
-  getItemsWithoutEmbeddings(reportType: "lost" | "found"): Promise<Item[]>;
+  getItemsWithoutEmbeddings(
+    reportType: "lost" | "found",
+    limit?: number
+  ): Promise<Item[]>;
   searchItemsByEmbedding(
     reportType: "lost" | "found",
     embedding: number[],
@@ -202,22 +214,39 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  private async hydrateMatchNotification(row: typeof matchNotifications.$inferSelect) {
-    const [lostItem, foundItem] = await Promise.all([
-      this.getItem(row.lostItemId),
-      this.getItem(row.foundItemId),
-    ]);
-
-    if (!lostItem || !foundItem) {
-      return null;
+  private async hydrateMatchNotifications(
+    rows: Array<typeof matchNotifications.$inferSelect>
+  ): Promise<MatchNotificationRecord[]> {
+    if (rows.length === 0) {
+      return [];
     }
 
-    return {
-      ...row,
-      score: Number(row.score),
-      lostItem,
-      foundItem,
-    };
+    const itemIds = Array.from(
+      new Set(rows.flatMap((row) => [row.lostItemId, row.foundItemId]))
+    );
+    const matchedItems = await db
+      .select()
+      .from(items)
+      .where(inArray(items.id, itemIds));
+    const itemById = new Map(matchedItems.map((item) => [item.id, item]));
+
+    return rows.flatMap((row) => {
+      const lostItem = itemById.get(row.lostItemId);
+      const foundItem = itemById.get(row.foundItemId);
+
+      if (!lostItem || !foundItem) {
+        return [];
+      }
+
+      return [
+        {
+          ...row,
+          score: Number(row.score),
+          lostItem,
+          foundItem,
+        },
+      ];
+    });
   }
 
   async getItems(type?: "lost" | "found", search?: string): Promise<Item[]> {
@@ -300,8 +329,11 @@ export class DatabaseStorage implements IStorage {
       });
   }
 
-  async getItemsWithoutEmbeddings(reportType: "lost" | "found"): Promise<Item[]> {
-    const rows = await db
+  async getItemsWithoutEmbeddings(
+    reportType: "lost" | "found",
+    limit?: number
+  ): Promise<Item[]> {
+    const baseQuery = db
       .select({ item: items })
       .from(items)
       .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
@@ -313,6 +345,9 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(desc(items.date));
+
+    const rows =
+      typeof limit === "number" ? await baseQuery.limit(limit) : await baseQuery;
 
     return rows.map((row) => row.item);
   }
@@ -377,14 +412,7 @@ export class DatabaseStorage implements IStorage {
       .where(eq(matchNotifications.userId, userId))
       .orderBy(desc(matchNotifications.updatedAt));
 
-    const hydrated = await Promise.all(
-      rows.map((row) => this.hydrateMatchNotification(row))
-    );
-
-    return hydrated.filter(
-      (notification): notification is MatchNotificationRecord =>
-        notification !== null
-    );
+    return this.hydrateMatchNotifications(rows);
   }
 
   async markMatchNotificationAsRead(
@@ -409,8 +437,8 @@ export class DatabaseStorage implements IStorage {
       return undefined;
     }
 
-    const hydrated = await this.hydrateMatchNotification(row);
-    return hydrated ?? undefined;
+    const [hydrated] = await this.hydrateMatchNotifications([row]);
+    return hydrated;
   }
 
   async getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>> {

@@ -12,3 +12,6 @@ CREATE TABLE IF NOT EXISTS match_notifications (
 
 CREATE UNIQUE INDEX IF NOT EXISTS match_notifications_user_lost_found_unique
   ON match_notifications (user_id, lost_item_id, found_item_id);
+
+CREATE INDEX IF NOT EXISTS match_notifications_user_updated_at_idx
+  ON match_notifications (user_id, updated_at DESC);

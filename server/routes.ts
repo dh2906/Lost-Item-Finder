@@ -28,6 +28,12 @@ const OPENAI_EMBEDDING_MODEL =
 const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 12);
 const AUTO_MATCH_RESULT_COUNT = Number(process.env.AUTO_MATCH_RESULT_COUNT ?? 5);
+const AUTO_MATCH_BACKFILL_LIMIT = Number(
+  process.env.AUTO_MATCH_BACKFILL_LIMIT ?? 3
+);
+const AUTO_MATCH_JOB_TIMEOUT_MS = Number(
+  process.env.AUTO_MATCH_JOB_TIMEOUT_MS ?? 15000
+);
 const MIN_VECTOR_MATCH_SCORE = Number(
   process.env.MIN_VECTOR_MATCH_SCORE ?? 0.22
 );
@@ -431,8 +437,11 @@ async function ensureItemEmbedding(item: {
   return embedding;
 }
 
-async function backfillItemEmbeddings(reportType: "lost" | "found"): Promise<void> {
-  const missingItems = await storage.getItemsWithoutEmbeddings(reportType);
+async function backfillItemEmbeddings(
+  reportType: "lost" | "found",
+  limit?: number
+): Promise<void> {
+  const missingItems = await storage.getItemsWithoutEmbeddings(reportType, limit);
 
   for (const item of missingItems) {
     await ensureItemEmbedding(item);
@@ -445,24 +454,63 @@ type VectorCandidate = Awaited<
 type RankedVectorCandidate = VectorCandidate & {
   distanceKm: number | null;
 };
+type FoundItemForAutoMatch = {
+  id: number;
+  userId?: number | null;
+  reportType: string;
+  status?: string | null;
+  title?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+  itemCategory?: string | null;
+  color?: string | null;
+  size?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
+};
+let automaticMatchQueue: Promise<void> = Promise.resolve();
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      }
+    );
+  });
+}
+
+function queueAutomaticMatchNotificationsForFoundItem(
+  foundItem: FoundItemForAutoMatch,
+  existingEmbedding?: number[]
+): void {
+  automaticMatchQueue = automaticMatchQueue
+    .catch(() => undefined)
+    .then(() =>
+      withTimeout(
+        runAutomaticMatchNotificationsForFoundItem(foundItem, existingEmbedding),
+        AUTO_MATCH_JOB_TIMEOUT_MS,
+        `Automatic match job for item ${foundItem.id}`
+      )
+    )
+    .catch((error) => {
+      console.error("Failed to process automatic match notifications:", error);
+    });
+}
 
 async function runAutomaticMatchNotificationsForFoundItem(
-  foundItem: {
-    id: number;
-    userId?: number | null;
-    reportType: string;
-    status?: string | null;
-    title?: string | null;
-    description?: string | null;
-    imageUrl?: string | null;
-    itemCategory?: string | null;
-    color?: string | null;
-    size?: string | null;
-    tags?: string[] | null;
-    location?: string | null;
-    latitude?: string | null;
-    longitude?: string | null;
-  },
+  foundItem: FoundItemForAutoMatch,
   existingEmbedding?: number[]
 ): Promise<void> {
   if (foundItem.reportType !== "found" || foundItem.status !== "active") {
@@ -470,7 +518,7 @@ async function runAutomaticMatchNotificationsForFoundItem(
   }
 
   const foundEmbedding = existingEmbedding ?? (await ensureItemEmbedding(foundItem));
-  await backfillItemEmbeddings("lost");
+  await backfillItemEmbeddings("lost", AUTO_MATCH_BACKFILL_LIMIT);
 
   const foundLatitude = parseCoordinate(foundItem.latitude);
   const foundLongitude = parseCoordinate(foundItem.longitude);
@@ -930,11 +978,7 @@ export async function registerRoutes(
       }
 
       if (item.reportType === "found" && item.status === "active") {
-        try {
-          await runAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
-        } catch (matchingError) {
-          console.error("Failed to create automatic match notifications:", matchingError);
-        }
+        queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
       }
 
       res.status(201).json(item);
@@ -976,15 +1020,13 @@ export async function registerRoutes(
       const shouldRunAutomaticMatching =
         item.reportType === "found" &&
         item.status === "active" &&
-        (Object.keys(input).some((field) => embeddingRelevantFields.has(field)) ||
+        (Object.keys(input).some(
+          (field) => embeddingRelevantFields.has(field) || field === "imageUrl"
+        ) ||
           input.status === "active");
 
       if (shouldRunAutomaticMatching) {
-        try {
-          await runAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
-        } catch (matchingError) {
-          console.error("Failed to refresh automatic match notifications:", matchingError);
-        }
+        queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
       }
 
       res.json(item);
