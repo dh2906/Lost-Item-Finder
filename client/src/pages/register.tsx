@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Link, useLocation, Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,15 +8,54 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 import { Layout } from "@/components/layout";
-import { UserPlus, Loader2 } from "lucide-react";
+import { UserPlus, Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
+import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
+import { sanitizeRedirect } from "@/lib/redirect";
+
+function PasswordStrengthIndicator({ password }: { password: string }) {
+  if (!password) return null;
+  const checks = [
+    { label: "4자 이상", ok: password.length >= 4 },
+    { label: "8자 이상", ok: password.length >= 8 },
+    { label: "숫자 포함", ok: /\d/.test(password) },
+    { label: "특수문자 포함", ok: /[!@#$%^&*]/.test(password) },
+  ];
+  return (
+    <div className="flex flex-wrap gap-2 pt-1">
+      {checks.map(({ label, ok }) => (
+        <span key={label} className={`flex items-center gap-1 text-xs ${ok ? "text-green-600" : "text-muted-foreground"}`}>
+          {ok ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export function RegisterPage() {
-  const [, setLocation] = useLocation();
+  const [location] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { isAuthenticated, isLoading } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  // 내부 경로만 허용
+  const params = new URLSearchParams(location.split("?")[1] ?? "");
+  const redirectTo = sanitizeRedirect(params.get("redirect"));
+  const loginHref = redirectTo === "/" ? "/login" : `/login?redirect=${encodeURIComponent(redirectTo)}`;
+
+  // 이미 로그인된 경우 리다이렉트
+  if (!isLoading && isAuthenticated) {
+    return <Redirect to={redirectTo} />;
+  }
+
+  const passwordsMatch = confirmPassword === "" || password === confirmPassword;
+  const confirmPasswordErrorId = "confirm-password-error";
 
   const registerMutation = useMutation({
     mutationFn: async (data: { username: string; password: string; name?: string }) => {
@@ -32,9 +71,9 @@ export function RegisterPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (user) => {
+      queryClient.setQueryData(AUTH_QUERY_KEY, user);
       toast({ title: "회원가입 성공", description: "바로 서비스를 이용할 수 있습니다." });
-      setLocation("/");
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", title: "회원가입 실패", description: error.message });
@@ -43,12 +82,31 @@ export function RegisterPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // trim 후 실제 길이 검증 (공백만 입력해도 minLength={3}은 통과하므로 직접 체크)
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername || trimmedUsername.length < 3) {
+      toast({
+        variant: "destructive",
+        title: "사용자명 오류",
+        description: "사용자명은 공백이 아닌 3자 이상이어야 합니다.",
+      });
+      return;
+    }
+
     if (password !== confirmPassword) {
       toast({ variant: "destructive", title: "비밀번호 불일치", description: "비밀번호가 일치하지 않습니다." });
       return;
     }
-    registerMutation.mutate({ username, password, name: name || undefined });
+    if (password.length < 4) {
+      toast({ variant: "destructive", title: "비밀번호 오류", description: "비밀번호는 4자 이상이어야 합니다." });
+      return;
+    }
+
+    registerMutation.mutate({ username: trimmedUsername, password, name: name.trim() || undefined });
   };
+
+  const toggleButtonClass = "absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm";
 
   return (
     <Layout>
@@ -81,59 +139,94 @@ export function RegisterPage() {
                   minLength={3}
                   autoComplete="username"
                   className="h-12"
+                  disabled={registerMutation.isPending}
                 />
               </div>
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="password" className="text-sm font-semibold">
-                    비밀번호 <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="4자 이상"
-                    required
-                    minLength={4}
-                    autoComplete="new-password"
-                     className="h-12"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword" className="text-sm font-semibold">
-                    비밀번호 확인 <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="비밀번호 다시 입력"
-                    required
-                    autoComplete="new-password"
-                     className="h-12"
-                  />
-                </div>
-              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-semibold">
-                  이름
+                  이름 <span className="text-muted-foreground font-normal">(선택)</span>
                 </Label>
                 <Input
                   id="name"
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="이름을 입력하세요 (선택)"
-                   className="h-12"
+                  placeholder="실명 또는 닉네임"
+                  className="h-12"
+                  disabled={registerMutation.isPending}
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password" className="text-sm font-semibold">
+                  비밀번호 <span className="text-destructive">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="4자 이상"
+                    required
+                    minLength={4}
+                    autoComplete="new-password"
+                    className="h-12 pr-12"
+                    disabled={registerMutation.isPending}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className={toggleButtonClass}
+                    aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    aria-pressed={showPassword}
+                  >
+                    {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                  </button>
+                </div>
+                <PasswordStrengthIndicator password={password} />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword" className="text-sm font-semibold">
+                  비밀번호 확인 <span className="text-destructive">*</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirm ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="비밀번호 다시 입력"
+                    required
+                    autoComplete="new-password"
+                    className={`h-12 pr-12 ${!passwordsMatch && confirmPassword ? "border-destructive focus-visible:ring-destructive" : ""}`}
+                    disabled={registerMutation.isPending}
+                    aria-invalid={!passwordsMatch && !!confirmPassword}
+                    aria-describedby={!passwordsMatch && confirmPassword ? confirmPasswordErrorId : undefined}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirm((v) => !v)}
+                    className={toggleButtonClass}
+                    aria-label={showConfirm ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    aria-pressed={showConfirm}
+                  >
+                    {showConfirm ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                  </button>
+                </div>
+                {!passwordsMatch && confirmPassword && (
+                  <p id={confirmPasswordErrorId} className="text-xs text-destructive">
+                    비밀번호가 일치하지 않습니다.
+                  </p>
+                )}
               </div>
 
               <Button
                 type="submit"
                 className="h-12 w-full rounded-full text-base font-semibold shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.4)]"
-                disabled={registerMutation.isPending}
+                disabled={registerMutation.isPending || (!passwordsMatch && !!confirmPassword)}
               >
                 {registerMutation.isPending ? (
                   <>
@@ -157,7 +250,7 @@ export function RegisterPage() {
               <p className="text-center text-sm text-muted-foreground">
                 이미 계정이 있으신가요?{" "}
                 <Link
-                  href="/login"
+                  href={loginHref}
                   className="font-semibold text-primary transition-colors hover:text-primary/80 hover:underline underline-offset-4"
                 >
                   로그인
