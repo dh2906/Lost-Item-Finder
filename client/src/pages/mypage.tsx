@@ -1,39 +1,116 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import {
   BookmarkCheck,
+  CheckCircle2,
   Heart,
+  MapPin,
   PackageSearch,
+  Pencil,
+  RotateCcw,
   Search,
+  Trash2,
   UserRound,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { ItemCard } from "@/components/item-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useFavoriteItems } from "@/hooks/use-favorites";
+import { useDeleteItem, useMyItems, useUpdateItem } from "@/hooks/use-items";
+import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { Item } from "@shared/schema";
 
-type FilterType = "all" | "found" | "lost";
+type FilterType = "all" | "active" | "resolved";
+
+function getStatusText(status: Item["status"]) {
+  return status === "resolved" ? "해결 완료" : "진행 중";
+}
+
+function getReportTypeText(reportType: Item["reportType"]) {
+  return reportType === "found" ? "습득" : "분실";
+}
 
 export default function MyPage() {
   const { user } = useAuth();
-  const { data: favorites = [], isLoading } = useFavoriteItems();
+  const { toast } = useToast();
+  const { data: myItems = [], isLoading: isMyItemsLoading } = useMyItems();
+  const { data: favorites = [], isLoading: isFavoritesLoading } = useFavoriteItems();
+  const updateItemMutation = useUpdateItem();
+  const deleteItemMutation = useDeleteItem();
   const [filter, setFilter] = useState<FilterType>("all");
 
-  const filteredFavorites = favorites.filter((favorite) =>
-    filter === "all" ? true : favorite.item.reportType === filter
+  const filteredMyItems = useMemo(
+    () =>
+      myItems.filter((item) => (filter === "all" ? true : item.status === filter)),
+    [filter, myItems]
   );
-  const foundCount = favorites.filter(
-    (favorite) => favorite.item.reportType === "found"
-  ).length;
-  const lostCount = favorites.filter(
-    (favorite) => favorite.item.reportType === "lost"
-  ).length;
+
+  const activeCount = myItems.filter((item) => item.status === "active").length;
+  const resolvedCount = myItems.filter((item) => item.status === "resolved").length;
+  const foundCount = myItems.filter((item) => item.reportType === "found").length;
+  const lostCount = myItems.filter((item) => item.reportType === "lost").length;
+
+  const handleStatusToggle = async (item: Item) => {
+    const nextStatus = item.status === "active" ? "resolved" : "active";
+    const confirmed = window.confirm(
+      nextStatus === "resolved"
+        ? `'${item.title}' 글을 해결 완료 처리할까요?`
+        : `'${item.title}' 글을 다시 공개할까요?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await updateItemMutation.mutateAsync({
+        itemId: item.id,
+        data: { status: nextStatus },
+      });
+
+      toast({
+        title:
+          nextStatus === "resolved"
+            ? "게시글을 해결 완료 처리했어요."
+            : "게시글을 다시 공개했어요.",
+      });
+    } catch (error) {
+      toast({
+        title: "상태 변경에 실패했어요.",
+        description:
+          error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDelete = async (item: Item) => {
+    const confirmed = window.confirm(
+      `'${item.title}' 글을 삭제할까요? 이 작업은 되돌릴 수 없어요.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteItemMutation.mutateAsync(item.id);
+      toast({ title: "게시글을 삭제했어요." });
+    } catch (error) {
+      toast({
+        title: "삭제에 실패했어요.",
+        description:
+          error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <Layout>
@@ -46,13 +123,13 @@ export default function MyPage() {
               </Badge>
               <div className="space-y-3">
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                  저장해 둔 관심 게시물을
+                  내가 등록한 글을 모아 보고
                   <br />
-                  한곳에서 다시 확인하세요
+                  바로 수정하고 상태까지 관리하세요
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-                  상세 페이지에서 저장한 게시물을 모아 보고, 습득물과 분실물
-                  흐름을 나눠 빠르게 다시 확인할 수 있게 구성했습니다.
+                  분실물과 습득물 게시글을 한곳에서 확인하고, 해결된 글은 즉시
+                  비공개 처리해서 검색 품질을 더 깔끔하게 유지할 수 있어요.
                 </p>
               </div>
             </div>
@@ -69,22 +146,28 @@ export default function MyPage() {
                   <p className="text-xl font-semibold text-foreground">
                     {user?.name || user?.username}
                   </p>
-                  <p className="text-sm text-muted-foreground">
-                    {user?.username}
-                  </p>
+                  <p className="text-sm text-muted-foreground">{user?.username}</p>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
                     <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      전체 저장
+                      전체 글
                     </p>
                     <p className="mt-2 text-2xl font-bold text-foreground">
-                      {favorites.length}
+                      {myItems.length}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
                     <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      습득물
+                      해결 완료
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-foreground">
+                      {resolvedCount}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
+                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                      습득
                     </p>
                     <p className="mt-2 text-2xl font-bold text-foreground">
                       {foundCount}
@@ -92,7 +175,7 @@ export default function MyPage() {
                   </div>
                   <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
                     <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      분실물
+                      분실
                     </p>
                     <p className="mt-2 text-2xl font-bold text-foreground">
                       {lostCount}
@@ -105,17 +188,17 @@ export default function MyPage() {
         </div>
       </section>
 
-      <section className="pb-16 pt-10">
+      <section className="pb-10 pt-10">
         <div className="container mx-auto max-w-6xl px-5">
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
               <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-                <BookmarkCheck className="h-6 w-6 text-primary" />
-                관심 게시물 목록
+                <PackageSearch className="h-6 w-6 text-primary" />
+                내 게시글 관리
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
-                저장한 순서대로 정리되어 있어, 최근에 체크한 게시물부터 다시 볼 수
-                있습니다.
+                해결된 글은 검색과 공개 목록에서 제외되고, 다시 공개도 바로 할 수
+                있어요.
               </p>
             </div>
 
@@ -131,48 +214,261 @@ export default function MyPage() {
                   전체
                 </TabsTrigger>
                 <TabsTrigger
-                  value="found"
+                  value="active"
                   className="rounded-full px-4 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                 >
-                  습득물
+                  진행 중
                 </TabsTrigger>
                 <TabsTrigger
-                  value="lost"
+                  value="resolved"
                   className="rounded-full px-4 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                 >
-                  분실물
+                  해결 완료
                 </TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
-          {isLoading ? (
+          {isMyItemsLoading ? (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {[1, 2].map((index) => (
+                <div
+                  key={index}
+                  className="h-[260px] animate-pulse rounded-[26px] bg-muted"
+                />
+              ))}
+            </div>
+          ) : myItems.length === 0 ? (
+            <Card className="border-dashed border-border/80 bg-secondary/35">
+              <CardContent className="flex flex-col items-center py-16 text-center">
+                <div className="mb-5 rounded-full border border-border/70 bg-white p-4 shadow-sm">
+                  <PackageSearch className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-semibold text-foreground">
+                  아직 등록한 게시글이 없어요.
+                </h3>
+                <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+                  분실물이나 습득물을 등록하면 여기서 수정, 삭제, 해결 처리까지
+                  한 번에 관리할 수 있어요.
+                </p>
+                <div className="mt-8 flex flex-wrap justify-center gap-3">
+                  <Button asChild className="rounded-full px-5">
+                    <Link href="/report/found">습득물 등록하기</Link>
+                  </Button>
+                  <Button asChild variant="outline" className="rounded-full px-5">
+                    <Link href="/report/lost">분실물 등록하기</Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : filteredMyItems.length === 0 ? (
+            <Card className="border-border/70 bg-white/92">
+              <CardContent className="py-14 text-center">
+                <h3 className="text-lg font-semibold text-foreground">
+                  이 상태의 게시글은 아직 없어요.
+                </h3>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  다른 탭을 선택하면 등록한 다른 글들을 볼 수 있어요.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {filteredMyItems.map((item) => (
+                <Card
+                  key={item.id}
+                  className="overflow-hidden border-border/70 bg-white/92 shadow-sm"
+                >
+                  <CardContent className="p-0">
+                    <div className="grid gap-0 sm:grid-cols-[180px_minmax(0,1fr)]">
+                      <Link href={`/item/${item.id}`} className="block h-full">
+                        <div className="relative h-full min-h-[180px] overflow-hidden bg-muted">
+                          {item.imageUrl ? (
+                            <img
+                              src={item.imageUrl}
+                              alt={item.title}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                              이미지 없음
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+
+                      <div className="space-y-4 p-5">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge
+                            className={
+                              item.reportType === "found"
+                                ? "bg-emerald-500 text-white hover:bg-emerald-500"
+                                : "bg-rose-500 text-white hover:bg-rose-500"
+                            }
+                          >
+                            {getReportTypeText(item.reportType)}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={
+                              item.status === "resolved"
+                                ? "border-slate-300 text-slate-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
+                            }
+                          >
+                            {getStatusText(item.status)}
+                          </Badge>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Link href={`/item/${item.id}`}>
+                            <h3 className="text-xl font-semibold text-foreground transition-colors hover:text-primary">
+                              {item.title}
+                            </h3>
+                          </Link>
+                          <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
+                            {item.location && (
+                              <span className="inline-flex items-center gap-1.5">
+                                <MapPin className="h-4 w-4" />
+                                {item.location}
+                              </span>
+                            )}
+                            {item.date && (
+                              <span className="inline-flex items-center gap-1.5">
+                                <CheckCircle2 className="h-4 w-4" />
+                                {format(new Date(item.date), "PPP", { locale: ko })}
+                              </span>
+                            )}
+                          </div>
+                          <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">
+                            {item.description || "설명이 아직 등록되지 않았어요."}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Button asChild variant="outline" className="rounded-full">
+                            <Link href={`/item/${item.id}`}>
+                              <Search className="mr-2 h-4 w-4" />
+                              상세보기
+                            </Link>
+                          </Button>
+                          <Button asChild variant="outline" className="rounded-full">
+                            <Link href={`/item/${item.id}/edit`}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              수정
+                            </Link>
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-full"
+                            disabled={
+                              updateItemMutation.isPending ||
+                              deleteItemMutation.isPending
+                            }
+                            onClick={() => void handleStatusToggle(item)}
+                          >
+                            {item.status === "active" ? (
+                              <>
+                                <CheckCircle2 className="mr-2 h-4 w-4" />
+                                찾았어요!
+                              </>
+                            ) : (
+                              <>
+                                <RotateCcw className="mr-2 h-4 w-4" />
+                                다시 공개
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-full text-destructive hover:text-destructive"
+                            disabled={
+                              updateItemMutation.isPending ||
+                              deleteItemMutation.isPending
+                            }
+                            onClick={() => void handleDelete(item)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            삭제
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-10 grid gap-4 sm:grid-cols-3">
+            <Card className="border-border/70 bg-white/92">
+              <CardContent className="p-5">
+                <p className="text-sm text-muted-foreground">진행 중 글</p>
+                <p className="mt-2 text-2xl font-bold text-foreground">
+                  {activeCount}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-border/70 bg-white/92">
+              <CardContent className="p-5">
+                <p className="text-sm text-muted-foreground">해결 완료 글</p>
+                <p className="mt-2 text-2xl font-bold text-foreground">
+                  {resolvedCount}
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-border/70 bg-white/92">
+              <CardContent className="p-5">
+                <p className="text-sm text-muted-foreground">관심 게시글</p>
+                <p className="mt-2 text-2xl font-bold text-foreground">
+                  {favorites.length}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      <section className="pb-16">
+        <div className="container mx-auto max-w-6xl px-5">
+          <div className="mb-6 space-y-2">
+            <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+              <BookmarkCheck className="h-6 w-6 text-primary" />
+              관심 게시글
+            </h2>
+            <p className="text-sm leading-6 text-muted-foreground">
+              예전에 저장해 둔 글도 여기에서 계속 확인할 수 있어요.
+            </p>
+          </div>
+
+          {isFavoritesLoading ? (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {[1, 2, 3].map((index) => (
-                <div key={index} className="space-y-3">
-                  <div className="h-4 w-32 animate-pulse rounded bg-muted" />
-                  <div className="h-[330px] animate-pulse rounded-[26px] bg-muted" />
-                </div>
+                <div
+                  key={index}
+                  className="h-[330px] animate-pulse rounded-[26px] bg-muted"
+                />
               ))}
             </div>
           ) : favorites.length === 0 ? (
             <Card className="border-dashed border-border/80 bg-secondary/35">
-              <CardContent className="flex flex-col items-center py-16 text-center">
+              <CardContent className="flex flex-col items-center py-14 text-center">
                 <div className="mb-5 rounded-full border border-border/70 bg-white p-4 shadow-sm">
                   <Heart className="h-8 w-8 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground">
-                  아직 저장한 관심 게시물이 없어요
+                  저장해 둔 관심 게시글이 아직 없어요.
                 </h3>
                 <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-                  게시물 상세 페이지에서 관심 등록을 누르면, 마이페이지에 모아
-                  두고 다시 확인할 수 있습니다.
+                  상세 페이지에서 관심 게시글로 저장하면 여기에서 다시 볼 수 있어요.
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <Button asChild className="rounded-full px-5">
                     <Link href="/items">
                       <PackageSearch className="mr-2 h-4 w-4" />
-                      전체 게시물 보기
+                      전체 게시글 보기
                     </Link>
                   </Button>
                   <Button asChild variant="outline" className="rounded-full px-5">
@@ -184,23 +480,12 @@ export default function MyPage() {
                 </div>
               </CardContent>
             </Card>
-          ) : filteredFavorites.length === 0 ? (
-            <Card className="border-border/70 bg-white/92">
-              <CardContent className="py-14 text-center">
-                <h3 className="text-lg font-semibold text-foreground">
-                  이 조건에 맞는 관심 게시물이 아직 없어요
-                </h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  다른 필터를 선택하거나 새로운 게시물을 저장해 보세요.
-                </p>
-              </CardContent>
-            </Card>
           ) : (
             <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {filteredFavorites.map((favorite) => (
+              {favorites.map((favorite) => (
                 <div key={favorite.item.id} className="space-y-3">
                   <div className="flex items-center justify-between px-1 text-xs font-medium text-muted-foreground">
-                    <span>저장 시각</span>
+                    <span>저장한 시각</span>
                     <span>
                       {format(new Date(favorite.createdAt), "PPP p", {
                         locale: ko,

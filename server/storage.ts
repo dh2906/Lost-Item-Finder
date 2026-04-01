@@ -4,8 +4,10 @@ import {
   itemEmbeddings,
   users,
   type Item,
+  type ItemStatus,
   type InsertItem,
   type InsertUser,
+  type UpdateItem,
   type User,
   type UserRole,
   type UserStatus,
@@ -120,8 +122,18 @@ function sanitizeAdminUserRecord(user: User, itemCount: number): AdminUserRecord
 
 export interface IStorage {
   getItems(type?: "lost" | "found", search?: string): Promise<Item[]>;
+  getMyItems(
+    userId: number,
+    filters?: { type?: "lost" | "found"; status?: ItemStatus }
+  ): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem & { userId?: number | null }): Promise<Item>;
+  updateOwnedItem(
+    userId: number,
+    itemId: number,
+    updates: UpdateItem
+  ): Promise<Item | undefined>;
+  deleteOwnedItem(userId: number, itemId: number): Promise<boolean>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
   getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
   searchFoundItemsByEmbedding(
@@ -163,7 +175,7 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getItems(type?: "lost" | "found", search?: string): Promise<Item[]> {
-    const conditions = [];
+    const conditions = [eq(items.status, "active" as const)];
     if (type) conditions.push(eq(items.reportType, type));
     if (search) conditions.push(ilike(items.title, `%${search}%`));
 
@@ -171,6 +183,27 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(items)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(items.date));
+  }
+
+  async getMyItems(
+    userId: number,
+    filters?: { type?: "lost" | "found"; status?: ItemStatus }
+  ): Promise<Item[]> {
+    const conditions = [eq(items.userId, userId)];
+
+    if (filters?.type) {
+      conditions.push(eq(items.reportType, filters.type));
+    }
+
+    if (filters?.status) {
+      conditions.push(eq(items.status, filters.status));
+    }
+
+    return await db
+      .select()
+      .from(items)
+      .where(and(...conditions))
       .orderBy(desc(items.date));
   }
 
@@ -182,6 +215,29 @@ export class DatabaseStorage implements IStorage {
   async createItem(insertItem: InsertItem & { userId?: number | null }): Promise<Item> {
     const [item] = await db.insert(items).values(insertItem).returning();
     return item;
+  }
+
+  async updateOwnedItem(
+    userId: number,
+    itemId: number,
+    updates: UpdateItem
+  ): Promise<Item | undefined> {
+    const [updatedItem] = await db
+      .update(items)
+      .set(updates)
+      .where(and(eq(items.id, itemId), eq(items.userId, userId)))
+      .returning();
+
+    return updatedItem;
+  }
+
+  async deleteOwnedItem(userId: number, itemId: number): Promise<boolean> {
+    const deletedRows = await db
+      .delete(items)
+      .where(and(eq(items.id, itemId), eq(items.userId, userId)))
+      .returning({ id: items.id });
+
+    return deletedRows.length > 0;
   }
 
   async upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void> {
@@ -203,7 +259,13 @@ export class DatabaseStorage implements IStorage {
       .select({ item: items })
       .from(items)
       .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
-      .where(and(eq(items.reportType, "found"), isNull(itemEmbeddings.itemId)))
+      .where(
+        and(
+          eq(items.reportType, "found"),
+          eq(items.status, "active"),
+          isNull(itemEmbeddings.itemId)
+        )
+      )
       .orderBy(desc(items.date));
 
     return rows.map((row) => row.item);
@@ -222,7 +284,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(itemEmbeddings)
       .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
-      .where(eq(items.reportType, "found"))
+      .where(and(eq(items.reportType, "found"), eq(items.status, "active")))
       .orderBy(distance)
       .limit(limit);
 
@@ -454,7 +516,12 @@ export class DatabaseStorage implements IStorage {
       ...row.item,
       ownerName: row.ownerName ?? null,
       ownerUsername: row.ownerUsername ?? null,
-      statusLabel: row.item.reportType === "lost" ? "분실 접수" : "습득 접수",
+      statusLabel:
+        row.item.status === "resolved"
+          ? "해결됨"
+          : row.item.reportType === "lost"
+          ? "분실 접수"
+          : "습득 접수",
     }));
   }
 

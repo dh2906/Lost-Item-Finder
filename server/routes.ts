@@ -38,6 +38,17 @@ const favoriteItemIdSchema = z.object({
   itemId: z.coerce.number().int().positive(),
 });
 const positiveIdSchema = z.coerce.number().int().positive();
+const embeddingRelevantFields = new Set([
+  "title",
+  "description",
+  "itemCategory",
+  "color",
+  "size",
+  "tags",
+  "location",
+  "latitude",
+  "longitude",
+]);
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -734,6 +745,27 @@ export async function registerRoutes(
     }
   });
 
+  app.get(api.items.mine.path, isAuthenticated, async (req, res) => {
+    try {
+      const filters = api.items.mine.input.parse({
+        type: typeof req.query.type === "string" ? req.query.type : undefined,
+        status:
+          typeof req.query.status === "string" ? req.query.status : undefined,
+      });
+
+      const itemsList = await storage.getMyItems(req.user!.id, filters);
+      res.json(itemsList);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get(api.items.get.path, async (req, res) => {
     try {
       const item = await storage.getItem(Number(req.params.id));
@@ -763,6 +795,62 @@ export async function registerRoutes(
       }
 
       res.status(201).json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.patch(api.items.update.path, isAuthenticated, async (req, res) => {
+    try {
+      const itemId = positiveIdSchema.parse(req.params.id);
+      const input = api.items.update.input.parse(req.body);
+      const item = await storage.updateOwnedItem(req.user!.id, itemId, input);
+
+      if (!item) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+
+      const shouldRefreshEmbedding =
+        item.reportType === "found" &&
+        item.status === "active" &&
+        Object.keys(input).some((field) => embeddingRelevantFields.has(field));
+
+      if (shouldRefreshEmbedding) {
+        try {
+          await ensureItemEmbedding(item);
+        } catch (embeddingError) {
+          console.error("Failed to update item embedding:", embeddingError);
+        }
+      }
+
+      res.json(item);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete(api.items.delete.path, isAuthenticated, async (req, res) => {
+    try {
+      const itemId = positiveIdSchema.parse(req.params.id);
+      const deleted = await storage.deleteOwnedItem(req.user!.id, itemId);
+
+      if (!deleted) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+
+      res.json({ success: true });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({

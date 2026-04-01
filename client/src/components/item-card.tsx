@@ -38,6 +38,7 @@ function getDisplayTitle(item: Item) {
 export function ItemCard({ item, score, reasoning, distanceText, className, variant = "default" }: ItemCardProps) {
   const [isReasonExpanded, setIsExpanded] = useState(false);
   const reportLabel = item.reportType === "found" ? "습득" : "분실";
+  const statusLabel = item.status === "resolved" ? "해결 완료" : "진행 중";
   const isCompact = variant === "compact";
   const displayTitle = getDisplayTitle(item);
 
@@ -92,6 +93,18 @@ export function ItemCard({ item, score, reasoning, distanceText, className, vari
                 )}
               >
                 {reportLabel}
+              </Badge>
+
+              <Badge
+                variant="outline"
+                className={cn(
+                  "border font-medium shadow-sm",
+                  item.status === "resolved"
+                    ? "border-slate-300 bg-white/95 text-slate-700"
+                    : "border-amber-200 bg-amber-50/95 text-amber-700"
+                )}
+              >
+                {statusLabel}
               </Badge>
 
               {!isCompact && matchBadge && (

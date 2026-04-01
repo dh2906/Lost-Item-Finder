@@ -1,8 +1,18 @@
 import { z } from "zod";
-import { insertItemSchema, items, reportTypes, userRoles, userStatuses } from "./schema";
+import {
+  insertItemSchema,
+  items,
+  itemStatuses,
+  reportTypes,
+  updateItemSchema,
+  userRoles,
+  userStatuses,
+} from "./schema";
+
+const itemResponseSchema = z.custom<typeof items.$inferSelect>();
 
 const favoriteItemSchema = z.object({
-  item: z.custom<typeof items.$inferSelect>(),
+  item: itemResponseSchema,
   createdAt: z.string().datetime(),
 });
 
@@ -31,6 +41,7 @@ const adminItemResponseSchema = z.object({
   ownerName: z.string().nullable(),
   ownerUsername: z.string().nullable(),
   reportType: z.enum(reportTypes),
+  status: z.enum(itemStatuses),
   title: z.string(),
   description: z.string().nullable(),
   itemCategory: z.string().nullable(),
@@ -121,14 +132,27 @@ export const api = {
         })
         .optional(),
       responses: {
-        200: z.array(z.custom<typeof items.$inferSelect>()),
+        200: z.array(itemResponseSchema),
+      },
+    },
+    mine: {
+      method: "GET" as const,
+      path: "/api/items/mine" as const,
+      input: z
+        .object({
+          type: z.enum(reportTypes).optional(),
+          status: z.enum(itemStatuses).optional(),
+        })
+        .optional(),
+      responses: {
+        200: z.array(itemResponseSchema),
       },
     },
     get: {
       method: "GET" as const,
       path: "/api/items/:id" as const,
       responses: {
-        200: z.custom<typeof items.$inferSelect>(),
+        200: itemResponseSchema,
         404: errorSchemas.notFound,
       },
     },
@@ -137,8 +161,26 @@ export const api = {
       path: "/api/items" as const,
       input: insertItemSchema,
       responses: {
-        201: z.custom<typeof items.$inferSelect>(),
+        201: itemResponseSchema,
         400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: "PATCH" as const,
+      path: "/api/items/:id" as const,
+      input: updateItemSchema,
+      responses: {
+        200: itemResponseSchema,
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: "DELETE" as const,
+      path: "/api/items/:id" as const,
+      responses: {
+        200: z.object({ success: z.literal(true) }),
+        404: errorSchemas.notFound,
       },
     },
   },
@@ -298,6 +340,8 @@ export function buildUrl(
 export type ItemInput = z.infer<typeof api.items.create.input>;
 export type ItemResponse = z.infer<(typeof api.items.create.responses)[201]>;
 export type ItemsListResponse = z.infer<(typeof api.items.list.responses)[200]>;
+export type MyItemsResponse = z.infer<(typeof api.items.mine.responses)[200]>;
+export type UpdateItemInput = z.infer<typeof api.items.update.input>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<
   (typeof api.ai.analyzeImage.responses)[200]
