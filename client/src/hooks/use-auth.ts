@@ -43,7 +43,6 @@ export function useAuth() {
     },
     onSuccess: () => {
       queryClient.setQueryData(AUTH_QUERY_KEY, null);
-      queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
       toast({ title: "로그아웃 되었습니다" });
       setLocation("/");
     },
