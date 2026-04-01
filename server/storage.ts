@@ -2,6 +2,7 @@ import {
   favorites,
   items,
   itemEmbeddings,
+  matchNotifications,
   users,
   type Item,
   type ItemStatus,
@@ -13,7 +14,16 @@ import {
   type UserStatus,
 } from "@shared/schema";
 import { db } from "./db";
-import { and, cosineDistance, desc, eq, ilike, isNull, sql } from "drizzle-orm";
+import {
+  and,
+  cosineDistance,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNull,
+  sql,
+} from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 
@@ -57,6 +67,20 @@ export interface AdminDashboardData {
   stats: AdminDashboardStats;
   recentUsers: AdminUserRecord[];
   recentItems: AdminItemRecord[];
+}
+
+export interface MatchNotificationRecord {
+  id: number;
+  userId: number;
+  lostItemId: number;
+  foundItemId: number;
+  score: number;
+  reasoning: string;
+  isRead: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  lostItem: Item;
+  foundItem: Item;
 }
 
 function getConfiguredAdminUsernames(): string[] {
@@ -135,11 +159,30 @@ export interface IStorage {
   ): Promise<Item | undefined>;
   deleteOwnedItem(userId: number, itemId: number): Promise<boolean>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
-  getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
-  searchFoundItemsByEmbedding(
+  getItemEmbedding(
+    itemId: number
+  ): Promise<{ content: string; embedding: number[] } | undefined>;
+  getItemsWithoutEmbeddings(
+    reportType: "lost" | "found",
+    limit?: number
+  ): Promise<Item[]>;
+  searchItemsByEmbedding(
+    reportType: "lost" | "found",
     embedding: number[],
     limit?: number
   ): Promise<Array<{ item: Item; score: number }>>;
+  upsertMatchNotification(input: {
+    userId: number;
+    lostItemId: number;
+    foundItemId: number;
+    score: number;
+    reasoning: string;
+  }): Promise<void>;
+  getMatchNotifications(userId: number): Promise<MatchNotificationRecord[]>;
+  markMatchNotificationAsRead(
+    userId: number,
+    notificationId: number
+  ): Promise<MatchNotificationRecord | undefined>;
 
   getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>>;
   addFavorite(userId: number, itemId: number): Promise<void>;
@@ -174,6 +217,41 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  private async hydrateMatchNotifications(
+    rows: Array<typeof matchNotifications.$inferSelect>
+  ): Promise<MatchNotificationRecord[]> {
+    if (rows.length === 0) {
+      return [];
+    }
+
+    const itemIds = Array.from(
+      new Set(rows.flatMap((row) => [row.lostItemId, row.foundItemId]))
+    );
+    const matchedItems = await db
+      .select()
+      .from(items)
+      .where(inArray(items.id, itemIds));
+    const itemById = new Map(matchedItems.map((item) => [item.id, item]));
+
+    return rows.flatMap((row) => {
+      const lostItem = itemById.get(row.lostItemId);
+      const foundItem = itemById.get(row.foundItemId);
+
+      if (!lostItem || !foundItem) {
+        return [];
+      }
+
+      return [
+        {
+          ...row,
+          score: Number(row.score),
+          lostItem,
+          foundItem,
+        },
+      ];
+    });
+  }
+
   async getItems(type?: "lost" | "found", search?: string): Promise<Item[]> {
     const conditions = [eq(items.status, "active" as const)];
     if (type) conditions.push(eq(items.reportType, type));
@@ -254,24 +332,45 @@ export class DatabaseStorage implements IStorage {
       });
   }
 
-  async getFoundItemsWithoutEmbeddings(): Promise<Item[]> {
-    const rows = await db
+  async getItemEmbedding(
+    itemId: number
+  ): Promise<{ content: string; embedding: number[] } | undefined> {
+    const [row] = await db
+      .select({
+        content: itemEmbeddings.content,
+        embedding: itemEmbeddings.embedding,
+      })
+      .from(itemEmbeddings)
+      .where(eq(itemEmbeddings.itemId, itemId));
+
+    return row;
+  }
+
+  async getItemsWithoutEmbeddings(
+    reportType: "lost" | "found",
+    limit?: number
+  ): Promise<Item[]> {
+    const baseQuery = db
       .select({ item: items })
       .from(items)
       .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
       .where(
         and(
-          eq(items.reportType, "found"),
+          eq(items.reportType, reportType),
           eq(items.status, "active"),
           isNull(itemEmbeddings.itemId)
         )
       )
       .orderBy(desc(items.date));
 
+    const rows =
+      typeof limit === "number" ? await baseQuery.limit(limit) : await baseQuery;
+
     return rows.map((row) => row.item);
   }
 
-  async searchFoundItemsByEmbedding(
+  async searchItemsByEmbedding(
+    reportType: "lost" | "found",
     embedding: number[],
     limit = 12
   ): Promise<Array<{ item: Item; score: number }>> {
@@ -284,7 +383,7 @@ export class DatabaseStorage implements IStorage {
       })
       .from(itemEmbeddings)
       .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
-      .where(and(eq(items.reportType, "found"), eq(items.status, "active")))
+      .where(and(eq(items.reportType, reportType), eq(items.status, "active")))
       .orderBy(distance)
       .limit(limit);
 
@@ -292,6 +391,71 @@ export class DatabaseStorage implements IStorage {
       item: row.item,
       score: Math.max(0, 1 - Number(row.distance ?? 1)),
     }));
+  }
+
+  async upsertMatchNotification(input: {
+    userId: number;
+    lostItemId: number;
+    foundItemId: number;
+    score: number;
+    reasoning: string;
+  }): Promise<void> {
+    await db
+      .insert(matchNotifications)
+      .values({
+        ...input,
+        isRead: false,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [
+          matchNotifications.userId,
+          matchNotifications.lostItemId,
+          matchNotifications.foundItemId,
+        ],
+        set: {
+          score: input.score,
+          reasoning: input.reasoning,
+          isRead: false,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async getMatchNotifications(userId: number): Promise<MatchNotificationRecord[]> {
+    const rows = await db
+      .select()
+      .from(matchNotifications)
+      .where(eq(matchNotifications.userId, userId))
+      .orderBy(desc(matchNotifications.updatedAt));
+
+    return this.hydrateMatchNotifications(rows);
+  }
+
+  async markMatchNotificationAsRead(
+    userId: number,
+    notificationId: number
+  ): Promise<MatchNotificationRecord | undefined> {
+    const [row] = await db
+      .update(matchNotifications)
+      .set({
+        isRead: true,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(matchNotifications.id, notificationId),
+          eq(matchNotifications.userId, userId)
+        )
+      )
+      .returning();
+
+    if (!row) {
+      return undefined;
+    }
+
+    const [hydrated] = await this.hydrateMatchNotifications([row]);
+    return hydrated;
   }
 
   async getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>> {

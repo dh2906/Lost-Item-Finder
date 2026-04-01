@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import {
+  BellRing,
   BookmarkCheck,
   CheckCircle2,
   Heart,
@@ -18,12 +19,17 @@ import { Layout } from "@/components/layout";
 import { ItemCard } from "@/components/item-card";
 import { useAuth } from "@/hooks/use-auth";
 import { useFavoriteItems } from "@/hooks/use-favorites";
+import {
+  useMarkMatchNotificationAsRead,
+  useMatchNotifications,
+} from "@/hooks/use-notifications";
 import { useDeleteItem, useMyItems, useUpdateItem } from "@/hooks/use-items";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import type { Item } from "@shared/schema";
 
 type FilterType = "all" | "active" | "resolved";
@@ -41,6 +47,9 @@ export default function MyPage() {
   const { toast } = useToast();
   const { data: myItems = [], isLoading: isMyItemsLoading } = useMyItems();
   const { data: favorites = [], isLoading: isFavoritesLoading } = useFavoriteItems();
+  const { data: notifications = [], isLoading: isNotificationsLoading } =
+    useMatchNotifications();
+  const markNotificationAsReadMutation = useMarkMatchNotificationAsRead();
   const updateItemMutation = useUpdateItem();
   const deleteItemMutation = useDeleteItem();
   const [filter, setFilter] = useState<FilterType>("all");
@@ -55,12 +64,15 @@ export default function MyPage() {
   const resolvedCount = myItems.filter((item) => item.status === "resolved").length;
   const foundCount = myItems.filter((item) => item.reportType === "found").length;
   const lostCount = myItems.filter((item) => item.reportType === "lost").length;
+  const unreadNotificationCount = notifications.filter(
+    (notification) => !notification.isRead
+  ).length;
 
   const handleStatusToggle = async (item: Item) => {
     const nextStatus = item.status === "active" ? "resolved" : "active";
     const confirmed = window.confirm(
       nextStatus === "resolved"
-        ? `'${item.title}' 글을 해결 완료 처리할까요?`
+        ? `'${item.title}' 글을 해결 완료로 처리할까요?`
         : `'${item.title}' 글을 다시 공개할까요?`
     );
 
@@ -77,7 +89,7 @@ export default function MyPage() {
       toast({
         title:
           nextStatus === "resolved"
-            ? "게시글을 해결 완료 처리했어요."
+            ? "게시글을 해결 완료로 변경했어요."
             : "게시글을 다시 공개했어요.",
       });
     } catch (error) {
@@ -112,6 +124,19 @@ export default function MyPage() {
     }
   };
 
+  const handleMarkNotificationAsRead = async (notificationId: number) => {
+    try {
+      await markNotificationAsReadMutation.mutateAsync(notificationId);
+    } catch (error) {
+      toast({
+        title: "알림 상태를 바꾸지 못했어요.",
+        description:
+          error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <Layout>
       <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-10 pt-14">
@@ -123,13 +148,13 @@ export default function MyPage() {
               </Badge>
               <div className="space-y-3">
                 <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-                  내가 등록한 글을 모아 보고
+                  내가 올린 분실물과 습득물을
                   <br />
-                  바로 수정하고 상태까지 관리하세요
+                  한곳에서 관리해요
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-                  분실물과 습득물 게시글을 한곳에서 확인하고, 해결된 글은 즉시
-                  비공개 처리해서 검색 품질을 더 깔끔하게 유지할 수 있어요.
+                  게시글 상태 변경, 즐겨찾기 확인, 자동 매칭 알림까지 한 번에
+                  살펴볼 수 있어요.
                 </p>
               </div>
             </div>
@@ -138,7 +163,7 @@ export default function MyPage() {
               <CardHeader className="pb-4">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <UserRound className="h-5 w-5 text-primary" />
-                  내 계정 요약
+                  계정 요약
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -188,7 +213,175 @@ export default function MyPage() {
         </div>
       </section>
 
-      <section className="pb-10 pt-10">
+      <section id="alerts" className="pb-6 pt-10">
+        <div className="container mx-auto max-w-6xl px-5">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2">
+              <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+                <BellRing className="h-6 w-6 text-primary" />
+                자동 매칭 알림
+              </h2>
+              <p className="text-sm leading-6 text-muted-foreground">
+                새 습득물이 등록되면 내 분실물과 자동 비교해서 가능성이 높은
+                후보를 알려드려요.
+              </p>
+            </div>
+            <Badge
+              variant="outline"
+              className="w-fit border-rose-200 bg-rose-50 text-rose-700"
+            >
+              읽지 않음 {unreadNotificationCount}건
+            </Badge>
+          </div>
+
+          {isNotificationsLoading ? (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {[1, 2].map((index) => (
+                <div
+                  key={index}
+                  className="h-[220px] animate-pulse rounded-[26px] bg-muted"
+                />
+              ))}
+            </div>
+          ) : notifications.length === 0 ? (
+            <Card className="border-dashed border-border/80 bg-secondary/35">
+              <CardContent className="flex flex-col items-center py-14 text-center">
+                <div className="mb-5 rounded-full border border-border/70 bg-white p-4 shadow-sm">
+                  <BellRing className="h-8 w-8 text-primary" />
+                </div>
+                <h3 className="text-xl font-semibold text-foreground">
+                  아직 자동 매칭 알림이 없어요
+                </h3>
+                <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+                  분실물을 등록해 두면 이후에 올라오는 습득물과 자동으로 비교해
+                  알려드릴게요.
+                </p>
+                <div className="mt-8 flex flex-wrap justify-center gap-3">
+                  <Button asChild className="rounded-full px-5">
+                    <Link href="/report/lost">분실물 등록하기</Link>
+                  </Button>
+                  <Button asChild variant="outline" className="rounded-full px-5">
+                    <Link href="/search">AI 검색해보기</Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {notifications.map((notification) => (
+                <Card
+                  key={notification.id}
+                  className={cn(
+                    "border-border/70 bg-white/92 shadow-sm",
+                    !notification.isRead &&
+                      "border-primary/30 shadow-[0_18px_30px_-24px_hsl(var(--primary)/0.32)]"
+                  )}
+                >
+                  <CardContent className="space-y-4 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge className="bg-primary text-primary-foreground hover:bg-primary">
+                            자동 매칭
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className={
+                              notification.isRead
+                                ? "border-slate-200 text-slate-600"
+                                : "border-rose-200 bg-rose-50 text-rose-700"
+                            }
+                          >
+                            {notification.isRead ? "확인 완료" : "새 알림"}
+                          </Badge>
+                        </div>
+                        <h3 className="text-lg font-semibold text-foreground">
+                          {notification.foundItem.title}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                          내 분실물 "
+                          <span className="font-medium text-foreground">
+                            {notification.lostItem.title}
+                          </span>
+                          " 과 유사한 습득물이 등록됐어요.
+                        </p>
+                      </div>
+
+                      <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center">
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-emerald-700">
+                          매칭 점수
+                        </p>
+                        <p className="mt-1 text-2xl font-bold text-emerald-700">
+                          {Math.round(notification.score * 100)}%
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-2xl border border-border/70 bg-secondary/35 p-4">
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          내 분실물
+                        </p>
+                        <p className="mt-2 font-medium text-foreground">
+                          {notification.lostItem.title}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {getReportTypeText(notification.lostItem.reportType)}
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-border/70 bg-secondary/35 p-4">
+                        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                          새 습득물
+                        </p>
+                        <p className="mt-2 font-medium text-foreground">
+                          {notification.foundItem.title}
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {notification.foundItem.location || "위치 정보 없음"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[22px] border border-primary/10 bg-[hsl(var(--primary-light))/0.7] p-4 text-sm leading-6 text-slate-700">
+                      {notification.reasoning}
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted-foreground">
+                      <span>
+                        {format(new Date(notification.updatedAt), "PPP p", {
+                          locale: ko,
+                        })}
+                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        <Button asChild variant="outline" className="rounded-full">
+                          <Link href={`/item/${notification.foundItem.id}`}>
+                            습득물 보기
+                          </Link>
+                        </Button>
+                        {!notification.isRead ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="rounded-full"
+                            disabled={markNotificationAsReadMutation.isPending}
+                            onClick={() =>
+                              void handleMarkNotificationAsRead(notification.id)
+                            }
+                          >
+                            읽음 처리
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="pb-10 pt-4">
         <div className="container mx-auto max-w-6xl px-5">
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
@@ -197,8 +390,7 @@ export default function MyPage() {
                 내 게시글 관리
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
-                해결된 글은 검색과 공개 목록에서 제외되고, 다시 공개도 바로 할 수
-                있어요.
+                해결된 글은 숨기고, 필요할 때 다시 공개할 수 있어요.
               </p>
             </div>
 
@@ -245,10 +437,10 @@ export default function MyPage() {
                   <PackageSearch className="h-8 w-8 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground">
-                  아직 등록한 게시글이 없어요.
+                  아직 등록한 게시글이 없어요
                 </h3>
                 <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-                  분실물이나 습득물을 등록하면 여기서 수정, 삭제, 해결 처리까지
+                  분실물이나 습득물을 등록하면 여기에서 수정, 삭제, 해결 처리까지
                   한 번에 관리할 수 있어요.
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -265,10 +457,10 @@ export default function MyPage() {
             <Card className="border-border/70 bg-white/92">
               <CardContent className="py-14 text-center">
                 <h3 className="text-lg font-semibold text-foreground">
-                  이 상태의 게시글은 아직 없어요.
+                  선택한 상태의 게시글이 아직 없어요
                 </h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  다른 탭을 선택하면 등록한 다른 글들을 볼 수 있어요.
+                  다른 필터를 선택하면 숨겨진 글을 다시 볼 수 있어요.
                 </p>
               </CardContent>
             </Card>
@@ -327,18 +519,18 @@ export default function MyPage() {
                             </h3>
                           </Link>
                           <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
-                            {item.location && (
+                            {item.location ? (
                               <span className="inline-flex items-center gap-1.5">
                                 <MapPin className="h-4 w-4" />
                                 {item.location}
                               </span>
-                            )}
-                            {item.date && (
+                            ) : null}
+                            {item.date ? (
                               <span className="inline-flex items-center gap-1.5">
                                 <CheckCircle2 className="h-4 w-4" />
                                 {format(new Date(item.date), "PPP", { locale: ko })}
                               </span>
-                            )}
+                            ) : null}
                           </div>
                           <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">
                             {item.description || "설명이 아직 등록되지 않았어요."}
@@ -371,7 +563,7 @@ export default function MyPage() {
                             {item.status === "active" ? (
                               <>
                                 <CheckCircle2 className="mr-2 h-4 w-4" />
-                                찾았어요!
+                                해결됐어요
                               </>
                             ) : (
                               <>
@@ -405,7 +597,7 @@ export default function MyPage() {
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
             <Card className="border-border/70 bg-white/92">
               <CardContent className="p-5">
-                <p className="text-sm text-muted-foreground">진행 중 글</p>
+                <p className="text-sm text-muted-foreground">진행 중인 글</p>
                 <p className="mt-2 text-2xl font-bold text-foreground">
                   {activeCount}
                 </p>
@@ -439,7 +631,7 @@ export default function MyPage() {
               관심 게시글
             </h2>
             <p className="text-sm leading-6 text-muted-foreground">
-              예전에 저장해 둔 글도 여기에서 계속 확인할 수 있어요.
+              나중에 다시 보고 싶은 글은 여기에서 모아볼 수 있어요.
             </p>
           </div>
 
@@ -459,10 +651,11 @@ export default function MyPage() {
                   <Heart className="h-8 w-8 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground">
-                  저장해 둔 관심 게시글이 아직 없어요.
+                  저장해 둔 관심 게시글이 아직 없어요
                 </h3>
                 <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-                  상세 페이지에서 관심 게시글로 저장하면 여기에서 다시 볼 수 있어요.
+                  상세 페이지에서 관심 게시글로 추가하면 마이페이지에서 다시 쉽게
+                  확인할 수 있어요.
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <Button asChild className="rounded-full px-5">

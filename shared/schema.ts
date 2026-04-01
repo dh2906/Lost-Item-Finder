@@ -1,10 +1,12 @@
 import {
+  boolean,
   pgTable,
   text,
   serial,
   timestamp,
   jsonb,
   integer,
+  real,
   uniqueIndex,
   vector,
 } from "drizzle-orm/pg-core";
@@ -74,6 +76,7 @@ export type Item = typeof items.$inferSelect;
 export type InsertItem = z.infer<typeof insertItemSchema>;
 export type UpdateItem = z.infer<typeof updateItemSchema>;
 export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
+export type MatchNotification = typeof matchNotifications.$inferSelect;
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -106,6 +109,34 @@ export const favorites = pgTable(
     userItemUnique: uniqueIndex("favorites_user_item_unique").on(
       table.userId,
       table.itemId
+    ),
+  })
+);
+
+export const matchNotifications = pgTable(
+  "match_notifications",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lostItemId: integer("lost_item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    foundItemId: integer("found_item_id")
+      .notNull()
+      .references(() => items.id, { onDelete: "cascade" }),
+    score: real("score").notNull(),
+    reasoning: text("reasoning").notNull(),
+    isRead: boolean("is_read").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userLostFoundUnique: uniqueIndex("match_notifications_user_lost_found_unique").on(
+      table.userId,
+      table.lostItemId,
+      table.foundItemId
     ),
   })
 );
