@@ -1,9 +1,57 @@
 import { z } from "zod";
-import { insertItemSchema, items, User } from "./schema";
+import { insertItemSchema, items, reportTypes, userRoles, userStatuses } from "./schema";
 
 const favoriteItemSchema = z.object({
   item: z.custom<typeof items.$inferSelect>(),
   createdAt: z.string().datetime(),
+});
+
+const safeUserResponseSchema = z.object({
+  id: z.number(),
+  username: z.string(),
+  name: z.string().nullable(),
+  role: z.enum(userRoles),
+  status: z.enum(userStatuses),
+  createdAt: z.union([z.string(), z.date()]).nullable(),
+});
+
+const adminUserResponseSchema = z.object({
+  id: z.number(),
+  username: z.string(),
+  name: z.string().nullable(),
+  role: z.enum(userRoles),
+  status: z.enum(userStatuses),
+  createdAt: z.union([z.string(), z.date()]).nullable(),
+  itemCount: z.number(),
+});
+
+const adminItemResponseSchema = z.object({
+  id: z.number(),
+  userId: z.number().nullable(),
+  ownerName: z.string().nullable(),
+  ownerUsername: z.string().nullable(),
+  reportType: z.enum(reportTypes),
+  title: z.string(),
+  description: z.string().nullable(),
+  itemCategory: z.string().nullable(),
+  location: z.string().nullable(),
+  statusLabel: z.string(),
+  date: z.union([z.string(), z.date()]).nullable(),
+});
+
+const adminDashboardResponseSchema = z.object({
+  stats: z.object({
+    totalUsers: z.number(),
+    activeUsers: z.number(),
+    suspendedUsers: z.number(),
+    adminUsers: z.number(),
+    totalItems: z.number(),
+    lostItems: z.number(),
+    foundItems: z.number(),
+    recentItems: z.number(),
+  }),
+  recentUsers: z.array(adminUserResponseSchema),
+  recentItems: z.array(adminItemResponseSchema),
 });
 
 export const errorSchemas = {
@@ -25,12 +73,12 @@ export const api = {
       method: "POST" as const,
       path: "/api/auth/register" as const,
       input: z.object({
-        username: z.string().min(3, "아이디는 3자 이상이어야 합니다"),
-        password: z.string().min(4, "비밀번호는 4자 이상이어야 합니다"),
+        username: z.string().min(3, "아이디는 3자 이상이어야 합니다."),
+        password: z.string().min(4, "비밀번호는 4자 이상이어야 합니다."),
         name: z.string().optional(),
       }),
       responses: {
-        201: z.custom<User>(),
+        201: safeUserResponseSchema,
         400: errorSchemas.validation,
       },
     },
@@ -42,7 +90,7 @@ export const api = {
         password: z.string(),
       }),
       responses: {
-        200: z.custom<User>(),
+        200: safeUserResponseSchema,
         401: errorSchemas.validation,
       },
     },
@@ -58,7 +106,7 @@ export const api = {
       method: "GET" as const,
       path: "/api/auth/me" as const,
       responses: {
-        200: z.custom<User>().nullable(),
+        200: safeUserResponseSchema.nullable(),
       },
     },
   },
@@ -68,7 +116,7 @@ export const api = {
       path: "/api/items" as const,
       input: z
         .object({
-          type: z.enum(["lost", "found"]).optional(),
+          type: z.enum(reportTypes).optional(),
           search: z.string().optional(),
         })
         .optional(),
@@ -131,7 +179,7 @@ export const api = {
       method: "POST" as const,
       path: "/api/ai/analyze-image" as const,
       input: z.object({
-        imageUrl: z.string(), // base64 string
+        imageUrl: z.string(),
       }),
       responses: {
         200: z.object({
@@ -151,7 +199,7 @@ export const api = {
       path: "/api/ai/search" as const,
       input: z.object({
         prompt: z.string().optional(),
-        imageUrl: z.string().optional(), // base64 string
+        imageUrl: z.string().optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),
       }),
@@ -166,6 +214,67 @@ export const api = {
         ),
         400: errorSchemas.validation,
         500: errorSchemas.internal,
+      },
+    },
+  },
+  admin: {
+    dashboard: {
+      method: "GET" as const,
+      path: "/api/admin/dashboard" as const,
+      responses: {
+        200: adminDashboardResponseSchema,
+      },
+    },
+    users: {
+      method: "GET" as const,
+      path: "/api/admin/users" as const,
+      input: z
+        .object({
+          search: z.string().optional(),
+          role: z.enum(userRoles).optional(),
+          status: z.enum(userStatuses).optional(),
+        })
+        .optional(),
+      responses: {
+        200: z.array(adminUserResponseSchema),
+      },
+    },
+    updateUser: {
+      method: "PATCH" as const,
+      path: "/api/admin/users/:id" as const,
+      input: z
+        .object({
+          role: z.enum(userRoles).optional(),
+          status: z.enum(userStatuses).optional(),
+        })
+        .refine((value) => value.role !== undefined || value.status !== undefined, {
+          message: "최소 한 개 이상의 필드를 입력해야 합니다.",
+        }),
+      responses: {
+        200: adminUserResponseSchema,
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
+    items: {
+      method: "GET" as const,
+      path: "/api/admin/items" as const,
+      input: z
+        .object({
+          search: z.string().optional(),
+          type: z.enum(reportTypes).optional(),
+        })
+        .optional(),
+      responses: {
+        200: z.array(adminItemResponseSchema),
+      },
+    },
+    deleteItem: {
+      method: "DELETE" as const,
+      path: "/api/admin/items/:id" as const,
+      responses: {
+        200: z.object({ success: z.literal(true) }),
+        404: errorSchemas.notFound,
       },
     },
   },
@@ -201,3 +310,11 @@ export type SearchSimilarInput = z.infer<typeof api.ai.searchSimilar.input>;
 export type SearchSimilarResponse = z.infer<
   (typeof api.ai.searchSimilar.responses)[200]
 >;
+export type AdminDashboardResponse = z.infer<
+  (typeof api.admin.dashboard.responses)[200]
+>;
+export type AdminUsersResponse = z.infer<(typeof api.admin.users.responses)[200]>;
+export type AdminUserResponse = AdminUsersResponse[number];
+export type UpdateAdminUserInput = z.infer<typeof api.admin.updateUser.input>;
+export type AdminItemsResponse = z.infer<(typeof api.admin.items.responses)[200]>;
+export type AdminItemResponse = AdminItemsResponse[number];

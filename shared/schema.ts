@@ -13,30 +13,39 @@ import { z } from "zod";
 
 export const items = pgTable("items", {
   id: serial("id").primaryKey(),
-  reportType: text("report_type").notNull(), // 'lost' or 'found'
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  reportType: text("report_type").notNull(),
   title: text("title").notNull(),
   description: text("description"),
-  imageUrl: text("image_url"), // base64 data URI
+  imageUrl: text("image_url"),
   itemCategory: text("item_category"),
   color: text("color"),
   size: text("size"),
-  tags: jsonb("tags").$type<string[]>(), 
+  tags: jsonb("tags").$type<string[]>(),
   location: text("location"),
-  latitude: text("latitude"), // 위도
-  longitude: text("longitude"), // 경도
+  latitude: text("latitude"),
+  longitude: text("longitude"),
   date: timestamp("date").defaultNow(),
   contactInfo: text("contact_info"),
 });
 
 export const itemEmbeddings = pgTable("item_embeddings", {
-  itemId: integer("item_id").primaryKey().references(() => items.id, { onDelete: "cascade" }),
+  itemId: integer("item_id")
+    .primaryKey()
+    .references(() => items.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   embedding: vector("embedding", { dimensions: 1536 }).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertItemSchema = createInsertSchema(items).omit({
+export const reportTypes = ["lost", "found"] as const;
+export type ReportType = (typeof reportTypes)[number];
+
+export const insertItemSchema = createInsertSchema(items, {
+  reportType: z.enum(reportTypes),
+}).omit({
   id: true,
+  userId: true,
   date: true,
 });
 
@@ -49,6 +58,8 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   name: text("name"),
+  role: text("role").notNull().default("member"),
+  status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -80,3 +91,9 @@ export const favorites = pgTable(
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Favorite = typeof favorites.$inferSelect;
+
+export const userRoles = ["member", "admin"] as const;
+export type UserRole = (typeof userRoles)[number];
+
+export const userStatuses = ["active", "suspended"] as const;
+export type UserStatus = (typeof userStatuses)[number];
