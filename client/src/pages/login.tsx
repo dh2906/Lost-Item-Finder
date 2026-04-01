@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,14 +8,26 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 import { Layout } from "@/components/layout";
-import { MapPinCheckInside, Loader2 } from "lucide-react";
+import { MapPinCheckInside, Loader2, Eye, EyeOff } from "lucide-react";
+import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
 
 export function LoginPage() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { isAuthenticated, isLoading } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
+  // 로그인 후 돌아갈 경로 파싱 (?redirect=/some/path)
+  const params = new URLSearchParams(location.split("?")[1] ?? "");
+  const redirectTo = params.get("redirect") || "/";
+
+  // 이미 로그인된 경우 리다이렉트
+  if (!isLoading && isAuthenticated) {
+    return <Redirect to={redirectTo} />;
+  }
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
@@ -31,10 +43,10 @@ export function LoginPage() {
       }
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["user"] });
-      toast({ title: "로그인 성공", description: "환영합니다." });
-      setLocation("/");
+    onSuccess: (user) => {
+      queryClient.setQueryData(AUTH_QUERY_KEY, user);
+      toast({ title: "로그인 성공", description: `${user.name || user.username}님, 환영합니다!` });
+      setLocation(redirectTo);
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", title: "로그인 실패", description: error.message });
@@ -43,7 +55,15 @@ export function LoginPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loginMutation.mutate({ username, password });
+    if (!username.trim()) {
+      toast({ variant: "destructive", title: "아이디를 입력해주세요" });
+      return;
+    }
+    if (!password) {
+      toast({ variant: "destructive", title: "비밀번호를 입력해주세요" });
+      return;
+    }
+    loginMutation.mutate({ username: username.trim(), password });
   };
 
   return (
@@ -76,22 +96,39 @@ export function LoginPage() {
                   required
                   autoComplete="username"
                   className="h-12"
+                  disabled={loginMutation.isPending}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password" className="text-sm font-semibold">
                   비밀번호
                 </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="비밀번호를 입력하세요"
-                  required
-                  autoComplete="current-password"
-                  className="h-12"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="비밀번호를 입력하세요"
+                    required
+                    autoComplete="current-password"
+                    className="h-12 pr-12"
+                    disabled={loginMutation.isPending}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4.5 w-4.5" />
+                    ) : (
+                      <Eye className="h-4.5 w-4.5" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <Button

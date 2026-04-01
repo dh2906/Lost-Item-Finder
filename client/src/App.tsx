@@ -5,6 +5,7 @@ import { queryClient } from "@/lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { ProtectedRoute } from "@/components/protected-route";
 import NotFound from "@/pages/not-found";
 import Home from "@/pages/home";
 import ReportPage from "@/pages/report";
@@ -45,9 +46,15 @@ function Router() {
       >
         <Switch location={location}>
           <Route path="/" component={Home} />
-          <Route path="/report/found" component={FoundReportPage} />
-          <Route path="/report/lost" component={LostReportPage} />
-          <Route path="/report" component={DefaultReportPage} />
+          <Route path="/report/found">
+            <ProtectedRoute><FoundReportPage /></ProtectedRoute>
+          </Route>
+          <Route path="/report/lost">
+            <ProtectedRoute><LostReportPage /></ProtectedRoute>
+          </Route>
+          <Route path="/report">
+            <ProtectedRoute><DefaultReportPage /></ProtectedRoute>
+          </Route>
           <Route path="/search" component={SearchPage} />
           <Route path="/items" component={ItemsPage} />
           <Route path="/item/:id" component={ItemDetail} />
