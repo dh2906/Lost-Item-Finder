@@ -11,6 +11,17 @@ import { Layout } from "@/components/layout";
 import { MapPinCheckInside, Loader2, Eye, EyeOff } from "lucide-react";
 import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
 
+/**
+ * redirect 쿼리 파라미터를 검증해 앱 내부 경로만 허용합니다.
+ * 외부 URL이나 protocol-relative URL(//)이 들어오면 "/"로 fallback합니다.
+ */
+function sanitizeRedirect(value: string | null): string {
+  if (!value) return "/";
+  // 반드시 /로 시작하고 //로 시작하지 않아야 함 (오픈 리다이렉트 방지)
+  if (value.startsWith("/") && !value.startsWith("//")) return value;
+  return "/";
+}
+
 export function LoginPage() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
@@ -20,9 +31,9 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // 로그인 후 돌아갈 경로 파싱 (?redirect=/some/path)
+  // 로그인 후 돌아갈 경로 파싱 — 내부 경로만 허용
   const params = new URLSearchParams(location.split("?")[1] ?? "");
-  const redirectTo = params.get("redirect") || "/";
+  const redirectTo = sanitizeRedirect(params.get("redirect"));
 
   // 이미 로그인된 경우 리다이렉트
   if (!isLoading && isAuthenticated) {
@@ -118,14 +129,13 @@ export function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
                     aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
-                    tabIndex={-1}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4.5 w-4.5" />
+                      <EyeOff className="h-[18px] w-[18px]" />
                     ) : (
-                      <Eye className="h-4.5 w-4.5" />
+                      <Eye className="h-[18px] w-[18px]" />
                     )}
                   </button>
                 </div>
