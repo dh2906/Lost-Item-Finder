@@ -11,6 +11,15 @@ import { Layout } from "@/components/layout";
 import { UserPlus, Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
 import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
 
+/**
+ * redirect 쿼리 파라미터를 검증해 앱 내부 경로만 허용합니다.
+ */
+function sanitizeRedirect(value: string | null): string {
+  if (!value) return "/";
+  if (value.startsWith("/") && !value.startsWith("//")) return value;
+  return "/";
+}
+
 function PasswordStrengthIndicator({ password }: { password: string }) {
   if (!password) return null;
   const checks = [
@@ -43,9 +52,9 @@ export function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // 로그인 후 돌아갈 경로
+  // 내부 경로만 허용
   const params = new URLSearchParams(location.split("?")[1] ?? "");
-  const redirectTo = params.get("redirect") || "/";
+  const redirectTo = sanitizeRedirect(params.get("redirect"));
 
   // 이미 로그인된 경우 리다이렉트
   if (!isLoading && isAuthenticated) {
@@ -80,6 +89,18 @@ export function RegisterPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // trim 후 실제 길이 검증 (공백만 입력해도 minLength={3}은 통과하므로 직접 체크)
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername || trimmedUsername.length < 3) {
+      toast({
+        variant: "destructive",
+        title: "사용자명 오류",
+        description: "사용자명은 공백이 아닌 3자 이상이어야 합니다.",
+      });
+      return;
+    }
+
     if (password !== confirmPassword) {
       toast({ variant: "destructive", title: "비밀번호 불일치", description: "비밀번호가 일치하지 않습니다." });
       return;
@@ -88,8 +109,11 @@ export function RegisterPage() {
       toast({ variant: "destructive", title: "비밀번호 오류", description: "비밀번호는 4자 이상이어야 합니다." });
       return;
     }
-    registerMutation.mutate({ username: username.trim(), password, name: name.trim() || undefined });
+
+    registerMutation.mutate({ username: trimmedUsername, password, name: name.trim() || undefined });
   };
+
+  const toggleButtonClass = "absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm";
 
   return (
     <Layout>
@@ -161,11 +185,10 @@ export function RegisterPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className={toggleButtonClass}
                     aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
-                    tabIndex={-1}
                   >
-                    {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                    {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
                   </button>
                 </div>
                 <PasswordStrengthIndicator password={password} />
@@ -190,11 +213,10 @@ export function RegisterPage() {
                   <button
                     type="button"
                     onClick={() => setShowConfirm((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className={toggleButtonClass}
                     aria-label={showConfirm ? "비밀번호 숨기기" : "비밀번호 보기"}
-                    tabIndex={-1}
                   >
-                    {showConfirm ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
+                    {showConfirm ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
                   </button>
                 </div>
                 {!passwordsMatch && confirmPassword && (
