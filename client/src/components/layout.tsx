@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Heart,
   LogOut,
+  Shield,
   User as UserIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,8 +25,8 @@ const navigation = [
   { href: "/", label: "홈" },
   {
     href: "/report",
-      label: "물건 신고",
-      children: [
+    label: "물건 신고",
+    children: [
       { href: "/report/found", label: "습득물 신고" },
       { href: "/report/lost", label: "분실물 신고" },
     ],
@@ -133,6 +134,21 @@ export function Layout({ children }: { children: ReactNode }) {
                   </Link>
                 );
               })}
+
+              {user?.role === "admin" ? (
+                <Link href="/admin">
+                  <span
+                    className={cn(
+                      "relative inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-semibold transition-all duration-200",
+                      location === "/admin"
+                        ? "bg-amber-500 text-white shadow-[0_8px_16px_-14px_rgba(245,158,11,0.45)]"
+                        : "text-amber-700 hover:bg-amber-50"
+                    )}
+                  >
+                    관리자
+                  </span>
+                </Link>
+              ) : null}
             </nav>
           </div>
 
@@ -140,7 +156,7 @@ export function Layout({ children }: { children: ReactNode }) {
             {isAuthenticated ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                   <Button variant="ghost" className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md">
+                  <Button variant="ghost" className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md">
                     <Avatar className="h-10 w-10">
                       <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary">
                         {user?.name?.[0] || user?.username?.[0]?.toUpperCase() || <UserIcon className="h-4 w-4" />}
@@ -160,6 +176,12 @@ export function Layout({ children }: { children: ReactNode }) {
                     <Heart className="mr-2 h-4 w-4" />
                     마이페이지
                   </DropdownMenuItem>
+                  {user?.role === "admin" ? (
+                    <DropdownMenuItem onClick={() => void setLocation("/admin")}>
+                      <Shield className="mr-2 h-4 w-4" />
+                      관리자 대시보드
+                    </DropdownMenuItem>
+                  ) : null}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
                     <LogOut className="mr-2 h-4 w-4" />
@@ -172,9 +194,9 @@ export function Layout({ children }: { children: ReactNode }) {
                 <Button variant="ghost" size="sm" asChild className="h-9 rounded-full px-4 text-muted-foreground hover:bg-accent/70 hover:text-foreground">
                   <Link href="/login">로그인</Link>
                 </Button>
-                 <Button size="sm" asChild className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]">
-                   <Link href="/register">회원가입</Link>
-                  </Button>
+                <Button size="sm" asChild className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]">
+                  <Link href="/register">회원가입</Link>
+                </Button>
               </div>
             )}
 

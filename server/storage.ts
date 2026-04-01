@@ -7,9 +7,19 @@ import {
   type InsertItem,
   type User,
   type InsertUser,
+  type UserRole,
+  type UserStatus,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, ilike, and, isNull, cosineDistance } from "drizzle-orm";
+import {
+  eq,
+  desc,
+  ilike,
+  and,
+  isNull,
+  cosineDistance,
+  sql,
+} from "drizzle-orm";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 
@@ -28,35 +38,132 @@ async function verifyPassword(supplied: string, stored: string): Promise<boolean
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
+export interface AdminUserRecord extends Omit<User, "password"> {
+  itemCount: number;
+}
+
+export interface AdminItemRecord extends Item {
+  userId: number | null;
+  ownerName: string | null;
+  ownerUsername: string | null;
+  statusLabel: string;
+}
+
+export interface AdminDashboardStats {
+  totalUsers: number;
+  activeUsers: number;
+  suspendedUsers: number;
+  adminUsers: number;
+  totalItems: number;
+  lostItems: number;
+  foundItems: number;
+  recentItems: number;
+}
+
+export interface AdminDashboardData {
+  stats: AdminDashboardStats;
+  recentUsers: AdminUserRecord[];
+  recentItems: AdminItemRecord[];
+}
+
+function getConfiguredAdminUsernames(): string[] {
+  return (process.env.ADMIN_USERNAMES ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function isConfiguredAdminUsername(username?: string | null): boolean {
+  if (!username) {
+    return false;
+  }
+
+  return getConfiguredAdminUsernames().includes(username.trim().toLowerCase());
+}
+
+function applyConfiguredAdminRole<T extends User>(user: T): T {
+  if (isConfiguredAdminUsername(user.username)) {
+    return {
+      ...user,
+      role: "admin",
+    };
+  }
+
+  return user;
+}
+
+async function ensureConfiguredAdminRole(user: User): Promise<User> {
+  if (!isConfiguredAdminUsername(user.username) || user.role === "admin") {
+    return user;
+  }
+
+  const [updatedUser] = await db
+    .update(users)
+    .set({ role: "admin" })
+    .where(eq(users.id, user.id))
+    .returning();
+
+  return updatedUser ?? user;
+}
+
+function sanitizeAdminUserRecord(user: User, itemCount = 0): AdminUserRecord {
+  const { password: _password, ...safeUser } = applyConfiguredAdminRole(user);
+  return {
+    ...safeUser,
+    itemCount,
+  };
+}
+
 export interface IStorage {
-  // Items
   getItems(type?: "lost" | "found", search?: string): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem): Promise<Item>;
   upsertItemEmbedding(itemId: number, content: string, embedding: number[]): Promise<void>;
   getFoundItemsWithoutEmbeddings(): Promise<Item[]>;
-  searchFoundItemsByEmbedding(embedding: number[], limit?: number): Promise<Array<{ item: Item; score: number }>>;
+  searchFoundItemsByEmbedding(
+    embedding: number[],
+    limit?: number
+  ): Promise<Array<{ item: Item; score: number }>>;
 
-  // Favorites
   getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>>;
   addFavorite(userId: number, itemId: number): Promise<void>;
   removeFavorite(userId: number, itemId: number): Promise<boolean>;
 
-  // Users
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   hashPassword(password: string): Promise<string>;
   verifyPassword(supplied: string, stored: string): Promise<boolean>;
+
+  getAdminDashboardData(): Promise<AdminDashboardData>;
+  getAdminUsers(filters?: {
+    search?: string;
+    role?: UserRole;
+    status?: UserStatus;
+  }): Promise<AdminUserRecord[]>;
+  updateUserByAdmin(
+    userId: number,
+    updates: {
+      role?: UserRole;
+      status?: UserStatus;
+    }
+  ): Promise<User | undefined>;
+  getAdminItems(filters?: {
+    search?: string;
+    type?: "lost" | "found";
+  }): Promise<AdminItemRecord[]>;
+  deleteItemByAdmin(itemId: number): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
   async getItems(type?: "lost" | "found", search?: string): Promise<Item[]> {
-    let conditions = [];
+    const conditions = [];
     if (type) conditions.push(eq(items.reportType, type));
     if (search) conditions.push(ilike(items.title, `%${search}%`));
-    
-    return await db.select().from(items)
+
+    return await db
+      .select()
+      .from(items)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(items.date));
   }
@@ -134,10 +241,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addFavorite(userId: number, itemId: number): Promise<void> {
-    await db
-      .insert(favorites)
-      .values({ userId, itemId })
-      .onConflictDoNothing();
+    await db.insert(favorites).values({ userId, itemId }).onConflictDoNothing();
   }
 
   async removeFavorite(userId: number, itemId: number): Promise<boolean> {
@@ -149,24 +253,182 @@ export class DatabaseStorage implements IStorage {
     return deletedRows.length > 0;
   }
 
-  // Users
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
-    return user;
+    if (!user) {
+      return undefined;
+    }
+
+    const syncedUser = await ensureConfiguredAdminRole(user);
+    return applyConfiguredAdminRole(syncedUser);
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user;
+    if (!user) {
+      return undefined;
+    }
+
+    const syncedUser = await ensureConfiguredAdminRole(user);
+    return applyConfiguredAdminRole(syncedUser);
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const hashedPassword = await hashPassword(insertUser.password);
+    const role: UserRole = isConfiguredAdminUsername(insertUser.username)
+      ? "admin"
+      : "member";
+
     const [user] = await db
       .insert(users)
-      .values({ ...insertUser, password: hashedPassword })
+      .values({
+        ...insertUser,
+        password: hashedPassword,
+        role,
+        status: "active",
+      })
       .returning();
-    return user;
+
+    return applyConfiguredAdminRole(user);
+  }
+
+  async getAdminDashboardData(): Promise<AdminDashboardData> {
+    const [userStats, itemStats, recentItems, recentUsers] = await Promise.all([
+      db
+        .select({
+          totalUsers: sql<number>`cast(count(*) as int)`,
+          activeUsers: sql<number>`cast(count(*) filter (where ${users.status} = 'active') as int)`,
+          suspendedUsers: sql<number>`cast(count(*) filter (where ${users.status} = 'suspended') as int)`,
+          adminUsers: sql<number>`cast(count(*) filter (where ${users.role} = 'admin') as int)`,
+        })
+        .from(users),
+      db
+        .select({
+          totalItems: sql<number>`cast(count(*) as int)`,
+          lostItems: sql<number>`cast(count(*) filter (where ${items.reportType} = 'lost') as int)`,
+          foundItems: sql<number>`cast(count(*) filter (where ${items.reportType} = 'found') as int)`,
+          recentItems: sql<number>`cast(count(*) filter (where ${items.date} >= now() - interval '7 days') as int)`,
+        })
+        .from(items),
+      this.getAdminItems({}).then((list) => list.slice(0, 6)),
+      this.getAdminUsers({}).then((list) => list.slice(0, 6)),
+    ]);
+
+    return {
+      stats: {
+        totalUsers: userStats[0]?.totalUsers ?? 0,
+        activeUsers: userStats[0]?.activeUsers ?? 0,
+        suspendedUsers: userStats[0]?.suspendedUsers ?? 0,
+        adminUsers: userStats[0]?.adminUsers ?? 0,
+        totalItems: itemStats[0]?.totalItems ?? 0,
+        lostItems: itemStats[0]?.lostItems ?? 0,
+        foundItems: itemStats[0]?.foundItems ?? 0,
+        recentItems: itemStats[0]?.recentItems ?? 0,
+      },
+      recentUsers,
+      recentItems,
+    };
+  }
+
+  async getAdminUsers(filters?: {
+    search?: string;
+    role?: UserRole;
+    status?: UserStatus;
+  }): Promise<AdminUserRecord[]> {
+    const conditions = [];
+
+    if (filters?.search?.trim()) {
+      const searchTerm = `%${filters.search.trim()}%`;
+      conditions.push(
+        sql<boolean>`(${users.username} ilike ${searchTerm} or ${users.name} ilike ${searchTerm})`
+      );
+    }
+
+    if (filters?.role) {
+      conditions.push(eq(users.role, filters.role));
+    }
+
+    if (filters?.status) {
+      conditions.push(eq(users.status, filters.status));
+    }
+
+    const rows = await db
+      .select()
+      .from(users)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(users.createdAt));
+
+    return rows.map((user) => sanitizeAdminUserRecord(user, 0));
+  }
+
+  async updateUserByAdmin(
+    userId: number,
+    updates: {
+      role?: UserRole;
+      status?: UserStatus;
+    }
+  ): Promise<User | undefined> {
+    const [existingUser] = await db.select().from(users).where(eq(users.id, userId));
+
+    if (!existingUser) {
+      return undefined;
+    }
+
+    if (
+      updates.role === "member" &&
+      isConfiguredAdminUsername(existingUser.username)
+    ) {
+      throw new Error("Configured admin accounts cannot be demoted.");
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, userId))
+      .returning();
+
+    return updatedUser ? applyConfiguredAdminRole(updatedUser) : undefined;
+  }
+
+  async getAdminItems(filters?: {
+    search?: string;
+    type?: "lost" | "found";
+  }): Promise<AdminItemRecord[]> {
+    const conditions = [];
+
+    if (filters?.type) {
+      conditions.push(eq(items.reportType, filters.type));
+    }
+
+    if (filters?.search?.trim()) {
+      const searchTerm = `%${filters.search.trim()}%`;
+      conditions.push(
+        sql<boolean>`(${items.title} ilike ${searchTerm} or ${items.description} ilike ${searchTerm} or ${items.location} ilike ${searchTerm})`
+      );
+    }
+
+    const rows = await db
+      .select()
+      .from(items)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(items.date));
+
+    return rows.map((item) => ({
+      ...item,
+      userId: null,
+      ownerName: null,
+      ownerUsername: null,
+      statusLabel: item.reportType === "lost" ? "분실 접수" : "습득 접수",
+    }));
+  }
+
+  async deleteItemByAdmin(itemId: number): Promise<boolean> {
+    const deletedRows = await db
+      .delete(items)
+      .where(eq(items.id, itemId))
+      .returning({ id: items.id });
+
+    return deletedRows.length > 0;
   }
 
   hashPassword = hashPassword;

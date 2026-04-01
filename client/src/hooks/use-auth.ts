@@ -8,6 +8,8 @@ export interface User {
   id: number;
   username: string;
   name: string | null;
+  role: "member" | "admin";
+  status: "active" | "suspended";
   createdAt: string | null;
 }
 

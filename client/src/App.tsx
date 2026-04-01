@@ -14,6 +14,7 @@ import ItemsPage from "@/pages/items";
 import ItemDetail from "@/pages/item-detail";
 import { LoginPage } from "@/pages/login";
 import MyPage from "@/pages/mypage";
+import AdminDashboardPage from "@/pages/admin-dashboard";
 import { RegisterPage } from "@/pages/register";
 import { useLocation } from "wouter";
 
@@ -61,6 +62,9 @@ function Router() {
           <Route path="/item/:id" component={ItemDetail} />
           <Route path="/mypage">
             <ProtectedRoute><MyPage /></ProtectedRoute>
+          </Route>
+          <Route path="/admin">
+            <ProtectedRoute requireAdmin><AdminDashboardPage /></ProtectedRoute>
           </Route>
           <Route path="/login" component={LoginPage} />
           <Route path="/register" component={RegisterPage} />

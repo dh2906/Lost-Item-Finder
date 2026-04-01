@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import passport from "passport";
-import { isAuthenticated } from "./auth";
+import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
@@ -608,6 +608,102 @@ export async function registerRoutes(
     }
     const { password: _, ...userWithoutPassword } = req.user;
     res.json(userWithoutPassword);
+  });
+
+  // --- Admin API ---
+  app.get(api.admin.dashboard.path, isAdmin, async (_req, res) => {
+    try {
+      const dashboard = await storage.getAdminDashboardData();
+      res.json(dashboard);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get(api.admin.users.path, isAdmin, async (req, res) => {
+    try {
+      const usersList = await storage.getAdminUsers({
+        search:
+          typeof req.query.search === "string" ? req.query.search : undefined,
+        role: typeof req.query.role === "string" ? (req.query.role as "member" | "admin") : undefined,
+        status:
+          typeof req.query.status === "string"
+            ? (req.query.status as "active" | "suspended")
+            : undefined,
+      });
+      res.json(usersList);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.patch(api.admin.updateUser.path, isAdmin, async (req, res) => {
+    try {
+      const userId = Number(req.params.id);
+      const input = api.admin.updateUser.input.parse(req.body);
+
+      if (req.user?.id === userId && input.status === "suspended") {
+        return res
+          .status(400)
+          .json({ message: "현재 로그인한 관리자 계정은 정지할 수 없습니다." });
+      }
+
+      const updatedUser = await storage.updateUserByAdmin(userId, input);
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const usersList = await storage.getAdminUsers();
+      const managedUser = usersList.find((user) => user.id === userId);
+      if (!managedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json(managedUser);
+    } catch (err) {
+      console.error(err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      if (err instanceof Error) {
+        return res.status(400).json({ message: err.message });
+      }
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get(api.admin.items.path, isAdmin, async (req, res) => {
+    try {
+      const itemList = await storage.getAdminItems({
+        search:
+          typeof req.query.search === "string" ? req.query.search : undefined,
+        type: typeof req.query.type === "string" ? (req.query.type as "lost" | "found") : undefined,
+      });
+      res.json(itemList);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.delete(api.admin.deleteItem.path, isAdmin, async (req, res) => {
+    try {
+      const itemId = Number(req.params.id);
+      const deleted = await storage.deleteItemByAdmin(itemId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
   });
 
   // --- Items API ---
