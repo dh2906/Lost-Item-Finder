@@ -83,11 +83,7 @@ function Router() {
   );
 }
 
-/**
- * FCM 초기화 컴포넌트.
- * useAuth()를 직접 사용해 인증 캐시(AUTH_QUERY_KEY)를 공유하고
- * queryFn 없는 useQuery 호출로 인한 잘못된 네트워크 요청을 방지합니다.
- */
+/** 인증된 사용자에 대해서만 FCM 초기화와 포그라운드 알림 구독을 수행합니다. */
 function FcmInitializer() {
   const { user } = useAuth();
   const { toast } = useToast();

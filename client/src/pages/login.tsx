@@ -10,17 +10,7 @@ import { api } from "@shared/routes";
 import { Layout } from "@/components/layout";
 import { MapPinCheckInside, Loader2, Eye, EyeOff } from "lucide-react";
 import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
-
-/**
- * redirect 쿼리 파라미터를 검증해 앱 내부 경로만 허용합니다.
- * 외부 URL이나 protocol-relative URL(//)이 들어오면 "/"로 fallback합니다.
- */
-function sanitizeRedirect(value: string | null): string {
-  if (!value) return "/";
-  // 반드시 /로 시작하고 //로 시작하지 않아야 함 (오픈 리다이렉트 방지)
-  if (value.startsWith("/") && !value.startsWith("//")) return value;
-  return "/";
-}
+import { sanitizeRedirect } from "@/lib/redirect";
 
 export function LoginPage() {
   const [location, setLocation] = useLocation();
