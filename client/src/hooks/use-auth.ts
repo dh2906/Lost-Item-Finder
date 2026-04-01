@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { api } from "@shared/routes";
+import { AUTH_QUERY_KEY, FAVORITES_QUERY_KEY } from "@/lib/query-keys";
 import { useToast } from "./use-toast";
 
 export interface User {
@@ -9,9 +10,6 @@ export interface User {
   name: string | null;
   createdAt: string | null;
 }
-
-/** 전역 공유 queryKey — 모든 곳에서 이 상수를 사용해 일관성 유지 */
-export const AUTH_QUERY_KEY = ["user"] as const;
 
 export function useAuth() {
   const [, setLocation] = useLocation();
@@ -43,7 +41,7 @@ export function useAuth() {
     },
     onSuccess: () => {
       queryClient.setQueryData(AUTH_QUERY_KEY, null);
-      queryClient.removeQueries({ queryKey: ["favorites"] });
+      queryClient.removeQueries({ queryKey: FAVORITES_QUERY_KEY });
       toast({ title: "로그아웃 되었습니다" });
       setLocation("/");
     },

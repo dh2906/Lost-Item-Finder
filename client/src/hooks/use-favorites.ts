@@ -5,13 +5,13 @@ import {
   type FavoriteInput,
   type FavoriteItemsResponse,
 } from "@shared/routes";
+import { AUTH_QUERY_KEY, FAVORITES_QUERY_KEY } from "@/lib/query-keys";
 import { useAuth } from "./use-auth";
 import { useToast } from "./use-toast";
 
-export const FAVORITES_QUERY_KEY = ["favorites"] as const;
-
 export function useFavoriteItems() {
   const { user, isAuthenticated } = useAuth();
+  const queryClient = useQueryClient();
 
   return useQuery<FavoriteItemsResponse>({
     queryKey: [...FAVORITES_QUERY_KEY, user?.id ?? "guest"],
@@ -21,7 +21,8 @@ export function useFavoriteItems() {
       });
 
       if (res.status === 401) {
-        return [];
+        queryClient.setQueryData(AUTH_QUERY_KEY, null);
+        throw new Error("인증이 만료되었습니다.");
       }
 
       if (!res.ok) {

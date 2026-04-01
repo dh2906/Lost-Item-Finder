@@ -3,7 +3,7 @@ import { insertItemSchema, items, User } from "./schema";
 
 const favoriteItemSchema = z.object({
   item: z.custom<typeof items.$inferSelect>(),
-  createdAt: z.string(),
+  createdAt: z.string().datetime(),
 });
 
 export const errorSchemas = {
