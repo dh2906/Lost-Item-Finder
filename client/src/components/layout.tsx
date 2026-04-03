@@ -1,16 +1,20 @@
 import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
-  MapPinCheckInside,
+  Bell,
   ChevronDown,
+  Heart,
   LogOut,
-  User as UserIcon,
+  MapPinCheckInside,
   MessageCircleMore,
+  Shield,
+  User as UserIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useChatRooms } from "@/hooks/use-chat";
+import { useMatchNotifications } from "@/hooks/use-notifications";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,7 +25,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-const navigation = [
+type NavigationItem = {
+  href: string;
+  label: string;
+  children?: Array<{
+    href: string;
+    label: string;
+  }>;
+};
+
+const navigation: NavigationItem[] = [
   { href: "/", label: "홈" },
   {
     href: "/report",
@@ -39,9 +52,13 @@ export function Layout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
   const { data: chatRooms = [] } = useChatRooms(isAuthenticated);
+  const { data: notifications = [] } = useMatchNotifications();
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
 
   const hasUnreadChats = chatRooms.some((room) => room.hasUnread);
+  const unreadNotificationCount = notifications.filter(
+    (notification) => !notification.isRead
+  ).length;
 
   const handleReportMenuNavigate = (href: string) => {
     setReportMenuOpen(false);
@@ -78,7 +95,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       location.startsWith(`${itemPath}?`) ||
                       location.startsWith(`${itemPath}/`);
 
-                if (item.children) {
+                if (item.children?.length) {
                   return (
                     <div
                       key={item.href}
@@ -99,38 +116,37 @@ export function Layout({ children }: { children: ReactNode }) {
                         <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
                       </button>
 
-                      {reportMenuOpen && (
-                        <div
-                          className="absolute inset-x-0 top-full h-4"
-                          aria-hidden="true"
-                        />
-                      )}
+                      {reportMenuOpen ? (
+                        <>
+                          <div
+                            className="absolute inset-x-0 top-full h-4"
+                            aria-hidden="true"
+                          />
+                          <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-1.5 text-popover-foreground shadow-md">
+                            {item.children.map((child) => {
+                              const childActive = location === child.href;
 
-                      {reportMenuOpen && (
-                        <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-1.5 text-popover-foreground shadow-md">
-                          {item.children.map((child) => {
-                            const childActive = location === child.href;
-
-                            return (
-                              <button
-                                key={child.href}
-                                type="button"
-                                onClick={() =>
-                                  handleReportMenuNavigate(child.href)
-                                }
-                                className={cn(
-                                  "block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
-                                  childActive
-                                    ? "bg-accent text-accent-foreground"
-                                    : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                                )}
-                              >
-                                {child.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                              return (
+                                <button
+                                  key={child.href}
+                                  type="button"
+                                  onClick={() =>
+                                    handleReportMenuNavigate(child.href)
+                                  }
+                                  className={cn(
+                                    "block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
+                                    childActive
+                                      ? "bg-accent text-accent-foreground"
+                                      : "text-foreground hover:bg-accent hover:text-accent-foreground"
+                                  )}
+                                >
+                                  {child.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   );
                 }
@@ -150,22 +166,56 @@ export function Layout({ children }: { children: ReactNode }) {
                   </Link>
                 );
               })}
+
+              {user?.role === "admin" ? (
+                <Link href="/admin">
+                  <span
+                    className={cn(
+                      "relative inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-semibold transition-all duration-200",
+                      location === "/admin"
+                        ? "bg-amber-500 text-white shadow-[0_8px_16px_-14px_rgba(245,158,11,0.45)]"
+                        : "text-amber-700 hover:bg-amber-50"
+                    )}
+                  >
+                    관리자
+                  </span>
+                </Link>
+              ) : null}
             </nav>
           </div>
 
           <div className="flex items-center gap-3">
             {isAuthenticated ? (
-              <>
+              <div className="flex items-center gap-2">
                 <Button
                   variant="ghost"
+                  size="icon"
                   asChild
-                  className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md"
+                  className="relative h-10 w-10 rounded-xl border border-border/70 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
                 >
                   <Link href="/chats" aria-label="채팅 목록">
                     <MessageCircleMore className="h-4.5 w-4.5 text-foreground" />
-                    {hasUnreadChats && (
+                    {hasUnreadChats ? (
                       <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-background bg-primary shadow-sm" />
-                    )}
+                    ) : null}
+                  </Link>
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  asChild
+                  className="relative h-10 w-10 rounded-xl border border-border/70 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
+                >
+                  <Link href="/mypage#alerts" aria-label="매칭 알림">
+                    <Bell className="h-5 w-5" />
+                    {unreadNotificationCount > 0 ? (
+                      <span className="absolute -right-1 -top-1 inline-flex min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                        {unreadNotificationCount > 9
+                          ? "9+"
+                          : unreadNotificationCount}
+                      </span>
+                    ) : null}
                   </Link>
                 </Button>
 
@@ -197,12 +247,27 @@ export function Layout({ children }: { children: ReactNode }) {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/matches">내 매칭</Link>
+                    <DropdownMenuItem
+                      onClick={() => void setLocation("/mypage")}
+                    >
+                      <Heart className="mr-2 h-4 w-4" />
+                      마이페이지
                     </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/chats">채팅 목록</Link>
+                    <DropdownMenuItem onClick={() => void setLocation("/matches")}>
+                      내 매칭
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void setLocation("/chats")}>
+                      채팅 목록
+                    </DropdownMenuItem>
+                    {user?.role === "admin" ? (
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => void setLocation("/admin")}>
+                          <Shield className="mr-2 h-4 w-4" />
+                          관리자 대시보드
+                        </DropdownMenuItem>
+                      </>
+                    ) : null}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={logout}
@@ -213,7 +278,7 @@ export function Layout({ children }: { children: ReactNode }) {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-              </>
+              </div>
             ) : (
               <div className="hidden items-center gap-2 md:flex">
                 <Button
@@ -247,7 +312,7 @@ export function Layout({ children }: { children: ReactNode }) {
                     <UserIcon className="h-5 w-5" />
                   </Link>
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

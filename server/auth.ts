@@ -2,7 +2,12 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
-import { type Express, type NextFunction, type Request, type Response } from "express";
+import {
+  type Express,
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import { storage } from "./storage";
 import { pool } from "./db";
 import { User as UserType } from "@shared/schema";
@@ -29,9 +34,12 @@ export function setupAuth(app: Express) {
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: process.env.SESSION_SECURE === "true" || (process.env.NODE_ENV === "production" && process.env.SESSION_SECURE !== "false"),
+        secure:
+          process.env.SESSION_SECURE === "true" ||
+          (process.env.NODE_ENV === "production" &&
+            process.env.SESSION_SECURE !== "false"),
         httpOnly: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 7 * 24 * 60 * 60 * 1000,
         sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
       },
     })
@@ -44,12 +52,18 @@ export function setupAuth(app: Express) {
       try {
         const user = await storage.getUserByUsername(username);
         if (!user) {
-          return done(null, false, { message: "아이디가 존재하지 않습니다" });
+          return done(null, false, { message: "존재하지 않는 아이디입니다." });
+        }
+
+        if (user.status !== "active") {
+          return done(null, false, {
+            message: "정지된 계정입니다. 관리자에게 문의해주세요.",
+          });
         }
 
         const isValid = await storage.verifyPassword(password, user.password);
         if (!isValid) {
-          return done(null, false, { message: "비밀번호가 올바르지 않습니다" });
+          return done(null, false, { message: "비밀번호가 올바르지 않습니다." });
         }
 
         return done(null, user);
@@ -66,6 +80,10 @@ export function setupAuth(app: Express) {
   passport.deserializeUser(async (id: number, done) => {
     try {
       const user = await storage.getUser(id);
+      if (!user || user.status !== "active") {
+        return done(null, false);
+      }
+
       done(null, user);
     } catch (error) {
       done(error);
@@ -73,9 +91,26 @@ export function setupAuth(app: Express) {
   });
 }
 
-export function isAuthenticated(req: Request, res: Response, next: NextFunction) {
-  if (req.isAuthenticated()) {
+export function isAuthenticated(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  if (req.isAuthenticated() && req.user?.status === "active") {
     return next();
   }
-  res.status(401).json({ message: "로그인이 필요합니다" });
+
+  res.status(401).json({ message: "로그인이 필요합니다." });
+}
+
+export function isAdmin(req: Request, res: Response, next: NextFunction) {
+  if (
+    req.isAuthenticated() &&
+    req.user?.status === "active" &&
+    req.user.role === "admin"
+  ) {
+    return next();
+  }
+
+  res.status(403).json({ message: "관리자 권한이 필요합니다." });
 }

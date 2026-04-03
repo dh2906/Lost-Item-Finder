@@ -17,10 +17,10 @@ updateSW = registerSW({
   onOfflineReady() {
     console.log("[PWA] 오프라인 사용 준비 완료");
   },
-  onRegisteredSW(swUrl, registration) {
+  onRegisteredSW(swUrl: string, registration: ServiceWorkerRegistration | undefined) {
     console.log("[PWA] Service Worker 등록 완료:", swUrl, registration);
   },
-  onRegisterError(error) {
+  onRegisterError(error: unknown) {
     console.error("[PWA] Service Worker 등록 실패:", error);
   },
 });

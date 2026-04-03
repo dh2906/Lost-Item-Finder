@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 import { Layout } from "@/components/layout";
 import { MapPinCheckInside, Loader2, Eye, EyeOff } from "lucide-react";
-import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/use-auth";
+import { AUTH_QUERY_KEY } from "@/lib/query-keys";
 import { sanitizeRedirect } from "@/lib/redirect";
 
 export function LoginPage() {
@@ -21,12 +22,11 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // 로그인 후 돌아갈 경로 파싱 — 내부 경로만 허용
   const params = new URLSearchParams(location.split("?")[1] ?? "");
   const redirectTo = sanitizeRedirect(params.get("redirect"));
-  const registerHref = redirectTo === "/" ? "/register" : `/register?redirect=${encodeURIComponent(redirectTo)}`;
+  const registerHref =
+    redirectTo === "/" ? "/register" : `/register?redirect=${encodeURIComponent(redirectTo)}`;
 
-  // 이미 로그인된 경우 리다이렉트
   if (!isLoading && isAuthenticated) {
     return <Redirect to={redirectTo} />;
   }
@@ -47,7 +47,10 @@ export function LoginPage() {
     },
     onSuccess: (user) => {
       queryClient.setQueryData(AUTH_QUERY_KEY, user);
-      toast({ title: "로그인 성공", description: `${user.name || user.username}님, 환영합니다!` });
+      toast({
+        title: "로그인 성공",
+        description: `${user.name || user.username}님, 환영합니다!`,
+      });
     },
     onError: (error: Error) => {
       toast({ variant: "destructive", title: "로그인 실패", description: error.message });
@@ -119,7 +122,7 @@ export function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
                     aria-pressed={showPassword}
                   >

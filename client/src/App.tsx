@@ -19,7 +19,10 @@ import ItemDetail from "@/pages/item-detail";
 import ChatsPage from "@/pages/chats";
 import ChatRoomPage from "@/pages/chat-room";
 import MatchesPage from "@/pages/matches";
+import EditItemPage from "@/pages/edit-item";
 import { LoginPage } from "@/pages/login";
+import MyPage from "@/pages/mypage";
+import AdminDashboardPage from "@/pages/admin-dashboard";
 import { RegisterPage } from "@/pages/register";
 import { useLocation } from "wouter";
 
@@ -54,25 +57,52 @@ function Router() {
         <Switch location={location}>
           <Route path="/" component={Home} />
           <Route path="/report/found">
-            <ProtectedRoute><FoundReportPage /></ProtectedRoute>
+            <ProtectedRoute>
+              <FoundReportPage />
+            </ProtectedRoute>
           </Route>
           <Route path="/report/lost">
-            <ProtectedRoute><LostReportPage /></ProtectedRoute>
+            <ProtectedRoute>
+              <LostReportPage />
+            </ProtectedRoute>
           </Route>
           <Route path="/report">
-            <ProtectedRoute><DefaultReportPage /></ProtectedRoute>
+            <ProtectedRoute>
+              <DefaultReportPage />
+            </ProtectedRoute>
           </Route>
           <Route path="/search" component={SearchPage} />
           <Route path="/items" component={ItemsPage} />
+          <Route path="/item/:id/edit">
+            <ProtectedRoute>
+              <EditItemPage />
+            </ProtectedRoute>
+          </Route>
           <Route path="/item/:id" component={ItemDetail} />
+          <Route path="/mypage">
+            <ProtectedRoute>
+              <MyPage />
+            </ProtectedRoute>
+          </Route>
+          <Route path="/admin">
+            <ProtectedRoute requireAdmin>
+              <AdminDashboardPage />
+            </ProtectedRoute>
+          </Route>
           <Route path="/matches">
-            <ProtectedRoute><MatchesPage /></ProtectedRoute>
+            <ProtectedRoute>
+              <MatchesPage />
+            </ProtectedRoute>
           </Route>
           <Route path="/chats">
-            <ProtectedRoute><ChatsPage /></ProtectedRoute>
+            <ProtectedRoute>
+              <ChatsPage />
+            </ProtectedRoute>
           </Route>
           <Route path="/chat/:id">
-            <ProtectedRoute><ChatRoomPage /></ProtectedRoute>
+            <ProtectedRoute>
+              <ChatRoomPage />
+            </ProtectedRoute>
           </Route>
           <Route path="/login" component={LoginPage} />
           <Route path="/register" component={RegisterPage} />
@@ -83,7 +113,6 @@ function Router() {
   );
 }
 
-/** 인증된 사용자에 대해서만 FCM 초기화와 포그라운드 알림 구독을 수행합니다. */
 function FcmInitializer() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -91,10 +120,8 @@ function FcmInitializer() {
   useEffect(() => {
     if (!user?.id) return;
 
-    // FCM 초기화 및 토큰 등록
     initFcm().catch((err) => console.error("[FCM] 초기화 실패:", err));
 
-    // 포그라운드 상태에서 메시지 수신 시 토스트 알림 표시
     const unsubscribe = onForegroundMessage(({ title, body, data }) => {
       console.log("[FCM] 포그라운드 메시지 수신:", { title, body, data });
 

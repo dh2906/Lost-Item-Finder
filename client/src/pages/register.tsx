@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 import { Layout } from "@/components/layout";
 import { UserPlus, Loader2, Eye, EyeOff, CheckCircle2, XCircle } from "lucide-react";
-import { useAuth, AUTH_QUERY_KEY } from "@/hooks/use-auth";
+import { useAuth } from "@/hooks/use-auth";
+import { AUTH_QUERY_KEY } from "@/lib/query-keys";
 import { sanitizeRedirect } from "@/lib/redirect";
 
 function PasswordStrengthIndicator({ password }: { password: string }) {
@@ -23,7 +24,10 @@ function PasswordStrengthIndicator({ password }: { password: string }) {
   return (
     <div className="flex flex-wrap gap-2 pt-1">
       {checks.map(({ label, ok }) => (
-        <span key={label} className={`flex items-center gap-1 text-xs ${ok ? "text-green-600" : "text-muted-foreground"}`}>
+        <span
+          key={label}
+          className={`flex items-center gap-1 text-xs ${ok ? "text-green-600" : "text-muted-foreground"}`}
+        >
           {ok ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
           {label}
         </span>
@@ -44,12 +48,11 @@ export function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
-  // 내부 경로만 허용
   const params = new URLSearchParams(location.split("?")[1] ?? "");
   const redirectTo = sanitizeRedirect(params.get("redirect"));
-  const loginHref = redirectTo === "/" ? "/login" : `/login?redirect=${encodeURIComponent(redirectTo)}`;
+  const loginHref =
+    redirectTo === "/" ? "/login" : `/login?redirect=${encodeURIComponent(redirectTo)}`;
 
-  // 이미 로그인된 경우 리다이렉트
   if (!isLoading && isAuthenticated) {
     return <Redirect to={redirectTo} />;
   }
@@ -83,7 +86,6 @@ export function RegisterPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // trim 후 실제 길이 검증 (공백만 입력해도 minLength={3}은 통과하므로 직접 체크)
     const trimmedUsername = username.trim();
     if (!trimmedUsername || trimmedUsername.length < 3) {
       toast({
@@ -95,18 +97,31 @@ export function RegisterPage() {
     }
 
     if (password !== confirmPassword) {
-      toast({ variant: "destructive", title: "비밀번호 불일치", description: "비밀번호가 일치하지 않습니다." });
+      toast({
+        variant: "destructive",
+        title: "비밀번호 불일치",
+        description: "비밀번호가 일치하지 않습니다.",
+      });
       return;
     }
     if (password.length < 4) {
-      toast({ variant: "destructive", title: "비밀번호 오류", description: "비밀번호는 4자 이상이어야 합니다." });
+      toast({
+        variant: "destructive",
+        title: "비밀번호 오류",
+        description: "비밀번호는 4자 이상이어야 합니다.",
+      });
       return;
     }
 
-    registerMutation.mutate({ username: trimmedUsername, password, name: name.trim() || undefined });
+    registerMutation.mutate({
+      username: trimmedUsername,
+      password,
+      name: name.trim() || undefined,
+    });
   };
 
-  const toggleButtonClass = "absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm";
+  const toggleButtonClass =
+    "absolute right-3 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
   return (
     <Layout>
@@ -145,7 +160,7 @@ export function RegisterPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="name" className="text-sm font-semibold">
-                  이름 <span className="text-muted-foreground font-normal">(선택)</span>
+                  이름 <span className="font-normal text-muted-foreground">(선택)</span>
                 </Label>
                 <Input
                   id="name"
@@ -182,7 +197,11 @@ export function RegisterPage() {
                     aria-label={showPassword ? "비밀번호 숨기기" : "비밀번호 보기"}
                     aria-pressed={showPassword}
                   >
-                    {showPassword ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    {showPassword ? (
+                      <EyeOff className="h-[18px] w-[18px]" />
+                    ) : (
+                      <Eye className="h-[18px] w-[18px]" />
+                    )}
                   </button>
                 </div>
                 <PasswordStrengthIndicator password={password} />
@@ -204,7 +223,9 @@ export function RegisterPage() {
                     className={`h-12 pr-12 ${!passwordsMatch && confirmPassword ? "border-destructive focus-visible:ring-destructive" : ""}`}
                     disabled={registerMutation.isPending}
                     aria-invalid={!passwordsMatch && !!confirmPassword}
-                    aria-describedby={!passwordsMatch && confirmPassword ? confirmPasswordErrorId : undefined}
+                    aria-describedby={
+                      !passwordsMatch && confirmPassword ? confirmPasswordErrorId : undefined
+                    }
                   />
                   <button
                     type="button"
@@ -213,14 +234,18 @@ export function RegisterPage() {
                     aria-label={showConfirm ? "비밀번호 숨기기" : "비밀번호 보기"}
                     aria-pressed={showConfirm}
                   >
-                    {showConfirm ? <EyeOff className="h-[18px] w-[18px]" /> : <Eye className="h-[18px] w-[18px]" />}
+                    {showConfirm ? (
+                      <EyeOff className="h-[18px] w-[18px]" />
+                    ) : (
+                      <Eye className="h-[18px] w-[18px]" />
+                    )}
                   </button>
                 </div>
-                {!passwordsMatch && confirmPassword && (
+                {!passwordsMatch && confirmPassword ? (
                   <p id={confirmPasswordErrorId} className="text-xs text-destructive">
                     비밀번호가 일치하지 않습니다.
                   </p>
-                )}
+                ) : null}
               </div>
 
               <Button

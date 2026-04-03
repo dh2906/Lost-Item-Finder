@@ -2,45 +2,44 @@ import { useRoute } from "wouter";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Layout } from "@/components/layout";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  useAddFavorite,
+  useFavoriteItems,
+  useRemoveFavorite,
+} from "@/hooks/use-favorites";
 import { useItem } from "@/hooks/use-items";
-import { MapPin, Calendar, Tag, AlertCircle, Mail, ArrowLeft } from "lucide-react";
+import { ChatButton } from "@/components/chat-button";
+import { ItemCard } from "@/components/item-card";
+import { useItemMatches, useUpdateMatchStatus } from "@/hooks/use-matches";
+import { useToast } from "@/hooks/use-toast";
+import {
+  MapPin,
+  Calendar,
+  Tag,
+  AlertCircle,
+  Heart,
+  Loader2,
+  Mail,
+  ArrowLeft,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChatButton } from "@/components/chat-button";
-import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
-import { ItemCard } from "@/components/item-card";
-import { useItemMatches, useUpdateMatchStatus } from "@/hooks/use-matches";
-import { useToast } from "@/hooks/use-toast";
 
 export default function ItemDetail() {
   const [, params] = useRoute("/item/:id");
   const id = params?.id ? parseInt(params.id, 10) : 0;
 
+  const { isAuthenticated, user } = useAuth();
   const { data: item, isLoading, isError } = useItem(id);
-  const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
-  const isOwnedLostItem = Boolean(isAuthenticated && item?.userId === user?.id && item?.reportType === "lost");
-  const { data: matches = [], isLoading: isMatchesLoading } = useItemMatches(id, isOwnedLostItem);
-  const updateMatchStatus = useUpdateMatchStatus();
-
-  const handleMatchStatus = async (
-    matchId: number,
-    status: "viewed" | "dismissed" | "confirmed"
-  ) => {
-    try {
-      await updateMatchStatus.mutateAsync({ matchId, status });
-      toast({ title: "매칭 상태를 저장했어요" });
-    } catch (error) {
-      toast({
-        title: "상태 저장 실패",
-        description: error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
-        variant: "destructive",
-      });
-    }
-  };
+  const { data: favoriteItems = [], isLoading: isFavoriteItemsLoading } =
+    useFavoriteItems();
+  const addFavoriteMutation = useAddFavorite();
+  const removeFavoriteMutation = useRemoveFavorite();
 
   if (isLoading) {
     return (
@@ -72,6 +71,48 @@ export default function ItemDetail() {
       </Layout>
     );
   }
+
+  const favoriteEntry = favoriteItems.find(
+    (favoriteItem) => favoriteItem.item.id === item.id
+  );
+  const isFavorite = Boolean(favoriteEntry);
+  const isFavoriteMutating =
+    addFavoriteMutation.isPending || removeFavoriteMutation.isPending;
+  const isOwner = item.userId !== null && item.userId === user?.id;
+  const isOwnedLostItem = Boolean(
+    isAuthenticated && item.userId === user?.id && item.reportType === "lost"
+  );
+  const { data: matches = [], isLoading: isMatchesLoading } = useItemMatches(
+    id,
+    isOwnedLostItem
+  );
+  const updateMatchStatus = useUpdateMatchStatus();
+
+  const handleFavoriteToggle = () => {
+    if (isFavorite) {
+      removeFavoriteMutation.mutate(item.id);
+      return;
+    }
+
+    addFavoriteMutation.mutate({ itemId: item.id });
+  };
+
+  const handleMatchStatus = async (
+    matchId: number,
+    status: "viewed" | "dismissed" | "confirmed"
+  ) => {
+    try {
+      await updateMatchStatus.mutateAsync({ matchId, status });
+      toast({ title: "매칭 상태를 저장했어요" });
+    } catch (error) {
+      toast({
+        title: "상태 저장 실패",
+        description:
+          error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+        variant: "destructive",
+      });
+    }
+  };
 
   return (
     <Layout>
@@ -186,14 +227,19 @@ export default function ItemDetail() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {isMatchesLoading ? (
-                    <div className="text-sm text-muted-foreground">매칭 결과를 불러오는 중입니다.</div>
+                    <div className="text-sm text-muted-foreground">
+                      매칭 결과를 불러오는 중입니다.
+                    </div>
                   ) : matches.length === 0 ? (
                     <div className="rounded-[22px] border border-dashed border-border/70 bg-secondary/35 p-5 text-sm leading-6 text-muted-foreground">
                       아직 이 분실물에 저장된 자동 매칭 결과가 없어요.
                     </div>
                   ) : (
                     matches.map((match) => (
-                      <div key={match.id} className="space-y-3 rounded-[24px] border border-border/70 bg-secondary/20 p-3">
+                      <div
+                        key={match.id}
+                        className="space-y-3 rounded-[24px] border border-border/70 bg-secondary/20 p-3"
+                      >
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">
                             매칭 점수 {Math.round(match.score * 100)}점
@@ -202,7 +248,12 @@ export default function ItemDetail() {
                             {match.status}
                           </Badge>
                         </div>
-                        <ItemCard item={match.foundItem} score={match.score} reasoning={match.matchReason} variant="compact" />
+                        <ItemCard
+                          item={match.foundItem}
+                          score={match.score}
+                          reasoning={match.matchReason}
+                          variant="compact"
+                        />
                         <div className="flex flex-wrap gap-2">
                           <Button
                             size="sm"
@@ -247,6 +298,23 @@ export default function ItemDetail() {
                     Item record
                   </p>
                   <CardTitle className="text-2xl leading-tight">{item.title}</CardTitle>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        item.status === "resolved"
+                          ? "border-slate-300 text-slate-700"
+                          : "border-amber-200 bg-amber-50 text-amber-700"
+                      )}
+                    >
+                      {item.status === "resolved" ? "해결 완료" : "진행 중"}
+                    </Badge>
+                    {isOwner && (
+                      <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+                        내 게시글
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
                   {item.location && (
@@ -264,6 +332,60 @@ export default function ItemDetail() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
+                {isOwner && (
+                  <Button asChild variant="outline" className="w-full rounded-2xl">
+                    <Link href={`/item/${item.id}/edit`}>
+                      게시글 수정하기
+                    </Link>
+                  </Button>
+                )}
+                {isAuthenticated ? (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={handleFavoriteToggle}
+                      disabled={isFavoriteItemsLoading || isFavoriteMutating}
+                      variant={isFavorite ? "default" : "outline"}
+                      className={cn(
+                        "w-full rounded-2xl",
+                        isFavorite
+                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                          : "border-border/70 bg-white"
+                      )}
+                    >
+                      {isFavoriteItemsLoading || isFavoriteMutating ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Heart
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            isFavorite && "fill-current"
+                          )}
+                        />
+                      )}
+                      {isFavorite
+                        ? "관심 게시물에서 제거"
+                        : "관심 게시물로 저장"}
+                    </Button>
+                    {favoriteEntry && (
+                      <div className="rounded-[22px] border border-border/70 bg-secondary/40 p-4 text-sm text-muted-foreground">
+                        {format(
+                          new Date(favoriteEntry.createdAt),
+                          "PPP p",
+                          { locale: ko }
+                        )}
+                        에 저장된 게시물입니다. 마이페이지에서 모아볼 수 있어요.
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <Button asChild variant="outline" className="w-full rounded-2xl">
+                    <Link href={`/login?redirect=${encodeURIComponent(`/item/${item.id}`)}`}>
+                      <Heart className="mr-2 h-4 w-4" />
+                      로그인하고 관심 게시물 저장
+                    </Link>
+                  </Button>
+                )}
                  <div className="rounded-[22px] bg-secondary/45 p-4 text-sm leading-6 text-muted-foreground">
                   핵심 정보와 연락 수단을 오른쪽에 고정해 두어, 큰 화면에서도 스크롤 이동 없이 바로 판단할 수 있게 했습니다.
                 </div>
@@ -278,24 +400,28 @@ export default function ItemDetail() {
                 <p className="mb-4 text-sm leading-6 text-muted-foreground">
                   상세 정보를 확인하고 연락해 주세요.
                 </p>
-                {item.contactInfo && (
-                  <div className="flex items-center gap-2 rounded-[22px] border border-border/70 bg-secondary/40 p-4">
-                    <Mail className="h-4 w-4 text-primary" />
-                    <span className="font-medium">{item.contactInfo}</span>
-                  </div>
+                {item.contactInfo ? (
+                   <div className="flex items-center gap-2 rounded-[22px] border border-border/70 bg-secondary/40 p-4">
+                     <Mail className="h-4 w-4 text-primary" />
+                     <span className="font-medium">{item.contactInfo}</span>
+                   </div>
+                ) : (
+                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90">관리자에게 문의</Button>
                 )}
-                {isAuthenticated && item.userId === user?.id && (
-                  <Button className="w-full rounded-full" disabled>
+                {isAuthenticated && item.userId === user?.id ? (
+                  <Button className="mt-3 w-full rounded-full" disabled>
                     내 게시물입니다.
                   </Button>
-                )}
-                {isAuthenticated && item.userId && item.userId !== user?.id && (
-                  <ChatButton
-                    itemId={item.id}
-                    receiverId={item.userId}
-                    className="w-full rounded-full"
-                  />
-                )}
+                ) : null}
+                {isAuthenticated && item.userId && item.userId !== user?.id ? (
+                  <div className="mt-3">
+                    <ChatButton
+                      itemId={item.id}
+                      receiverId={item.userId}
+                      className="w-full rounded-full"
+                    />
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           </div>
