@@ -40,6 +40,14 @@ export default function ItemDetail() {
     useFavoriteItems();
   const addFavoriteMutation = useAddFavorite();
   const removeFavoriteMutation = useRemoveFavorite();
+  const isOwnedLostItem = Boolean(
+    isAuthenticated && item?.userId === user?.id && item?.reportType === "lost"
+  );
+  const { data: matches = [], isLoading: isMatchesLoading } = useItemMatches(
+    id,
+    isOwnedLostItem
+  );
+  const updateMatchStatus = useUpdateMatchStatus();
 
   if (isLoading) {
     return (
@@ -79,14 +87,6 @@ export default function ItemDetail() {
   const isFavoriteMutating =
     addFavoriteMutation.isPending || removeFavoriteMutation.isPending;
   const isOwner = item.userId !== null && item.userId === user?.id;
-  const isOwnedLostItem = Boolean(
-    isAuthenticated && item.userId === user?.id && item.reportType === "lost"
-  );
-  const { data: matches = [], isLoading: isMatchesLoading } = useItemMatches(
-    id,
-    isOwnedLostItem
-  );
-  const updateMatchStatus = useUpdateMatchStatus();
 
   const handleFavoriteToggle = () => {
     if (isFavorite) {
