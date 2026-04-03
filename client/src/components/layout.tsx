@@ -300,7 +300,7 @@ export function Layout({ children }: { children: ReactNode }) {
             )}
 
             <div className="flex items-center gap-1 md:hidden">
-              {!isAuthenticated ? (
+              {!isAuthenticated && (
                 <Button
                   variant="ghost"
                   size="icon"
