@@ -312,7 +312,7 @@ export function Layout({ children }: { children: ReactNode }) {
                     <UserIcon className="h-5 w-5" />
                   </Link>
                 </Button>
-              ) : null}
+              )}
             </div>
           </div>
         </div>
