@@ -2,11 +2,15 @@ import {
   favorites,
   items,
   itemEmbeddings,
+  itemMatches,
   matchNotifications,
   users,
   type Item,
+  type ItemMatch,
+  type ItemMatchStatus,
   type ItemStatus,
   type InsertItem,
+  type InsertItemMatch,
   type InsertUser,
   type UpdateItem,
   type User,
@@ -19,9 +23,13 @@ import {
   cosineDistance,
   desc,
   eq,
+  gte,
   ilike,
   inArray,
   isNull,
+  lte,
+  ne,
+  or,
   sql,
 } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual } from "crypto";
@@ -40,6 +48,12 @@ async function verifyPassword(supplied: string, stored: string): Promise<boolean
   const hashedBuf = Buffer.from(hashed, "hex");
   const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
   return timingSafeEqual(hashedBuf, suppliedBuf);
+}
+
+export interface ItemMatchWithItems {
+  match: ItemMatch;
+  lostItem: Item;
+  foundItem: Item;
 }
 
 export interface AdminUserRecord extends Omit<User, "password"> {
@@ -152,6 +166,7 @@ export interface IStorage {
   ): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem & { userId?: number | null }): Promise<Item>;
+  updateItem(itemId: number, item: Partial<InsertItem>): Promise<Item | undefined>;
   updateOwnedItem(
     userId: number,
     itemId: number,
@@ -163,7 +178,7 @@ export interface IStorage {
     itemId: number
   ): Promise<{ content: string; embedding: number[] } | undefined>;
   getItemsWithoutEmbeddings(
-    reportType: "lost" | "found",
+    reportType?: "lost" | "found",
     limit?: number
   ): Promise<Item[]>;
   searchItemsByEmbedding(
@@ -171,6 +186,20 @@ export interface IStorage {
     embedding: number[],
     limit?: number
   ): Promise<Array<{ item: Item; score: number }>>;
+  searchFoundItemsByEmbedding(
+    embedding: number[],
+    limit?: number
+  ): Promise<Array<{ item: Item; score: number }>>;
+  getCandidateItemsForAutoMatch(sourceItem: Item, limit?: number): Promise<Item[]>;
+  getItemEmbeddings(itemIds: number[]): Promise<Map<number, number[]>>;
+  upsertItemMatch(match: InsertItemMatch): Promise<ItemMatch>;
+  getMatchesForUser(userId: number): Promise<ItemMatchWithItems[]>;
+  getMatchesForItem(itemId: number, userId: number): Promise<ItemMatchWithItems[]>;
+  updateItemMatchStatus(
+    matchId: number,
+    userId: number,
+    status: ItemMatchStatus
+  ): Promise<ItemMatch | undefined>;
   upsertMatchNotification(input: {
     userId: number;
     lostItemId: number;
@@ -183,17 +212,14 @@ export interface IStorage {
     userId: number,
     notificationId: number
   ): Promise<MatchNotificationRecord | undefined>;
-
   getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>>;
   addFavorite(userId: number, itemId: number): Promise<void>;
   removeFavorite(userId: number, itemId: number): Promise<boolean>;
-
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   hashPassword(password: string): Promise<string>;
   verifyPassword(supplied: string, stored: string): Promise<boolean>;
-
   getAdminDashboardData(): Promise<AdminDashboardData>;
   getAdminUsers(filters?: {
     search?: string;
@@ -295,6 +321,19 @@ export class DatabaseStorage implements IStorage {
     return item;
   }
 
+  async updateItem(
+    itemId: number,
+    item: Partial<InsertItem>
+  ): Promise<Item | undefined> {
+    const [updatedItem] = await db
+      .update(items)
+      .set(item)
+      .where(eq(items.id, itemId))
+      .returning();
+
+    return updatedItem;
+  }
+
   async updateOwnedItem(
     userId: number,
     itemId: number,
@@ -347,20 +386,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getItemsWithoutEmbeddings(
-    reportType: "lost" | "found",
+    reportType?: "lost" | "found",
     limit?: number
   ): Promise<Item[]> {
+    const conditions = [eq(items.status, "active"), isNull(itemEmbeddings.itemId)];
+    if (reportType) {
+      conditions.push(eq(items.reportType, reportType));
+    }
+
     const baseQuery = db
       .select({ item: items })
       .from(items)
       .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
-      .where(
-        and(
-          eq(items.reportType, reportType),
-          eq(items.status, "active"),
-          isNull(itemEmbeddings.itemId)
-        )
-      )
+      .where(and(...conditions))
       .orderBy(desc(items.date));
 
     const rows =
@@ -391,6 +429,154 @@ export class DatabaseStorage implements IStorage {
       item: row.item,
       score: Math.max(0, 1 - Number(row.distance ?? 1)),
     }));
+  }
+
+  async searchFoundItemsByEmbedding(
+    embedding: number[],
+    limit = 12
+  ): Promise<Array<{ item: Item; score: number }>> {
+    return this.searchItemsByEmbedding("found", embedding, limit);
+  }
+
+  async getCandidateItemsForAutoMatch(sourceItem: Item, limit = 80): Promise<Item[]> {
+    const targetReportType = sourceItem.reportType === "found" ? "lost" : "found";
+    const conditions = [
+      eq(items.reportType, targetReportType),
+      eq(items.status, "active"),
+    ];
+
+    if (sourceItem.userId) {
+      conditions.push(or(ne(items.userId, sourceItem.userId), isNull(items.userId))!);
+    }
+
+    if (sourceItem.date) {
+      const windowStart = new Date(sourceItem.date);
+      windowStart.setDate(windowStart.getDate() - 120);
+      const windowEnd = new Date(sourceItem.date);
+      windowEnd.setDate(windowEnd.getDate() + 120);
+      conditions.push(gte(items.date, windowStart));
+      conditions.push(lte(items.date, windowEnd));
+    }
+
+    return await db
+      .select()
+      .from(items)
+      .where(and(...conditions))
+      .orderBy(desc(items.date))
+      .limit(limit);
+  }
+
+  async getItemEmbeddings(itemIds: number[]): Promise<Map<number, number[]>> {
+    if (itemIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await db
+      .select({ itemId: itemEmbeddings.itemId, embedding: itemEmbeddings.embedding })
+      .from(itemEmbeddings)
+      .where(inArray(itemEmbeddings.itemId, itemIds));
+
+    return new Map(
+      rows.map((row) => [row.itemId, Array.isArray(row.embedding) ? row.embedding : []])
+    );
+  }
+
+  async upsertItemMatch(match: InsertItemMatch): Promise<ItemMatch> {
+    const [savedMatch] = await db
+      .insert(itemMatches)
+      .values({
+        ...match,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [itemMatches.lostItemId, itemMatches.foundItemId],
+        set: {
+          score: match.score,
+          matchReason: match.matchReason,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    return savedMatch;
+  }
+
+  async getMatchesForUser(userId: number): Promise<ItemMatchWithItems[]> {
+    const ownedLostItems = await db
+      .select({ id: items.id })
+      .from(items)
+      .where(and(eq(items.userId, userId), eq(items.reportType, "lost")));
+
+    const lostItemIds = ownedLostItems.map((item) => item.id);
+    if (lostItemIds.length === 0) {
+      return [];
+    }
+
+    const matches = await db
+      .select()
+      .from(itemMatches)
+      .where(inArray(itemMatches.lostItemId, lostItemIds))
+      .orderBy(desc(itemMatches.score), desc(itemMatches.updatedAt), desc(itemMatches.createdAt));
+
+    if (matches.length === 0) {
+      return [];
+    }
+
+    const relatedItemIds = Array.from(
+      new Set(matches.flatMap((match) => [match.lostItemId, match.foundItemId]))
+    );
+    const relatedItems = await db
+      .select()
+      .from(items)
+      .where(inArray(items.id, relatedItemIds));
+    const itemsById = new Map(relatedItems.map((item) => [item.id, item]));
+
+    return matches
+      .map((match) => {
+        const lostItem = itemsById.get(match.lostItemId);
+        const foundItem = itemsById.get(match.foundItemId);
+
+        if (!lostItem || !foundItem) {
+          return null;
+        }
+
+        return {
+          match,
+          lostItem,
+          foundItem,
+        };
+      })
+      .filter((entry): entry is ItemMatchWithItems => Boolean(entry));
+  }
+
+  async getMatchesForItem(itemId: number, userId: number): Promise<ItemMatchWithItems[]> {
+    const allMatches = await this.getMatchesForUser(userId);
+    return allMatches.filter(
+      ({ match }) => match.lostItemId === itemId || match.foundItemId === itemId
+    );
+  }
+
+  async updateItemMatchStatus(
+    matchId: number,
+    userId: number,
+    status: ItemMatchStatus
+  ): Promise<ItemMatch | undefined> {
+    const userMatches = await this.getMatchesForUser(userId);
+    const targetMatch = userMatches.find(({ match }) => match.id === matchId)?.match;
+    if (!targetMatch) {
+      return undefined;
+    }
+
+    const [updatedMatch] = await db
+      .update(itemMatches)
+      .set({
+        status,
+        updatedAt: new Date(),
+      })
+      .where(eq(itemMatches.id, matchId))
+      .returning();
+
+    return updatedMatch;
   }
 
   async upsertMatchNotification(input: {

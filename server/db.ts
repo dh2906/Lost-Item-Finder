@@ -16,3 +16,69 @@ export const db = drizzle(pool, { schema });
 export async function ensureVectorExtension(): Promise<void> {
   await pool.query("CREATE EXTENSION IF NOT EXISTS vector;");
 }
+
+export async function ensureChatSchema(): Promise<void> {
+  await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS user_id integer REFERENCES users(id) ON DELETE SET NULL;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_rooms (
+      id serial PRIMARY KEY,
+      item_id integer NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      sender_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      receiver_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+      updated_at timestamp DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id serial PRIMARY KEY,
+      room_id integer NOT NULL REFERENCES chat_rooms(id) ON DELETE CASCADE,
+      sender_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      content text NOT NULL,
+      is_read integer DEFAULT 0,
+      created_at timestamp DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conversations (
+      id serial PRIMARY KEY,
+      title text NOT NULL,
+      created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id serial PRIMARY KEY,
+      conversation_id integer NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role text NOT NULL,
+      content text NOT NULL,
+      created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL
+    );
+  `);
+}
+
+export async function ensureItemMatchSchema(): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS item_matches (
+      id serial PRIMARY KEY,
+      lost_item_id integer NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      found_item_id integer NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      score integer NOT NULL,
+      match_reason text NOT NULL,
+      status text NOT NULL DEFAULT 'new',
+      notified_at timestamp,
+      created_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      CONSTRAINT item_matches_lost_found_unique UNIQUE (lost_item_id, found_item_id)
+    );
+  `);
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS item_matches_lost_item_idx ON item_matches (lost_item_id);`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS item_matches_found_item_idx ON item_matches (found_item_id);`
+  );
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS item_matches_status_idx ON item_matches (status);`
+  );
+}

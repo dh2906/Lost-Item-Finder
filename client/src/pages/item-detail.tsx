@@ -9,6 +9,10 @@ import {
   useRemoveFavorite,
 } from "@/hooks/use-favorites";
 import { useItem } from "@/hooks/use-items";
+import { ChatButton } from "@/components/chat-button";
+import { ItemCard } from "@/components/item-card";
+import { useItemMatches, useUpdateMatchStatus } from "@/hooks/use-matches";
+import { useToast } from "@/hooks/use-toast";
 import {
   MapPin,
   Calendar,
@@ -31,6 +35,7 @@ export default function ItemDetail() {
 
   const { isAuthenticated, user } = useAuth();
   const { data: item, isLoading, isError } = useItem(id);
+  const { toast } = useToast();
   const { data: favoriteItems = [], isLoading: isFavoriteItemsLoading } =
     useFavoriteItems();
   const addFavoriteMutation = useAddFavorite();
@@ -74,6 +79,14 @@ export default function ItemDetail() {
   const isFavoriteMutating =
     addFavoriteMutation.isPending || removeFavoriteMutation.isPending;
   const isOwner = item.userId !== null && item.userId === user?.id;
+  const isOwnedLostItem = Boolean(
+    isAuthenticated && item.userId === user?.id && item.reportType === "lost"
+  );
+  const { data: matches = [], isLoading: isMatchesLoading } = useItemMatches(
+    id,
+    isOwnedLostItem
+  );
+  const updateMatchStatus = useUpdateMatchStatus();
 
   const handleFavoriteToggle = () => {
     if (isFavorite) {
@@ -82,6 +95,23 @@ export default function ItemDetail() {
     }
 
     addFavoriteMutation.mutate({ itemId: item.id });
+  };
+
+  const handleMatchStatus = async (
+    matchId: number,
+    status: "viewed" | "dismissed" | "confirmed"
+  ) => {
+    try {
+      await updateMatchStatus.mutateAsync({ matchId, status });
+      toast({ title: "매칭 상태를 저장했어요" });
+    } catch (error) {
+      toast({
+        title: "상태 저장 실패",
+        description:
+          error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -180,6 +210,80 @@ export default function ItemDetail() {
                         ))}
                       </div>
                     </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {isOwnedLostItem && (
+              <Card className="border-border/70 bg-white/90">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-lg">자동 매칭된 습득물</CardTitle>
+                    <Button asChild variant="outline" className="rounded-full">
+                      <Link href="/matches">전체 보기</Link>
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {isMatchesLoading ? (
+                    <div className="text-sm text-muted-foreground">
+                      매칭 결과를 불러오는 중입니다.
+                    </div>
+                  ) : matches.length === 0 ? (
+                    <div className="rounded-[22px] border border-dashed border-border/70 bg-secondary/35 p-5 text-sm leading-6 text-muted-foreground">
+                      아직 이 분실물에 저장된 자동 매칭 결과가 없어요.
+                    </div>
+                  ) : (
+                    matches.map((match) => (
+                      <div
+                        key={match.id}
+                        className="space-y-3 rounded-[24px] border border-border/70 bg-secondary/20 p-3"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className="rounded-full bg-primary/10 text-primary hover:bg-primary/10">
+                            매칭 점수 {Math.round(match.score * 100)}점
+                          </Badge>
+                          <Badge variant="outline" className="rounded-full">
+                            {match.status}
+                          </Badge>
+                        </div>
+                        <ItemCard
+                          item={match.foundItem}
+                          score={match.score}
+                          reasoning={match.matchReason}
+                          variant="compact"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            className="rounded-full"
+                            disabled={updateMatchStatus.isPending}
+                            onClick={() => handleMatchStatus(match.id, "confirmed")}
+                          >
+                            가능성 높음
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-full"
+                            disabled={updateMatchStatus.isPending}
+                            onClick={() => handleMatchStatus(match.id, "viewed")}
+                          >
+                            확인 완료
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="rounded-full"
+                            disabled={updateMatchStatus.isPending}
+                            onClick={() => handleMatchStatus(match.id, "dismissed")}
+                          >
+                            관련 없음
+                          </Button>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </CardContent>
               </Card>
@@ -304,6 +408,20 @@ export default function ItemDetail() {
                 ) : (
                   <Button className="bg-primary text-primary-foreground hover:bg-primary/90">관리자에게 문의</Button>
                 )}
+                {isAuthenticated && item.userId === user?.id ? (
+                  <Button className="mt-3 w-full rounded-full" disabled>
+                    내 게시물입니다.
+                  </Button>
+                ) : null}
+                {isAuthenticated && item.userId && item.userId !== user?.id ? (
+                  <div className="mt-3">
+                    <ChatButton
+                      itemId={item.id}
+                      receiverId={item.userId}
+                      className="w-full rounded-full"
+                    />
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           </div>

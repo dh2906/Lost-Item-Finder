@@ -2,14 +2,30 @@ import { z } from "zod";
 import {
   insertItemSchema,
   items,
+  itemMatchStatuses,
   itemStatuses,
   reportTypes,
   updateItemSchema,
+  updateItemMatchStatusSchema,
   userRoles,
   userStatuses,
 } from "./schema";
 
 const itemResponseSchema = z.custom<typeof items.$inferSelect>();
+
+const matchResponseSchema = z.object({
+  id: z.number(),
+  lostItemId: z.number(),
+  foundItemId: z.number(),
+  score: z.number().min(0).max(1),
+  matchReason: z.string(),
+  status: z.enum(itemMatchStatuses),
+  notifiedAt: z.union([z.string(), z.date()]).nullable(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
+  lostItem: itemResponseSchema,
+  foundItem: itemResponseSchema,
+});
 
 const favoriteItemSchema = z.object({
   item: itemResponseSchema,
@@ -198,6 +214,33 @@ export const api = {
       },
     },
   },
+  matches: {
+    list: {
+      method: "GET" as const,
+      path: "/api/matches" as const,
+      responses: {
+        200: z.array(matchResponseSchema),
+      },
+    },
+    getByItem: {
+      method: "GET" as const,
+      path: "/api/items/:id/matches" as const,
+      responses: {
+        200: z.array(matchResponseSchema),
+        404: errorSchemas.notFound,
+      },
+    },
+    updateStatus: {
+      method: "PATCH" as const,
+      path: "/api/matches/:id" as const,
+      input: updateItemMatchStatusSchema,
+      responses: {
+        200: matchResponseSchema,
+        404: errorSchemas.notFound,
+        400: errorSchemas.validation,
+      },
+    },
+  },
   favorites: {
     list: {
       method: "GET" as const,
@@ -377,6 +420,9 @@ export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<
   (typeof api.ai.analyzeImage.responses)[200]
 >;
+export type MatchListResponse = z.infer<(typeof api.matches.list.responses)[200]>;
+export type MatchResponse = MatchListResponse[number];
+export type UpdateMatchStatusInput = z.infer<typeof api.matches.updateStatus.input>;
 export type FavoriteItemsResponse = z.infer<
   (typeof api.favorites.list.responses)[200]
 >;

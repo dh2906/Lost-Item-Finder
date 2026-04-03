@@ -32,7 +32,7 @@ export function useAuth() {
       }
       return res.json();
     },
-    staleTime: 5 * 60 * 1000, // 5분간 캐시 유지
+    staleTime: 5 * 60 * 1000,
     retry: false,
   });
 

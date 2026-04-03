@@ -41,13 +41,27 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
     [onChange],
   );
 
+  const getAddressFromCoords = useCallback((lat: number, lng: number) => {
+    if (!window.kakao?.maps?.services) return;
+
+    const geocoder = new window.kakao.maps.services.Geocoder();
+    geocoder.coord2Address(lng, lat, (result: any, status: any) => {
+      if (status === window.kakao.maps.services.Status.OK && result[0]) {
+        const addr = result[0].road_address?.address_name || result[0].address?.address_name;
+        setAddress(addr || "");
+      }
+    });
+  }, []);
+
   // 초기 위치 설정 (GPS 또는 기본값)
   useEffect(() => {
     if (value?.latitude && value?.longitude) {
-      setPosition({
+      const nextPosition = {
         lat: parseFloat(value.latitude),
         lng: parseFloat(value.longitude),
-      });
+      };
+      setPosition(nextPosition);
+      getAddressFromCoords(nextPosition.lat, nextPosition.lng);
       setIsLocating(false);
       return;
     }
@@ -60,6 +74,7 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
             lng: pos.coords.longitude,
           };
           setPosition(nextPosition);
+          getAddressFromCoords(nextPosition.lat, nextPosition.lng);
           syncCoordinates(nextPosition);
           setIsLocating(false);
         },
@@ -69,6 +84,7 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
             lng: 126.978,
           };
           setPosition(nextPosition);
+          getAddressFromCoords(nextPosition.lat, nextPosition.lng);
           syncCoordinates(nextPosition);
           setIsLocating(false);
         },
@@ -77,22 +93,11 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
     } else {
       const nextPosition = { lat: 37.5665, lng: 126.978 };
       setPosition(nextPosition);
+      getAddressFromCoords(nextPosition.lat, nextPosition.lng);
       syncCoordinates(nextPosition);
       setIsLocating(false);
     }
-  }, [syncCoordinates, value]);
-
-  const getAddressFromCoords = useCallback((lat: number, lng: number) => {
-    if (!window.kakao?.maps?.services) return;
-    
-    const geocoder = new window.kakao.maps.services.Geocoder();
-    geocoder.coord2Address(lng, lat, (result: any, status: any) => {
-      if (status === window.kakao.maps.services.Status.OK && result[0]) {
-        const addr = result[0].road_address?.address_name || result[0].address?.address_name;
-        setAddress(addr || "");
-      }
-    });
-  }, []);
+  }, [getAddressFromCoords, syncCoordinates, value]);
 
   const handlePositionChange = (marker: any) => {
     const pos = marker.getPosition();
@@ -209,9 +214,9 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
         </Map>
         <Button
           type="button"
-          variant="secondary"
+          variant="ghost"
           size="icon"
-          className="absolute left-4 top-4 z-10 rounded-full border border-primary/10 bg-white/96 shadow-card hover:bg-white"
+          className="absolute left-4 top-4 z-10 rounded-full border border-primary/10 !bg-white text-foreground shadow-card hover:!bg-white"
           onClick={(e) => {
             e.stopPropagation();
             goToCurrentLocation();

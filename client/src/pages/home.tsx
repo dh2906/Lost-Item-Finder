@@ -57,7 +57,7 @@ export default function Home() {
   const [tab, setTab] = useState<"found" | "lost">("found");
   const { data: items, isLoading } = useItems({ type: tab });
   const emptyLabel = tab === "found" ? "습득물" : "분실물";
-  const sectionTitle = "방금 등록된 습득물을 확인해보세요";
+  const sectionTitle = tab === "found" ? "방금 등록된 습득물을 확인해보세요" : "방금 등록된 분실물을 확인해보세요";
   const sectionDescription = "실제로 등록된 게시물을 바로 살펴보고 내 물건과 비슷한 글이 있는지 한눈에 확인해보세요.";
 
   return (

@@ -6,12 +6,14 @@ import {
   Heart,
   LogOut,
   MapPinCheckInside,
+  MessageCircleMore,
   Shield,
   User as UserIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useChatRooms } from "@/hooks/use-chat";
 import { useMatchNotifications } from "@/hooks/use-notifications";
 import {
   DropdownMenu,
@@ -23,7 +25,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-const navigation = [
+type NavigationItem = {
+  href: string;
+  label: string;
+  children?: Array<{
+    href: string;
+    label: string;
+  }>;
+};
+
+const navigation: NavigationItem[] = [
   { href: "/", label: "홈" },
   {
     href: "/report",
@@ -34,14 +45,17 @@ const navigation = [
     ],
   },
   { href: "/search", label: "분실물 찾기" },
+  { href: "/items?type=found", label: "물건 목록" },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
+  const { data: chatRooms = [] } = useChatRooms(isAuthenticated);
   const { data: notifications = [] } = useMatchNotifications();
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
 
+  const hasUnreadChats = chatRooms.some((room) => room.hasUnread);
   const unreadNotificationCount = notifications.filter(
     (notification) => !notification.isRead
   ).length;
@@ -52,7 +66,7 @@ export function Layout({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/94 backdrop-blur supports-[backdrop-filter]:bg-background/78">
         <div className="container flex h-[68px] items-center justify-between gap-4 xl:max-w-[1440px]">
           <div className="flex items-center gap-3 md:gap-5">
@@ -73,14 +87,15 @@ export function Layout({ children }: { children: ReactNode }) {
 
             <nav className="hidden items-center rounded-full border border-border/55 bg-white/80 p-0.5 shadow-[0_10px_22px_-20px_rgba(27,31,59,0.14)] lg:flex">
               {navigation.map((item) => {
+                const itemPath = item.href.split("?")[0];
                 const active =
-                  item.href === "/"
-                    ? location === item.href
-                    : location === item.href ||
-                      location.startsWith(`${item.href}?`) ||
-                      location.startsWith(`${item.href}/`);
+                  itemPath === "/"
+                    ? location === itemPath
+                    : location === itemPath ||
+                      location.startsWith(`${itemPath}?`) ||
+                      location.startsWith(`${itemPath}/`);
 
-                if (item.children) {
+                if (item.children?.length) {
                   return (
                     <div
                       key={item.href}
@@ -176,6 +191,20 @@ export function Layout({ children }: { children: ReactNode }) {
                   asChild
                   className="relative h-10 w-10 rounded-xl border border-border/70 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
                 >
+                  <Link href="/chats" aria-label="채팅 목록">
+                    <MessageCircleMore className="h-4.5 w-4.5 text-foreground" />
+                    {hasUnreadChats ? (
+                      <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-background bg-primary shadow-sm" />
+                    ) : null}
+                  </Link>
+                </Button>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  asChild
+                  className="relative h-10 w-10 rounded-xl border border-border/70 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
+                >
                   <Link href="/mypage#alerts" aria-label="매칭 알림">
                     <Bell className="h-5 w-5" />
                     {unreadNotificationCount > 0 ? (
@@ -218,11 +247,20 @@ export function Layout({ children }: { children: ReactNode }) {
                       <Heart className="mr-2 h-4 w-4" />
                       마이페이지
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void setLocation("/matches")}>
+                      내 매칭
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void setLocation("/chats")}>
+                      채팅 목록
+                    </DropdownMenuItem>
                     {user?.role === "admin" ? (
-                      <DropdownMenuItem onClick={() => void setLocation("/admin")}>
-                        <Shield className="mr-2 h-4 w-4" />
-                        관리자 대시보드
-                      </DropdownMenuItem>
+                      <>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => void setLocation("/admin")}>
+                          <Shield className="mr-2 h-4 w-4" />
+                          관리자 대시보드
+                        </DropdownMenuItem>
+                      </>
                     ) : null}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -274,7 +312,7 @@ export function Layout({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1">{children}</main>
+      <main className="flex min-h-0 flex-1 flex-col">{children}</main>
 
       <footer className="border-t border-border/35 bg-white/70">
         <div className="container flex flex-col gap-1 py-1.5 text-sm text-muted-foreground/72 md:flex-row md:items-center md:justify-between xl:max-w-[1440px]">
