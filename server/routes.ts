@@ -534,32 +534,57 @@ function normalizeMetadataTags(tags?: string[] | null): string[] {
   }
 
   const normalizedTags = tags
-    .map((tag) => canonicalizeWithGroups(tag, KEYWORD_SYNONYM_GROUPS))
+    .map((tag) => tag.replace(/\s+/g, " ").trim())
     .filter((tag) => tag.length > 0);
 
   return Array.from(new Set(normalizedTags));
 }
 
 function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
-  const normalizedCategory = canonicalizeWithGroups(item.itemCategory, CATEGORY_SYNONYM_GROUPS);
-  const normalizedColor = canonicalizeWithGroups(item.color, COLOR_SYNONYM_GROUPS);
-  const normalizedLocation = canonicalizeWithGroups(item.location, LOCATION_SYNONYM_GROUPS);
-  const normalizedTags = normalizeMetadataTags(item.tags);
+  const normalizePlainText = (value?: string | null): string | undefined => {
+    if (typeof value !== "string") {
+      return undefined;
+    }
 
-  const normalizedTitle = normalizeKoreanText(
-    [item.title, normalizedCategory, normalizedColor].filter(Boolean).join(" ") || item.title || ""
-  );
-  const normalizedDescription = normalizeKoreanText(item.description ?? "");
-
-  return {
-    ...item,
-    title: normalizedTitle || item.title || undefined,
-    description: normalizedDescription || item.description || undefined,
-    itemCategory: normalizedCategory || item.itemCategory || undefined,
-    color: normalizedColor || item.color || undefined,
-    location: normalizedLocation || item.location || undefined,
-    tags: normalizedTags.length > 0 ? normalizedTags : item.tags,
+    const normalizedValue = value.replace(/\s+/g, " ").trim();
+    return normalizedValue.length > 0 ? normalizedValue : undefined;
   };
+
+  const normalizedItem = { ...item } as T;
+
+  if (item.title !== undefined) {
+    normalizedItem.title = normalizePlainText(item.title) as T["title"];
+  }
+
+  if (item.description !== undefined) {
+    normalizedItem.description = normalizePlainText(
+      item.description
+    ) as T["description"];
+  }
+
+  if (item.itemCategory !== undefined) {
+    normalizedItem.itemCategory = normalizePlainText(
+      item.itemCategory
+    ) as T["itemCategory"];
+  }
+
+  if (item.color !== undefined) {
+    normalizedItem.color = normalizePlainText(item.color) as T["color"];
+  }
+
+  if (item.size !== undefined) {
+    normalizedItem.size = normalizePlainText(item.size) as T["size"];
+  }
+
+  if (item.location !== undefined) {
+    normalizedItem.location = normalizePlainText(item.location) as T["location"];
+  }
+
+  if (item.tags !== undefined) {
+    normalizedItem.tags = normalizeMetadataTags(item.tags) as T["tags"];
+  }
+
+  return normalizedItem;
 }
 
 function areSameNormalizedValue(
@@ -1150,34 +1175,6 @@ async function backfillFoundItemEmbeddings(): Promise<void> {
   await backfillItemEmbeddings("found");
 }
 
-async function renormalizeExistingItems(): Promise<void> {
-  const existingItems = await storage.getItems();
-
-  for (const item of existingItems) {
-    const normalizedItem = normalizeItemMetadata(item);
-
-    await storage.updateItem(item.id, {
-      title: normalizedItem.title ?? item.title ?? "",
-      description: normalizedItem.description ?? item.description ?? "",
-      itemCategory: normalizedItem.itemCategory ?? item.itemCategory ?? "",
-      color: normalizedItem.color ?? item.color ?? "",
-      size: normalizedItem.size ?? item.size ?? "",
-      location: normalizedItem.location ?? item.location ?? "",
-      tags: normalizedItem.tags ?? item.tags ?? [],
-      latitude: normalizedItem.latitude ?? item.latitude ?? "",
-      longitude: normalizedItem.longitude ?? item.longitude ?? "",
-      imageUrl: normalizedItem.imageUrl ?? item.imageUrl ?? "",
-      reportType: item.reportType as "found" | "lost",
-      contactInfo: normalizedItem.contactInfo ?? item.contactInfo ?? "",
-    });
-
-    await ensureItemEmbedding({
-      ...item,
-      ...normalizedItem,
-    });
-  }
-}
-
 function mapMatchResponse(match: {
   match: {
     id: number;
@@ -1641,8 +1638,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  await renormalizeExistingItems();
-
   // --- Auth API ---
   app.post(api.auth.register.path, async (req, res) => {
     try {
@@ -1939,7 +1934,12 @@ export async function registerRoutes(
     try {
       const itemId = positiveIdSchema.parse(req.params.id);
       const input = api.items.update.input.parse(req.body);
-      const item = await storage.updateOwnedItem(req.user!.id, itemId, input);
+      const normalizedInput = normalizeItemMetadata(input);
+      const item = await storage.updateOwnedItem(
+        req.user!.id,
+        itemId,
+        normalizedInput
+      );
 
       if (!item) {
         return res.status(404).json({ message: "Item not found" });
@@ -1947,8 +1947,9 @@ export async function registerRoutes(
 
       const shouldRefreshEmbedding =
         item.status === "active" &&
-        (Object.keys(input).some((field) => embeddingRelevantFields.has(field)) ||
-          input.status === "active");
+        (Object.keys(normalizedInput).some((field) =>
+          embeddingRelevantFields.has(field)
+        ) || normalizedInput.status === "active");
 
       let itemEmbedding: number[] | undefined;
       if (shouldRefreshEmbedding) {
@@ -1962,10 +1963,10 @@ export async function registerRoutes(
       const shouldRunAutomaticMatching =
         item.reportType === "found" &&
         item.status === "active" &&
-        (Object.keys(input).some(
+        (Object.keys(normalizedInput).some(
           (field) => embeddingRelevantFields.has(field) || field === "imageUrl"
         ) ||
-          input.status === "active");
+          normalizedInput.status === "active");
       const canQueueAutomaticMatching =
         itemEmbedding !== undefined || !shouldRefreshEmbedding;
 
