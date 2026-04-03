@@ -53,10 +53,6 @@ export function RegisterPage() {
   const loginHref =
     redirectTo === "/" ? "/login" : `/login?redirect=${encodeURIComponent(redirectTo)}`;
 
-  if (!isLoading && isAuthenticated) {
-    return <Redirect to={redirectTo} />;
-  }
-
   const passwordsMatch = confirmPassword === "" || password === confirmPassword;
   const confirmPasswordErrorId = "confirm-password-error";
 
@@ -122,6 +118,10 @@ export function RegisterPage() {
 
   const toggleButtonClass =
     "absolute right-3 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+
+  if (!isLoading && isAuthenticated) {
+    return <Redirect to={redirectTo} />;
+  }
 
   return (
     <Layout>
