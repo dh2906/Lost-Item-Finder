@@ -1,6 +1,12 @@
 import { type ReactNode, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { MapPinCheckInside, ChevronDown, LogOut, User as UserIcon, MessageCircleMore } from "lucide-react";
+import {
+  MapPinCheckInside,
+  ChevronDown,
+  LogOut,
+  User as UserIcon,
+  MessageCircleMore,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -19,8 +25,8 @@ const navigation = [
   { href: "/", label: "홈" },
   {
     href: "/report",
-      label: "물건 신고",
-      children: [
+    label: "물건 신고",
+    children: [
       { href: "/report/found", label: "습득물 신고" },
       { href: "/report/lost", label: "분실물 신고" },
     ],
@@ -47,24 +53,30 @@ export function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/94 backdrop-blur supports-[backdrop-filter]:bg-background/78">
         <div className="container flex h-[68px] items-center justify-between gap-4 xl:max-w-[1440px]">
           <div className="flex items-center gap-3 md:gap-5">
-            <Link href="/" className="flex items-center gap-3 text-sm font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/80">
+            <Link
+              href="/"
+              className="flex items-center gap-3 text-sm font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/80"
+            >
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-primary to-primary/80 text-primary-foreground shadow-[0_12px_24px_-16px_hsl(var(--primary)/0.45)]">
                 <MapPinCheckInside className="h-5 w-5" />
               </span>
               <span className="flex flex-col leading-none">
-                <span className="text-base">ReturnIt</span>
-                <span className="mt-1 text-[11px] font-medium text-muted-foreground">분실물 연결 게시판</span>
+                <span className="text-base">Findy</span>
+                <span className="mt-1 text-[11px] font-medium text-muted-foreground">
+                  분실물 연결 게시판
+                </span>
               </span>
             </Link>
 
             <nav className="hidden items-center rounded-full border border-border/55 bg-white/80 p-0.5 shadow-[0_10px_22px_-20px_rgba(27,31,59,0.14)] lg:flex">
               {navigation.map((item) => {
                 const itemPath = item.href.split("?")[0];
-                const active = itemPath === "/"
-                  ? location === itemPath
-                  : location === itemPath ||
-                    location.startsWith(`${itemPath}?`) ||
-                    location.startsWith(`${itemPath}/`);
+                const active =
+                  itemPath === "/"
+                    ? location === itemPath
+                    : location === itemPath ||
+                      location.startsWith(`${itemPath}?`) ||
+                      location.startsWith(`${itemPath}/`);
 
                 if (item.children) {
                   return (
@@ -88,7 +100,10 @@ export function Layout({ children }: { children: ReactNode }) {
                       </button>
 
                       {reportMenuOpen && (
-                        <div className="absolute inset-x-0 top-full h-4" aria-hidden="true" />
+                        <div
+                          className="absolute inset-x-0 top-full h-4"
+                          aria-hidden="true"
+                        />
                       )}
 
                       {reportMenuOpen && (
@@ -100,7 +115,9 @@ export function Layout({ children }: { children: ReactNode }) {
                               <button
                                 key={child.href}
                                 type="button"
-                                onClick={() => handleReportMenuNavigate(child.href)}
+                                onClick={() =>
+                                  handleReportMenuNavigate(child.href)
+                                }
                                 className={cn(
                                   "block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
                                   childActive
@@ -154,10 +171,16 @@ export function Layout({ children }: { children: ReactNode }) {
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                     <Button variant="ghost" className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md">
+                    <Button
+                      variant="ghost"
+                      className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md"
+                    >
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary">
-                          {user?.name?.[0] || user?.username?.[0]?.toUpperCase() || <UserIcon className="h-4 w-4" />}
+                          {user?.name?.[0] ||
+                            user?.username?.[0]?.toUpperCase() || (
+                              <UserIcon className="h-4 w-4" />
+                            )}
                         </AvatarFallback>
                       </Avatar>
                     </Button>
@@ -165,8 +188,12 @@ export function Layout({ children }: { children: ReactNode }) {
                   <DropdownMenuContent className="w-56" align="end" forceMount>
                     <DropdownMenuLabel className="font-normal">
                       <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-semibold leading-none">{user?.name || user?.username}</p>
-                        <p className="text-xs leading-none text-muted-foreground">{user?.username}</p>
+                        <p className="text-sm font-semibold leading-none">
+                          {user?.name || user?.username}
+                        </p>
+                        <p className="text-xs leading-none text-muted-foreground">
+                          {user?.username}
+                        </p>
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
@@ -177,7 +204,10 @@ export function Layout({ children }: { children: ReactNode }) {
                       <Link href="/chats">채팅 목록</Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
+                    <DropdownMenuItem
+                      onClick={logout}
+                      className="text-destructive focus:text-destructive"
+                    >
                       <LogOut className="mr-2 h-4 w-4" />
                       로그아웃
                     </DropdownMenuItem>
@@ -186,18 +216,33 @@ export function Layout({ children }: { children: ReactNode }) {
               </>
             ) : (
               <div className="hidden items-center gap-2 md:flex">
-                <Button variant="ghost" size="sm" asChild className="h-9 rounded-full px-4 text-muted-foreground hover:bg-accent/70 hover:text-foreground">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  asChild
+                  className="h-9 rounded-full px-4 text-muted-foreground hover:bg-accent/70 hover:text-foreground"
+                >
                   <Link href="/login">로그인</Link>
                 </Button>
-                 <Button size="sm" asChild className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]">
-                   <Link href="/register">회원가입</Link>
-                  </Button>
+                <Button
+                  size="sm"
+                  asChild
+                  className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]"
+                >
+                  <Link href="/register">회원가입</Link>
+                </Button>
               </div>
             )}
 
             <div className="flex items-center gap-1 md:hidden">
               {!isAuthenticated && (
-                <Button variant="ghost" size="icon" asChild aria-label="로그인" className="h-10 w-10 rounded-xl">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  asChild
+                  aria-label="로그인"
+                  className="h-10 w-10 rounded-xl"
+                >
                   <Link href="/login">
                     <UserIcon className="h-5 w-5" />
                   </Link>
@@ -216,9 +261,11 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground/92">
               <MapPinCheckInside className="h-4 w-4" />
             </span>
-            <span>ReturnIt</span>
+            <span>Findy</span>
           </div>
-          <p className="text-center text-muted-foreground/42 md:text-right">© {new Date().getFullYear()} ReturnIt</p>
+          <p className="text-center text-muted-foreground/42 md:text-right">
+            © {new Date().getFullYear()} Findy
+          </p>
         </div>
       </footer>
     </div>

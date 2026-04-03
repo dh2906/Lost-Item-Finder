@@ -31,8 +31,8 @@ export default defineConfig({
       includeAssets: ["favicon.png", "icons/*.svg", "icons/*.png"],
       // Web App Manifest 설정
       manifest: {
-        name: "ReturnIt - 분실물 찾기",
-        short_name: "ReturnIt",
+        name: "Findy - 분실물 찾기",
+        short_name: "Findy",
         description: "AI가 분실물을 찾아주는 스마트 매칭 서비스",
         theme_color: "#2563eb",
         background_color: "#ffffff",
@@ -83,10 +83,10 @@ export default defineConfig({
     process.env.REPL_ID !== undefined
       ? [
           await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer(),
+            m.cartographer()
           ),
           await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
+            m.devBanner()
           ),
         ]
       : []),
@@ -106,7 +106,10 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": { target: "http://localhost:8080", changeOrigin: true },
-      "/firebase-config.js": { target: "http://localhost:8080", changeOrigin: true },
+      "/firebase-config.js": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+      },
     },
     fs: {
       strict: true,
