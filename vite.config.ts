@@ -27,57 +27,10 @@ export default defineConfig({
         enabled: process.env.VITE_PWA_DEV === "true",
         type: "classic",
       },
+      // manifest는 수동 파일 하나로만 관리해 검사 도구가 다른 경로를 보지 않게 합니다.
+      manifest: false,
       // 정적 에셋 포함 목록
       includeAssets: ["favicon.png", "icons/*.svg", "icons/*.png"],
-      // Web App Manifest 설정
-      manifest: {
-        name: "Findy - 분실물 찾기",
-        short_name: "Findy",
-        description: "AI가 분실물을 찾아주는 스마트 매칭 서비스",
-        theme_color: "#2563eb",
-        background_color: "#ffffff",
-        display: "standalone",
-        orientation: "portrait-primary",
-        scope: "/",
-        start_url: "/",
-        id: "/",
-        lang: "ko",
-        dir: "ltr",
-        categories: ["utilities", "productivity"],
-        icons: [
-          {
-            src: "/icons/icon.svg",
-            sizes: "any",
-            type: "image/svg+xml",
-            purpose: "any",
-          },
-          {
-            src: "/icons/icon-maskable.svg",
-            sizes: "any",
-            type: "image/svg+xml",
-            purpose: "maskable",
-          },
-          // PNG 아이콘: npm run pwa:icons 실행 후 생성됩니다.
-          // 파일이 없으면 설치/알림 아이콘이 404로 깨지므로 반드시 생성 후 커밋하세요.
-          {
-            src: "/icons/icon-192.png",
-            sizes: "192x192",
-            type: "image/png",
-            purpose: "any",
-          },
-          {
-            src: "/icons/icon-512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "any maskable",
-          },
-          {
-            src: "/favicon.png",
-            sizes: "48x48",
-            type: "image/png",
-          },
-        ],
-      },
     }),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
