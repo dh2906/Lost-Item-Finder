@@ -64,7 +64,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 <MapPinCheckInside className="h-5 w-5" />
               </span>
               <span className="flex flex-col leading-none">
-                <span className="text-base">ReturnIt</span>
+                <span className="text-base">Findy</span>
                 <span className="mt-1 text-[11px] font-medium text-muted-foreground">
                   분실물 연결 게시판
                 </span>
@@ -115,7 +115,9 @@ export function Layout({ children }: { children: ReactNode }) {
                                 <button
                                   key={child.href}
                                   type="button"
-                                  onClick={() => handleReportMenuNavigate(child.href)}
+                                  onClick={() =>
+                                    handleReportMenuNavigate(child.href)
+                                  }
                                   className={cn(
                                     "block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
                                     childActive
@@ -180,7 +182,9 @@ export function Layout({ children }: { children: ReactNode }) {
                     <Bell className="h-5 w-5" />
                     {unreadNotificationCount > 0 ? (
                       <span className="absolute -right-1 -top-1 inline-flex min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1.5 py-0.5 text-[11px] font-semibold text-white">
-                        {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
+                        {unreadNotificationCount > 9
+                          ? "9+"
+                          : unreadNotificationCount}
                       </span>
                     ) : null}
                   </Link>
@@ -214,12 +218,16 @@ export function Layout({ children }: { children: ReactNode }) {
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => void setLocation("/mypage")}>
+                    <DropdownMenuItem
+                      onClick={() => void setLocation("/mypage")}
+                    >
                       <Heart className="mr-2 h-4 w-4" />
                       마이페이지
                     </DropdownMenuItem>
                     {user?.role === "admin" ? (
-                      <DropdownMenuItem onClick={() => void setLocation("/admin")}>
+                      <DropdownMenuItem
+                        onClick={() => void setLocation("/admin")}
+                      >
                         <Shield className="mr-2 h-4 w-4" />
                         관리자 대시보드
                       </DropdownMenuItem>
@@ -282,10 +290,10 @@ export function Layout({ children }: { children: ReactNode }) {
             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground/92">
               <MapPinCheckInside className="h-4 w-4" />
             </span>
-            <span>ReturnIt</span>
+            <span>Findy</span>
           </div>
           <p className="text-center text-muted-foreground/42 md:text-right">
-            © {new Date().getFullYear()} ReturnIt
+            © {new Date().getFullYear()} Findy
           </p>
         </div>
       </footer>
