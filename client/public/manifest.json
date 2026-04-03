@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/web-manifest-combined.json",
   "id": "/",
   "name": "Findy - 분실물 찾기",
   "short_name": "Findy",
