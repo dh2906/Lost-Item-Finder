@@ -11,46 +11,24 @@ importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.0.0/workbox
 if (typeof workbox !== 'undefined') {
   workbox.setConfig({ debug: false });
 
-  const { precacheAndRoute, createHandlerBoundToURL } = workbox.precaching;
+  const { precacheAndRoute, createHandlerBoundToURL, cleanupOutdatedCaches } = workbox.precaching;
+  const { clientsClaim } = workbox.core;
   const { NavigationRoute, registerRoute } = workbox.routing;
-  const { NetworkFirst, StaleWhileRevalidate, CacheFirst } = workbox.strategies;
+  const { StaleWhileRevalidate, CacheFirst } = workbox.strategies;
   const { ExpirationPlugin } = workbox.expiration;
   const { CacheableResponsePlugin } = workbox.cacheableResponse;
 
+  workbox.core.skipWaiting();
+  clientsClaim();
+
   // vite-plugin-pwa(injectManifest)가 빌드 시 아래 값을 실제 precache 목록으로 교체합니다.
   precacheAndRoute(self.__WB_MANIFEST || []);
+  cleanupOutdatedCaches();
 
   // SPA 라우팅 폴백: index.html (API·Firebase 경로 제외)
   registerRoute(
     new NavigationRoute(createHandlerBoundToURL('/index.html'), {
       denylist: [/^\/api\//, /^\/firebase-config\.js$/, /^\/firebase-messaging-sw\.js$/],
-    })
-  );
-
-  // Public API만 NetworkFirst로 캐싱합니다.
-  // 인증 필요 API(예: /api/chat/rooms, /api/user)는 캐시 대상에서 제외합니다.
-  // 이유: 로그인 기반 응답이 브라우저 캐시에 남으면 로그아웃 후 다른 사용자에게
-  //       노출될 수 있는 보안 문제가 발생합니다.
-  const PUBLIC_API_PATHS = [
-    '/api/items',
-    '/api/categories',
-  ];
-
-  registerRoute(
-    ({ url, request }) => {
-      const isApiPath = url.pathname.startsWith('/api/');
-      const isGetMethod = request.method === 'GET';
-      // public GET API만 캐시 허용 (인증 쿠키가 필요한 경로는 제외)
-      const isPublicApi = PUBLIC_API_PATHS.some((p) => url.pathname.startsWith(p));
-      return isApiPath && isGetMethod && isPublicApi;
-    },
-    new NetworkFirst({
-      cacheName: 'api-cache',
-      networkTimeoutSeconds: 10,
-      plugins: [
-        new ExpirationPlugin({ maxEntries: 64, maxAgeSeconds: 5 * 60 }),
-        new CacheableResponsePlugin({ statuses: [0, 200] }),
-      ],
     })
   );
 
@@ -74,6 +52,19 @@ if (typeof workbox !== 'undefined') {
 } else {
   console.warn('[SW] Workbox 로드 실패 — 캐싱 기능이 비활성화됩니다.');
 }
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      const cacheKeys = await caches.keys();
+      await Promise.all(
+        cacheKeys
+          .filter((cacheName) => cacheName === 'api-cache')
+          .map((cacheName) => caches.delete(cacheName))
+      );
+    })()
+  );
+});
 
 // --- [2] Firebase Cloud Messaging ---
 // firebase-config.js는 서버가 동적으로 제공하는 파일입니다.
@@ -110,7 +101,8 @@ if (typeof self.FIREBASE_CONFIG !== 'undefined') {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const roomId = event.notification.data?.roomId;
-  const url = roomId ? `/chat/${roomId}` : '/';
+  const targetPath = event.notification.data?.path;
+  const url = targetPath || (roomId ? `/chat/${roomId}` : '/');
 
   event.waitUntil(
     clients

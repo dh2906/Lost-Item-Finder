@@ -28,8 +28,8 @@ export default function ChatsPage() {
               <div className="space-y-3">
                 {rooms.map((room) => {
                   const previewText = room.latestMessage?.content?.trim() || "아직 주고받은 메시지가 없습니다.";
-                  
-                  // 💡 [중요] 상대방 닉네임 가져오기 
+
+                  // 💡 [중요] 상대방 닉네임 가져오기
                   // (현재 API가 어떻게 내려주느냐에 따라 room.otherUser.username 등으로 변경해야 할 수 있습니다)
                   const partnerName = room.otherUser?.username || `알 수 없는 사용자`;
 
@@ -37,10 +37,10 @@ export default function ChatsPage() {
                     <Link key={room.id} href={`/chat/${room.id}`}>
                       <a className="block rounded-[24px] border border-border/70 bg-secondary/20 p-4 transition-colors hover:bg-secondary/35">
                         <div className="flex items-start justify-between gap-4">
-                          
+
                           {/* 🚀 수정된 레이아웃: 닉네임 -> 물건 제목 -> 최신 메시지 */}
                           <div className="min-w-0 flex-1 flex flex-col gap-1">
-                            
+
                             {/* 1. 상대방 닉네임 (가장 크게) */}
                             <div className="flex items-center gap-2">
                               <p className="font-bold text-base text-foreground">
@@ -60,7 +60,7 @@ export default function ChatsPage() {
                             <p className={`truncate text-sm ${room.hasUnread ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                               {previewText}
                             </p>
-                            
+
                           </div>
 
                           {/* 물건 상태 배지 */}

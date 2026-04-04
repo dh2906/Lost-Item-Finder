@@ -14,7 +14,7 @@ updateSW = registerSW({
       title: "✨ 업데이트 알림",
       description: "새로운 버전이 출시되었습니다. 클릭하여 업데이트하세요.",
       action: (
-        <button 
+        <button
           onClick={() => updateSW?.(true)}
           className="bg-primary text-white px-3 py-1 rounded text-xs font-semibold"
         >
