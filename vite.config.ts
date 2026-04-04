@@ -5,6 +5,7 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  envDir: "..",
   plugins: [
     react(),
     runtimeErrorOverlay(),
