@@ -27,11 +27,6 @@ const matchResponseSchema = z.object({
   foundItem: itemResponseSchema,
 });
 
-const favoriteItemSchema = z.object({
-  item: itemResponseSchema,
-  createdAt: z.string().datetime(),
-});
-
 const matchNotificationResponseSchema = z.object({
   id: z.number(),
   userId: z.number(),
@@ -241,38 +236,6 @@ export const api = {
       },
     },
   },
-  favorites: {
-    list: {
-      method: "GET" as const,
-      path: "/api/favorites" as const,
-      responses: {
-        200: z.array(favoriteItemSchema),
-      },
-    },
-    add: {
-      method: "POST" as const,
-      path: "/api/favorites" as const,
-      input: z.object({
-        itemId: z.number().int().positive(),
-      }),
-      responses: {
-        201: z.object({
-          message: z.string(),
-        }),
-        400: errorSchemas.validation,
-        404: errorSchemas.notFound,
-      },
-    },
-    remove: {
-      method: "DELETE" as const,
-      path: "/api/favorites/:itemId" as const,
-      responses: {
-        200: z.object({
-          message: z.string(),
-        }),
-      },
-    },
-  },
   notifications: {
     list: {
       method: "GET" as const,
@@ -423,10 +386,6 @@ export type AnalyzeImageResponse = z.infer<
 export type MatchListResponse = z.infer<(typeof api.matches.list.responses)[200]>;
 export type MatchResponse = MatchListResponse[number];
 export type UpdateMatchStatusInput = z.infer<typeof api.matches.updateStatus.input>;
-export type FavoriteItemsResponse = z.infer<
-  (typeof api.favorites.list.responses)[200]
->;
-export type FavoriteInput = z.infer<typeof api.favorites.add.input>;
 export type SearchSimilarInput = z.infer<typeof api.ai.searchSimilar.input>;
 export type SearchSimilarResponse = z.infer<
   (typeof api.ai.searchSimilar.responses)[200]
