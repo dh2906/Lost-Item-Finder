@@ -57,6 +57,12 @@ app.use(cors({
 
 app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
 
+// ngrok 인터스티셜 페이지 bypass: 크롤러(PWABuilder 등)도 실제 앱에 바로 접근 가능
+app.use((_req, res, next) => {
+  res.setHeader("ngrok-skip-browser-warning", "true");
+  next();
+});
+
 // SW의 importScripts()가 동기적으로 로드하는 Firebase config 엔드포인트.
 // Vite 미들웨어보다 반드시 먼저 등록해야 가로채기가 안 됨.
 app.get("/firebase-config.js", (_req, res) => {
