@@ -21,7 +21,7 @@ export function useFavoriteItems() {
       });
 
       if (res.status === 401) {
-        queryClient.setQueryData(AUTH_QUERY_KEY, null);
+        void queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
         throw new Error("인증이 만료되었습니다.");
       }
 
