@@ -127,15 +127,15 @@ function FcmInitializer() {
     const unsubscribe = onForegroundMessage(({ title, body, data }) => {
       console.log("[FCM] 포그라운드 메시지 수신:", { title, body, data });
 
+      toast({
+        title,
+        description: body,
+      });
+
       if (Notification.permission === "granted") {
         new Notification(title, {
           body,
           icon: "/icons/icon-192.png",
-        });
-      } else {
-        toast({
-          title,
-          description: body,
         });
       }
     });

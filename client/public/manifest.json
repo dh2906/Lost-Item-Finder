@@ -1,9 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/web-manifest-combined.json",
   "id": "/",
-  "name": "Findy - 분실물 찾기",
+  "name": "Findy - Lost and Found",
   "short_name": "Findy",
-  "description": "AI가 분실물을 찾아주는 스마트 매칭 서비스",
+  "description": "AI-powered lost and found matching service",
   "lang": "ko",
   "dir": "ltr",
   "start_url": "/",
