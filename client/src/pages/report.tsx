@@ -147,9 +147,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const [reportType, setReportType] = useState<ReportType>(() =>
     getInitialReportType(forcedType)
   );
-  const [currentStep, setCurrentStep] = useState<1 | 2>(() =>
-    isEditMode ? 2 : 1
-  );
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -191,7 +188,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
 
     const nextType = existingItem.reportType as ReportType;
     setReportType(nextType);
-    setCurrentStep(2);
     setImagePreview(existingItem.imageUrl ?? null);
     form.reset({
       reportType: nextType,
@@ -239,7 +235,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     }
 
     try {
-      setCurrentStep(2);
       setIsAnalyzing(true);
       const base64 = await optimizeImageForUpload(file);
       setImagePreview(base64);
@@ -282,27 +277,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     if (!file) return;
     await processSelectedFile(file);
     e.target.value = "";
-  };
-
-  const goToDetailsStep = () => {
-    if (currentConfig.requireImage && !form.getValues("imageUrl")) {
-      toast({
-        title: "습득물 등록에는 사진이 필요해요.",
-        description: "1단계에서 사진을 먼저 올려 주세요.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setCurrentStep(2);
-  };
-
-  const goToUploadStep = () => {
-    if (isEditMode) {
-      return;
-    }
-
-    setCurrentStep(1);
   };
 
   const onSubmit = async (data: FormValues) => {
@@ -427,8 +401,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     ? "기존 게시글 내용을 수정하고 다시 저장할 수 있어요."
     : currentConfig.description;
   const submitLabel = isEditMode ? "수정 내용 저장하기" : currentConfig.submitText;
-  const imageRequiredButMissing =
-    currentConfig.requireImage && !form.watch("imageUrl");
 
   return (
     <Layout>
@@ -477,362 +449,267 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
           </div>
         </div>
 
-        <form onSubmit={form.handleSubmit(onSubmit)}>
-          {currentStep === 1 ? (
-            <div className="mx-auto grid max-w-5xl gap-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
-              <Card className="overflow-hidden">
-                <CardHeader
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)] xl:items-start"
+        >
+          <div className="space-y-5 xl:sticky xl:top-24">
+            <Card className="overflow-hidden">
+              <CardHeader
+                className={cn(
+                  "border-b bg-gradient-to-br px-5 py-1.5 text-white",
+                  currentConfig.gradient
+                )}
+              >
+                <div className="mb-1 inline-flex w-fit rounded-full border border-white/15 bg-white/12 px-2.5 py-1 text-[11px] font-semibold text-white/88">
+                  1단계
+                </div>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <Upload className="h-4 w-4" />
+                  사진 업로드
+                </CardTitle>
+                <CardDescription className="text-white/64">
+                  사진을 올리면 AI가 물건 특징을 먼저 분석해 줍니다.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-5">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleImageSelect}
+                />
+                <div
                   className={cn(
-                    "border-b bg-gradient-to-br px-5 py-1.5 text-white",
-                    currentConfig.gradient
+                    "relative min-h-[240px] cursor-pointer overflow-hidden rounded-[22px] border-2 border-dashed transition-all xl:min-h-[300px]",
+                    imagePreview
+                      ? "border-primary bg-primary/5"
+                      : "border-muted-foreground/25 bg-muted/50 hover:border-primary/50 hover:bg-muted"
                   )}
+                  onClick={() => fileInputRef.current?.click()}
                 >
-                  <div className="mb-1 inline-flex w-fit rounded-full border border-white/15 bg-white/12 px-2.5 py-1 text-[11px] font-semibold text-white/88">
-                    1단계
-                  </div>
-                  <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                    <Upload className="h-4 w-4" />
-                    사진 업로드
-                  </CardTitle>
-                  <CardDescription className="text-white/64">
-                    업로드를 시작하면 바로 다음 단계로 넘어가고, AI 분석은 뒤에서 계속 진행됩니다.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="p-5">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    ref={fileInputRef}
-                    onChange={handleImageSelect}
-                  />
-                  <div
-                    className={cn(
-                      "relative min-h-[280px] cursor-pointer overflow-hidden rounded-[22px] border-2 border-dashed transition-all",
-                      imagePreview
-                        ? "border-primary bg-primary/5"
-                        : "border-muted-foreground/25 bg-muted/50 hover:border-primary/50 hover:bg-muted"
-                    )}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    {imagePreview ? (
-                      <img
-                        src={imagePreview}
-                        alt="Preview"
-                        className="absolute inset-0 h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full flex-col items-center justify-center py-10 text-center">
-                        <div className="mb-2 rounded-full bg-background p-3 shadow-sm">
-                          <Upload className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <p className="text-base font-semibold">
-                          클릭해서 사진을 올려 주세요
-                        </p>
-                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                          습득물은 사진이 필수예요. 분실물은 사진 없이 다음 단계로 바로 갈 수 있어요.
-                        </p>
-                      </div>
-                    )}
-                    {isAnalyzing ? (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm">
-                        <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
-                        <p className="text-sm font-semibold">AI 분석을 시작했어요</p>
-                        <p className="text-xs text-muted-foreground">
-                          다음 단계에서 위치와 상세 정보를 먼저 입력해 주세요.
-                        </p>
-                      </div>
-                    ) : null}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)]">
-                <CardContent className="space-y-5 p-5">
-                  <div className="space-y-2">
-                    <div className="inline-flex rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
-                      다음 단계 안내
-                    </div>
-                    <p className="text-lg font-semibold text-foreground">
-                      업로드가 시작되면 바로 위치 선택 단계로 이동해요.
-                    </p>
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      지도 위치, 연락처, 설명은 2단계에서 먼저 입력할 수 있고, AI 분석 결과는 준비되는 대로 자동으로 채워집니다.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    className="h-11 w-full rounded-full"
-                    onClick={goToDetailsStep}
-                    disabled={imageRequiredButMissing}
-                  >
-                    {imageRequiredButMissing
-                      ? "사진을 먼저 올려 주세요"
-                      : "다음: 위치와 상세 입력"}
-                  </Button>
-                  {!currentConfig.requireImage ? (
-                    <p className="text-xs leading-5 text-muted-foreground">
-                      분실물은 사진 없이 진행할 수 있어요. 필요하면 나중에 다시 추가해도 됩니다.
-                    </p>
-                  ) : null}
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-            <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)] xl:items-start">
-              <div className="space-y-5 xl:sticky xl:top-24">
-                <Card className="overflow-hidden">
-                  <CardHeader
-                    className={cn(
-                      "border-b bg-gradient-to-br px-5 py-1.5 text-white",
-                      currentConfig.gradient
-                    )}
-                  >
-                    <div className="mb-1 inline-flex w-fit rounded-full border border-white/15 bg-white/12 px-2.5 py-1 text-[11px] font-semibold text-white/88">
-                      1단계 완료
-                    </div>
-                    <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                      <Upload className="h-4 w-4" />
-                      업로드 이미지
-                    </CardTitle>
-                    <CardDescription className="text-white/64">
-                      이미지를 다시 누르면 새 사진으로 바꿀 수 있어요.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4 p-5">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      ref={fileInputRef}
-                      onChange={handleImageSelect}
+                  {imagePreview ? (
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="absolute inset-0 h-full w-full object-cover"
                     />
-                    <div
-                      className={cn(
-                        "relative min-h-[220px] cursor-pointer overflow-hidden rounded-[22px] border-2 border-dashed transition-all",
-                        imagePreview
-                          ? "border-primary bg-primary/5"
-                          : "border-muted-foreground/25 bg-muted/50 hover:border-primary/50 hover:bg-muted"
-                      )}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      {imagePreview ? (
-                        <img
-                          src={imagePreview}
-                          alt="Preview"
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full flex-col items-center justify-center py-7 text-center">
-                          <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
-                          <p className="text-sm font-semibold">사진 다시 올리기</p>
-                        </div>
-                      )}
-                      {isAnalyzing ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm">
-                          <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
-                          <p className="text-sm font-semibold">AI 분석 계속 진행 중...</p>
-                          <p className="text-xs text-muted-foreground">
-                            아래 정보는 지금 바로 입력할 수 있어요.
-                          </p>
-                        </div>
-                      ) : null}
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center py-7 text-center">
+                      <div className="mb-1.5 rounded-full bg-background p-3 shadow-sm">
+                        <Upload className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <p className="text-sm font-semibold leading-none">
+                        클릭해서 사진 업로드
+                      </p>
+                      <p className="mt-0.5 text-xs leading-[1.4] text-muted-foreground">
+                        정면이 잘 보이는 사진일수록 분석이 더 정확해져요.
+                      </p>
                     </div>
-                    {!isEditMode ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full rounded-full"
-                        onClick={goToUploadStep}
-                      >
-                        업로드 단계로 돌아가기
-                      </Button>
-                    ) : null}
-                  </CardContent>
-                </Card>
+                  )}
+                  {isAnalyzing && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm">
+                      <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
+                      <p className="text-sm font-semibold">AI 분석 중...</p>
+                      <p className="text-xs text-muted-foreground">
+                        사진을 읽고 있어요.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-                <Card className="overflow-hidden">
-                  <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
-                    <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
-                      2단계
-                    </div>
-                    <CardTitle className="flex items-center gap-2 text-base font-semibold">
-                      <MapPinned className="h-4 w-4 text-primary" />
-                      위치 지정
-                    </CardTitle>
-                    <CardDescription>
-                      지도에서 위치를 먼저 찍어 두면 AI 매칭과 게시글 확인이 쉬워져요.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-5">
-                    <div className="overflow-hidden rounded-[22px] border border-border/70 shadow-card">
-                      <LocationPicker
-                        value={
-                          form.watch("latitude") && form.watch("longitude")
-                            ? {
-                                latitude: form.watch("latitude") || "",
-                                longitude: form.watch("longitude") || "",
-                              }
-                            : undefined
-                        }
-                        onChange={handleLocationChange}
-                        height="280px"
+            <Card className="overflow-hidden">
+              <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
+                <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
+                  2단계
+                </div>
+                <CardTitle className="flex items-center gap-2 text-base font-semibold">
+                  <MapPinned className="h-4 w-4 text-primary" />
+                  위치 지정
+                </CardTitle>
+                <CardDescription>
+                  지도에서 위치를 찍어 두면 AI 매칭에 도움이 됩니다.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-5">
+                <div className="overflow-hidden rounded-[22px] border border-border/70 shadow-card">
+                  <LocationPicker
+                    value={
+                      form.watch("latitude") && form.watch("longitude")
+                        ? {
+                            latitude: form.watch("latitude") || "",
+                            longitude: form.watch("longitude") || "",
+                          }
+                        : undefined
+                    }
+                    onChange={handleLocationChange}
+                    height="280px"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="space-y-5">
+            <Card className="border-primary/10 shadow-[0_18px_34px_-28px_rgba(27,31,59,0.16)]">
+              <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
+                <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
+                  3단계
+                </div>
+                <CardTitle className="text-base font-semibold">
+                  게시글 정보 입력
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4 p-5 pt-3">
+                <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 p-4">
+                  <p className="text-sm font-semibold text-foreground">
+                    물건 기본 정보
+                  </p>
+
+                  <div>
+                    <Label htmlFor="title" className="text-sm font-semibold">
+                      제목 <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="title"
+                      placeholder="예: 검은색 카드지갑"
+                      className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
+                      {...form.register("title")}
+                    />
+                    {form.formState.errors.title && (
+                      <p className="mt-1.5 text-sm text-destructive">
+                        {form.formState.errors.title.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <div>
+                      <Label
+                        htmlFor="itemCategory"
+                        className="text-sm font-semibold"
+                      >
+                        카테고리
+                      </Label>
+                      <Input
+                        id="itemCategory"
+                        placeholder="예: 지갑"
+                        className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
+                        {...form.register("itemCategory")}
                       />
                     </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="space-y-5">
-                <Card className="border-primary/10 shadow-[0_18px_34px_-28px_rgba(27,31,59,0.16)]">
-                  <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
-                    <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
-                      3단계
+                    <div>
+                      <Label htmlFor="color" className="text-sm font-semibold">
+                        색상
+                      </Label>
+                      <Input
+                        id="color"
+                        placeholder="예: 검정"
+                        className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
+                        {...form.register("color")}
+                      />
                     </div>
-                    <CardTitle className="text-base font-semibold">
-                      게시글 정보 입력
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4 p-5 pt-3">
-                    <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 p-4">
-                      <p className="text-sm font-semibold text-foreground">
-                        물건 기본 정보
-                      </p>
+                  </div>
+                </section>
 
-                      <div>
-                        <Label htmlFor="title" className="text-sm font-semibold">
-                          제목 <span className="text-destructive">*</span>
-                        </Label>
-                        <Input
-                          id="title"
-                          placeholder="예: 검은색 카드지갑"
-                          className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                          {...form.register("title")}
-                        />
-                        {form.formState.errors.title ? (
-                          <p className="mt-1.5 text-sm text-destructive">
-                            {form.formState.errors.title.message}
-                          </p>
-                        ) : null}
-                      </div>
+                <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 p-4">
+                  <p className="text-sm font-semibold text-foreground">
+                    상세 설명
+                  </p>
 
-                      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                        <div>
-                          <Label htmlFor="itemCategory" className="text-sm font-semibold">
-                            카테고리
-                          </Label>
-                          <Input
-                            id="itemCategory"
-                            placeholder="예: 지갑"
-                            className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                            {...form.register("itemCategory")}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="color" className="text-sm font-semibold">
-                            색상
-                          </Label>
-                          <Input
-                            id="color"
-                            placeholder="예: 검정"
-                            className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                            {...form.register("color")}
-                          />
-                        </div>
-                      </div>
-                    </section>
+                  <div>
+                    <Textarea
+                      id="description"
+                      placeholder="예: 카드 2장과 학생증이 들어 있는 작은 반지갑이에요."
+                      className="min-h-[132px] resize-none rounded-xl border-border/85 px-4 py-3.5 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
+                      {...form.register("description")}
+                    />
+                    <p className="mt-1.5 text-xs text-slate-500">
+                      특징이 자세할수록 찾기 쉬워져요.
+                    </p>
+                  </div>
+                </section>
 
-                    <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 p-4">
-                      <p className="text-sm font-semibold text-foreground">
-                        상세 설명
-                      </p>
+                <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 px-4 pb-3.5 pt-4">
+                  <p className="text-sm font-semibold text-foreground">
+                    발견 정보
+                  </p>
 
-                      <div>
-                        <Textarea
-                          id="description"
-                          placeholder="예: 카드 2장과 학생증이 들어 있는 작은 반지갑이에요."
-                          className="min-h-[132px] resize-none rounded-xl border-border/85 px-4 py-3.5 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                          {...form.register("description")}
-                        />
-                        <p className="mt-1.5 text-xs text-slate-500">
-                          특징이 자세할수록 찾기 쉬워져요.
-                        </p>
-                      </div>
-                    </section>
-
-                    <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 px-4 pb-3.5 pt-4">
-                      <p className="text-sm font-semibold text-foreground">
-                        발견 정보
-                      </p>
-
-                      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                        <div>
-                          <Label htmlFor="location" className="text-sm font-semibold">
-                            {currentConfig.locationLabel}
-                          </Label>
-                          <Input
-                            id="location"
-                            placeholder={currentConfig.locationPlaceholder}
-                            className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                            {...form.register("location")}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="contactInfo" className="text-sm font-semibold">
-                            연락처
-                          </Label>
-                          <Input
-                            id="contactInfo"
-                            placeholder="010-1234-5678"
-                            className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                            value={formatPhoneNumber(form.watch("contactInfo") || "")}
-                            onChange={handlePhoneChange}
-                          />
-                          <p className="mt-1.5 pl-0.5 text-[12px] leading-5 text-muted-foreground">
-                            연락 가능한 번호를 남겨 주세요.
-                          </p>
-                        </div>
-                      </div>
-                    </section>
-                  </CardContent>
-                </Card>
-
-                <Card className="border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)]">
-                  <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-                    <div className="max-w-lg space-y-1">
-                      <div className="mb-2 inline-flex w-fit rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
-                        4단계
-                      </div>
-                      <p className="text-base font-semibold text-foreground">
-                        입력 내용을 확인해 주세요.
-                      </p>
-                      <p className="text-sm leading-6 text-muted-foreground">
-                        저장하면 마이페이지와 상세 페이지에서 바로 확인할 수 있어요.
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <div>
+                      <Label
+                        htmlFor="location"
+                        className="text-sm font-semibold"
+                      >
+                        {currentConfig.locationLabel}
+                      </Label>
+                      <Input
+                        id="location"
+                        placeholder={currentConfig.locationPlaceholder}
+                        className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
+                        {...form.register("location")}
+                      />
+                    </div>
+                    <div>
+                      <Label
+                        htmlFor="contactInfo"
+                        className="text-sm font-semibold"
+                      >
+                        연락처
+                      </Label>
+                      <Input
+                        id="contactInfo"
+                        placeholder="010-1234-5678"
+                        className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
+                        value={formatPhoneNumber(form.watch("contactInfo") || "")}
+                        onChange={handlePhoneChange}
+                      />
+                      <p className="mt-1.5 pl-0.5 text-[12px] leading-5 text-muted-foreground">
+                        연락 가능한 번호를 남겨 주세요.
                       </p>
                     </div>
-                    <Button
-                      type="submit"
-                      className="h-[3.2rem] rounded-full px-9 text-base font-semibold shadow-[0_22px_32px_-18px_hsl(var(--primary)/0.54)] transition-all hover:-translate-y-0.5 hover:shadow-[0_26px_38px_-18px_hsl(var(--primary)/0.6)] disabled:translate-y-0 disabled:shadow-none disabled:opacity-60 sm:ml-6 sm:min-w-[240px]"
-                      size="lg"
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          처리 중...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle2 className="mr-2 h-4 w-4" />
-                          {submitLabel}
-                        </>
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          )}
+                  </div>
+                </section>
+              </CardContent>
+            </Card>
+
+            <Card className="border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)]">
+              <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+                <div className="max-w-lg space-y-1">
+                  <div className="mb-2 inline-flex w-fit rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
+                    4단계
+                  </div>
+                  <p className="text-base font-semibold text-foreground">
+                    입력 내용을 확인해 주세요.
+                  </p>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    저장하면 마이페이지와 상세 페이지에서 바로 확인할 수 있어요.
+                  </p>
+                </div>
+                <Button
+                  type="submit"
+                  className="h-[3.2rem] rounded-full px-9 text-base font-semibold shadow-[0_22px_32px_-18px_hsl(var(--primary)/0.54)] transition-all hover:-translate-y-0.5 hover:shadow-[0_26px_38px_-18px_hsl(var(--primary)/0.6)] disabled:translate-y-0 disabled:shadow-none disabled:opacity-60 sm:ml-6 sm:min-w-[240px]"
+                  size="lg"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      처리 중...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      {submitLabel}
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </form>
       </div>
     </Layout>

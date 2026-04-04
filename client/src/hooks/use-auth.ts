@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { api } from "@shared/routes";
 import {
   AUTH_QUERY_KEY,
+  FAVORITES_QUERY_KEY,
   MATCH_NOTIFICATIONS_QUERY_KEY,
 } from "@/lib/query-keys";
 import { useToast } from "./use-toast";
@@ -31,9 +32,7 @@ export function useAuth() {
       }
       return res.json();
     },
-    staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    staleTime: 5 * 60 * 1000,
     retry: false,
   });
 
@@ -43,21 +42,12 @@ export function useAuth() {
         method: "POST",
         credentials: "include",
       });
-      if (!res.ok) {
-        const meRes = await fetch(api.auth.me.path, { credentials: "include" });
-        if (meRes.ok) {
-          const currentUser = await meRes.json();
-          if (!currentUser) {
-            return { message: "Logged out" };
-          }
-        }
-
-        throw new Error("로그아웃 실패");
-      }
+      if (!res.ok) throw new Error("로그아웃 실패");
       return res.json();
     },
     onSuccess: () => {
       queryClient.setQueryData(AUTH_QUERY_KEY, null);
+      queryClient.removeQueries({ queryKey: FAVORITES_QUERY_KEY });
       queryClient.removeQueries({ queryKey: MATCH_NOTIFICATIONS_QUERY_KEY });
       toast({ title: "로그아웃 되었습니다" });
       setLocation("/");

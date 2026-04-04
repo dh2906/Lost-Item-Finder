@@ -12,33 +12,6 @@ function getFirebaseMessaging() {
   }
 }
 
-async function registerFcmToken(token: string): Promise<void> {
-  let lastStatus: number | null = null;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const response = await fetch('/api/fcm/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ token }),
-    });
-
-    if (response.ok) {
-      return;
-    }
-
-    lastStatus = response.status;
-
-    if (response.status !== 401 || attempt === 2) {
-      break;
-    }
-
-    await new Promise((resolve) => window.setTimeout(resolve, 800 * (attempt + 1)));
-  }
-
-  throw new Error(`FCM token registration failed${lastStatus ? ` (${lastStatus})` : ""}`);
-}
-
 /** FCM 토큰 요청 및 서버 등록 */
 export async function initFcm(): Promise<void> {
   if (!('Notification' in window)) {
@@ -78,7 +51,21 @@ export async function initFcm(): Promise<void> {
       return;
     }
 
-    await registerFcmToken(token);
+    const response = await fetch('/api/fcm/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ token }),
+    });
+
+    if (!response.ok) {
+      console.error(
+        '[FCM] 토큰 등록 실패:',
+        response.status,
+        response.statusText || '(상태 텍스트 없음)'
+      );
+      return;
+    }
 
     console.log('[FCM] 토큰 등록 완료:', token.slice(0, 20) + '...');
   } catch (err) {
