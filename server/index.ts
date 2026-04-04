@@ -92,6 +92,8 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+const LOG_RESPONSE_MAX_LENGTH = 200;
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
@@ -108,7 +110,11 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        const serialized = JSON.stringify(capturedJsonResponse);
+        const truncated = serialized.length > LOG_RESPONSE_MAX_LENGTH
+          ? serialized.slice(0, LOG_RESPONSE_MAX_LENGTH) + "..."
+          : serialized;
+        logLine += ` :: ${truncated}`;
       }
 
       log(logLine);
