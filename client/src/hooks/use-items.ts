@@ -9,7 +9,7 @@ import {
   type UpdateItemInput,
 } from "@shared/routes";
 import { z } from "zod";
-import { FAVORITES_QUERY_KEY, MY_ITEMS_QUERY_KEY } from "@/lib/query-keys";
+import { MY_ITEMS_QUERY_KEY } from "@/lib/query-keys";
 
 function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: string): T {
   const result = schema.safeParse(data);
@@ -155,7 +155,6 @@ export function useUpdateItem() {
     onSuccess: (item) => {
       queryClient.invalidateQueries({ queryKey: [api.items.list.path] });
       queryClient.invalidateQueries({ queryKey: MY_ITEMS_QUERY_KEY });
-      queryClient.invalidateQueries({ queryKey: FAVORITES_QUERY_KEY });
       queryClient.setQueryData([api.items.get.path, item.id], item);
     },
   });
@@ -191,7 +190,6 @@ export function useDeleteItem() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.items.list.path] });
       queryClient.invalidateQueries({ queryKey: MY_ITEMS_QUERY_KEY });
-      queryClient.invalidateQueries({ queryKey: FAVORITES_QUERY_KEY });
     },
   });
 }

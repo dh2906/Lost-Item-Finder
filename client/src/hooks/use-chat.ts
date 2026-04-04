@@ -28,6 +28,7 @@ export interface ChatRoom {
   item?: ChatItem;
   sender?: ChatUser;
   receiver?: ChatUser;
+  otherUser?: ChatUser;
 }
 
 export interface ChatMessage {

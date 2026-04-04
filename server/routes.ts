@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import passport from "passport";
 import { isAdmin, isAuthenticated } from "./auth";
@@ -97,6 +97,65 @@ function getErrorMessage(error: unknown): string {
   }
 
   return "Internal server error";
+}
+
+function getSafeUserResponse(user: Express.User) {
+  const { password: _password, ...safeUser } = user;
+  return safeUser;
+}
+
+function finalizeLogin(
+  req: Request,
+  res: Response,
+  user: Express.User,
+  status = 200,
+) {
+  req.session.regenerate((regenerateError) => {
+    if (regenerateError) {
+      console.error("Failed to regenerate session:", regenerateError);
+      return res.status(500).json({ message: "Failed to create session" });
+    }
+
+    req.login(user, (loginError) => {
+      if (loginError) {
+        console.error("Failed to login user:", loginError);
+        return res.status(500).json({ message: "Failed to login user" });
+      }
+
+      req.session.save((saveError) => {
+        if (saveError) {
+          console.error("Failed to save session:", saveError);
+          return res.status(500).json({ message: "Failed to save session" });
+        }
+
+        return res.status(status).json(getSafeUserResponse(user));
+      });
+    });
+  });
+}
+
+function finalizeLogout(req: Request, res: Response) {
+  req.logout((logoutError) => {
+    if (logoutError) {
+      console.error("Failed to logout user:", logoutError);
+      return res.status(500).json({ message: "Failed to logout user" });
+    }
+
+    if (!req.session) {
+      res.clearCookie("connect.sid");
+      return res.json({ message: "Logged out" });
+    }
+
+    req.session.destroy((destroyError) => {
+      if (destroyError) {
+        console.error("Failed to destroy session:", destroyError);
+        return res.status(500).json({ message: "Failed to destroy session" });
+      }
+
+      res.clearCookie("connect.sid");
+      return res.json({ message: "Logged out" });
+    });
+  });
 }
 
 function extractCompletionMessageContent(content: unknown): string | null {
@@ -534,32 +593,57 @@ function normalizeMetadataTags(tags?: string[] | null): string[] {
   }
 
   const normalizedTags = tags
-    .map((tag) => canonicalizeWithGroups(tag, KEYWORD_SYNONYM_GROUPS))
+    .map((tag) => tag.replace(/\s+/g, " ").trim())
     .filter((tag) => tag.length > 0);
 
   return Array.from(new Set(normalizedTags));
 }
 
 function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
-  const normalizedCategory = canonicalizeWithGroups(item.itemCategory, CATEGORY_SYNONYM_GROUPS);
-  const normalizedColor = canonicalizeWithGroups(item.color, COLOR_SYNONYM_GROUPS);
-  const normalizedLocation = canonicalizeWithGroups(item.location, LOCATION_SYNONYM_GROUPS);
-  const normalizedTags = normalizeMetadataTags(item.tags);
+  const normalizePlainText = (value?: string | null): string | undefined => {
+    if (typeof value !== "string") {
+      return undefined;
+    }
 
-  const normalizedTitle = normalizeKoreanText(
-    [item.title, normalizedCategory, normalizedColor].filter(Boolean).join(" ") || item.title || ""
-  );
-  const normalizedDescription = normalizeKoreanText(item.description ?? "");
-
-  return {
-    ...item,
-    title: normalizedTitle || item.title || undefined,
-    description: normalizedDescription || item.description || undefined,
-    itemCategory: normalizedCategory || item.itemCategory || undefined,
-    color: normalizedColor || item.color || undefined,
-    location: normalizedLocation || item.location || undefined,
-    tags: normalizedTags.length > 0 ? normalizedTags : item.tags,
+    const normalizedValue = value.replace(/\s+/g, " ").trim();
+    return normalizedValue.length > 0 ? normalizedValue : undefined;
   };
+
+  const normalizedItem = { ...item } as T;
+
+  if (item.title !== undefined) {
+    normalizedItem.title = normalizePlainText(item.title) as T["title"];
+  }
+
+  if (item.description !== undefined) {
+    normalizedItem.description = normalizePlainText(
+      item.description
+    ) as T["description"];
+  }
+
+  if (item.itemCategory !== undefined) {
+    normalizedItem.itemCategory = normalizePlainText(
+      item.itemCategory
+    ) as T["itemCategory"];
+  }
+
+  if (item.color !== undefined) {
+    normalizedItem.color = normalizePlainText(item.color) as T["color"];
+  }
+
+  if (item.size !== undefined) {
+    normalizedItem.size = normalizePlainText(item.size) as T["size"];
+  }
+
+  if (item.location !== undefined) {
+    normalizedItem.location = normalizePlainText(item.location) as T["location"];
+  }
+
+  if (item.tags !== undefined) {
+    normalizedItem.tags = normalizeMetadataTags(item.tags) as T["tags"];
+  }
+
+  return normalizedItem;
 }
 
 function areSameNormalizedValue(
@@ -1150,34 +1234,6 @@ async function backfillFoundItemEmbeddings(): Promise<void> {
   await backfillItemEmbeddings("found");
 }
 
-async function renormalizeExistingItems(): Promise<void> {
-  const existingItems = await storage.getItems();
-
-  for (const item of existingItems) {
-    const normalizedItem = normalizeItemMetadata(item);
-
-    await storage.updateItem(item.id, {
-      title: normalizedItem.title ?? item.title ?? "",
-      description: normalizedItem.description ?? item.description ?? "",
-      itemCategory: normalizedItem.itemCategory ?? item.itemCategory ?? "",
-      color: normalizedItem.color ?? item.color ?? "",
-      size: normalizedItem.size ?? item.size ?? "",
-      location: normalizedItem.location ?? item.location ?? "",
-      tags: normalizedItem.tags ?? item.tags ?? [],
-      latitude: normalizedItem.latitude ?? item.latitude ?? "",
-      longitude: normalizedItem.longitude ?? item.longitude ?? "",
-      imageUrl: normalizedItem.imageUrl ?? item.imageUrl ?? "",
-      reportType: item.reportType as "found" | "lost",
-      contactInfo: normalizedItem.contactInfo ?? item.contactInfo ?? "",
-    });
-
-    await ensureItemEmbedding({
-      ...item,
-      ...normalizedItem,
-    });
-  }
-}
-
 function mapMatchResponse(match: {
   match: {
     id: number;
@@ -1416,6 +1472,69 @@ function queueAutomaticMatchNotificationsForFoundItem(
     });
 }
 
+async function sendAutomaticMatchPushNotifications(
+  foundItem: FoundItemForAutoMatch,
+  matchedNotifications: Array<{
+    userId: number;
+    lostItemId: number;
+    foundItemId: number;
+    score: number;
+    reasoning: string;
+  }>
+): Promise<void> {
+  if (matchedNotifications.length === 0) {
+    return;
+  }
+
+  const notificationsByUser = new Map<
+    number,
+    Array<{
+      userId: number;
+      lostItemId: number;
+      foundItemId: number;
+      score: number;
+      reasoning: string;
+    }>
+  >();
+
+  for (const notification of matchedNotifications) {
+    const currentNotifications =
+      notificationsByUser.get(notification.userId) ?? [];
+    currentNotifications.push(notification);
+    notificationsByUser.set(notification.userId, currentNotifications);
+  }
+
+  const recipients = await Promise.all(
+    Array.from(notificationsByUser.keys()).map((userId) => storage.getUser(userId))
+  );
+
+  await Promise.all(
+    recipients.map(async (recipient) => {
+      if (!recipient?.fcmToken) {
+        return;
+      }
+
+      const userNotifications = notificationsByUser.get(recipient.id) ?? [];
+      const matchCount = userNotifications.length;
+      const body =
+        matchCount > 1
+          ? `내 분실물 ${matchCount}건과 유사한 습득물 "${foundItem.title}"이 등록되었어요.`
+          : `내 분실물과 유사한 습득물 "${foundItem.title}"이 등록되었어요.`;
+
+      await sendFcmNotification({
+        fcmToken: recipient.fcmToken,
+        title: "새 자동 매칭 알림",
+        body,
+        data: {
+          path: "/mypage#alerts",
+          foundItemId: String(foundItem.id),
+          lostItemId: String(userNotifications[0]?.lostItemId ?? ""),
+        },
+      });
+    })
+  );
+}
+
 async function runAutomaticMatchNotificationsForFoundItem(
   foundItem: FoundItemForAutoMatch,
   existingEmbedding?: number[],
@@ -1541,6 +1660,8 @@ async function runAutomaticMatchNotificationsForFoundItem(
       storage.upsertMatchNotification(notification)
     )
   );
+
+  await sendAutomaticMatchPushNotifications(foundItem, matchedNotifications);
 }
 
 async function rerankCandidates(params: {
@@ -1641,8 +1762,6 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  await renormalizeExistingItems();
-
   // --- Auth API ---
   app.post(api.auth.register.path, async (req, res) => {
     try {
@@ -1654,15 +1773,7 @@ export async function registerRoutes(
       }
 
       const user = await storage.createUser(input);
-      req.login(user, (err) => {
-        if (err) {
-          return res
-            .status(500)
-            .json({ message: "로그인 처리 중 오류가 발생했습니다" });
-        }
-        const { password: _, ...userWithoutPassword } = user;
-        res.status(201).json(userWithoutPassword);
-      });
+      return finalizeLogin(req, res, user, 201);
     } catch (err) {
       console.error("Register error:", err);
       if (err instanceof z.ZodError) {
@@ -1693,29 +1804,12 @@ export async function registerRoutes(
             .status(401)
             .json({ message: info?.message || "로그인에 실패했습니다" });
         }
-        req.login(user, (err) => {
-          if (err) {
-            return res
-              .status(500)
-              .json({ message: "로그인 처리 중 오류가 발생했습니다" });
-          }
-          const { password: _, ...userWithoutPassword } = user;
-          res.json(userWithoutPassword);
-        });
+        return finalizeLogin(req, res, user);
       }
     )(req, res, next);
   });
 
-  app.post(api.auth.logout.path, (req, res) => {
-    req.logout((err) => {
-      if (err) {
-        return res
-          .status(500)
-          .json({ message: "로그아웃 중 오류가 발생했습니다" });
-      }
-      res.json({ message: "로그아웃 되었습니다" });
-    });
-  });
+  app.post(api.auth.logout.path, (req, res) => finalizeLogout(req, res));
 
   app.get(api.auth.me.path, (req, res) => {
     if (!req.user) {
@@ -1881,7 +1975,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.items.create.path, async (req, res) => {
+  app.post(api.items.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.items.create.input.parse(req.body);
       const normalizedInput = normalizeItemMetadata(input);
@@ -1939,7 +2033,12 @@ export async function registerRoutes(
     try {
       const itemId = positiveIdSchema.parse(req.params.id);
       const input = api.items.update.input.parse(req.body);
-      const item = await storage.updateOwnedItem(req.user!.id, itemId, input);
+      const normalizedInput = normalizeItemMetadata(input);
+      const item = await storage.updateOwnedItem(
+        req.user!.id,
+        itemId,
+        normalizedInput
+      );
 
       if (!item) {
         return res.status(404).json({ message: "Item not found" });
@@ -1947,8 +2046,9 @@ export async function registerRoutes(
 
       const shouldRefreshEmbedding =
         item.status === "active" &&
-        (Object.keys(input).some((field) => embeddingRelevantFields.has(field)) ||
-          input.status === "active");
+        (Object.keys(normalizedInput).some((field) =>
+          embeddingRelevantFields.has(field)
+        ) || normalizedInput.status === "active");
 
       let itemEmbedding: number[] | undefined;
       if (shouldRefreshEmbedding) {
@@ -1962,10 +2062,10 @@ export async function registerRoutes(
       const shouldRunAutomaticMatching =
         item.reportType === "found" &&
         item.status === "active" &&
-        (Object.keys(input).some(
+        (Object.keys(normalizedInput).some(
           (field) => embeddingRelevantFields.has(field) || field === "imageUrl"
         ) ||
-          input.status === "active");
+          normalizedInput.status === "active");
       const canQueueAutomaticMatching =
         itemEmbedding !== undefined || !shouldRefreshEmbedding;
 
@@ -2466,8 +2566,11 @@ export async function registerRoutes(
             orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
           });
 
+          const otherUser = room.senderId === userId ? room.receiver : room.sender;
+
           return {
             ...room,
+            otherUser,
             hasUnread: Boolean(unreadMessage),
             latestMessage: latestMessage
               ? {
