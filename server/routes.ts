@@ -52,9 +52,6 @@ const MIN_FINAL_MATCH_SCORE = Number(process.env.MIN_FINAL_MATCH_SCORE ?? 0.42);
 const MIN_FALLBACK_MATCH_SCORE = Number(
   process.env.MIN_FALLBACK_MATCH_SCORE ?? 0.3
 );
-const favoriteItemIdSchema = z.object({
-  itemId: z.coerce.number().int().positive(),
-});
 const positiveIdSchema = z.coerce.number().int().positive();
 const embeddingRelevantFields = new Set([
   "title",
@@ -2068,58 +2065,6 @@ export async function registerRoutes(
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });
-
-  // --- Favorites API ---
-  app.get(api.favorites.list.path, isAuthenticated, async (req, res) => {
-    try {
-      const favoriteItems = await storage.getFavoriteItems(req.user!.id);
-      res.json(favoriteItems);
-    } catch (err) {
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.post(api.favorites.add.path, isAuthenticated, async (req, res) => {
-    try {
-      const input = api.favorites.add.input.parse(req.body);
-      const item = await storage.getItem(input.itemId);
-
-      if (!item) {
-        return res.status(404).json({ message: "Item not found" });
-      }
-
-      await storage.addFavorite(req.user!.id, input.itemId);
-      res.status(201).json({ message: "관심 게시물에 추가했습니다." });
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join("."),
-        });
-      }
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.delete(
-    api.favorites.remove.path,
-    isAuthenticated,
-    async (req, res) => {
-      try {
-        const { itemId } = favoriteItemIdSchema.parse(req.params);
-        await storage.removeFavorite(req.user!.id, itemId);
-        res.json({ message: "관심 게시물에서 제거했습니다." });
-      } catch (err) {
-        if (err instanceof z.ZodError) {
-          return res.status(400).json({
-            message: err.errors[0].message,
-            field: err.errors[0].path.join("."),
-          });
-        }
-        res.status(500).json({ message: "Internal server error" });
-      }
-    }
-  );
 
   app.get(api.notifications.list.path, isAuthenticated, async (req, res) => {
     try {
