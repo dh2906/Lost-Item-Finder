@@ -13,8 +13,6 @@ export default defineConfig({
       // injectManifest 전략:
       //   firebase-messaging-sw.js 하나로 Workbox precache + FCM을 통합합니다.
       //   (generateSW를 쓰면 두 SW가 같은 루트 스코프에 등록되어 충돌이 발생합니다.)
-      registerType: "autoUpdate",
-      cleanupOutdatedCaches: true,
       strategies: "injectManifest",
       srcDir: "public",
       filename: "firebase-messaging-sw.js",

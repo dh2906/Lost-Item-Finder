@@ -24,6 +24,7 @@ import { LoginPage } from "@/pages/login";
 import MyPage from "@/pages/mypage";
 import AdminDashboardPage from "@/pages/admin-dashboard";
 import { RegisterPage } from "@/pages/register";
+import InstallPage from "@/pages/install";
 import { useLocation } from "wouter";
 
 function FoundReportPage() {
@@ -56,6 +57,7 @@ function Router() {
       >
         <Switch location={location}>
           <Route path="/" component={Home} />
+          <Route path="/install" component={InstallPage} />
           <Route path="/report/found">
             <ProtectedRoute>
               <FoundReportPage />

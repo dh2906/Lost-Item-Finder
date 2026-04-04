@@ -38,7 +38,7 @@ export async function sendFcmNotification(params: {
         notification: {
           title,
           body,
-          icon: "/icons/icon-192.png",
+          icon: "/icon-192.png",
         },
       },
     });

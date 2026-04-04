@@ -11,24 +11,47 @@ importScripts('https://storage.googleapis.com/workbox-cdn/releases/7.0.0/workbox
 if (typeof workbox !== 'undefined') {
   workbox.setConfig({ debug: false });
 
-  const { precacheAndRoute, createHandlerBoundToURL, cleanupOutdatedCaches } = workbox.precaching;
-  const { clientsClaim } = workbox.core;
+  const { precacheAndRoute, createHandlerBoundToURL } = workbox.precaching;
   const { NavigationRoute, registerRoute } = workbox.routing;
-  const { StaleWhileRevalidate, CacheFirst } = workbox.strategies;
+  const { NetworkFirst, StaleWhileRevalidate, CacheFirst } = workbox.strategies;
   const { ExpirationPlugin } = workbox.expiration;
   const { CacheableResponsePlugin } = workbox.cacheableResponse;
 
-  workbox.core.skipWaiting();
-  clientsClaim();
-
   // vite-plugin-pwa(injectManifest)가 빌드 시 아래 값을 실제 precache 목록으로 교체합니다.
   precacheAndRoute(self.__WB_MANIFEST || []);
-  cleanupOutdatedCaches();
 
-  // SPA 라우팅 폴백: index.html (API·Firebase 경로 제외)
+  // 🚀 [수정됨] 개발 모드 라우팅 에러 방지를 위한 try-catch
+  try {
+    const handler = createHandlerBoundToURL('/index.html');
+    registerRoute(
+      new NavigationRoute(handler, {
+        denylist: [/^\/api\//, /^\/firebase-config\.js$/, /^\/firebase-messaging-sw\.js$/],
+      })
+    );
+  } catch (error) {
+    console.warn('[SW] 개발 모드: /index.html이 캐시 목록에 없어 라우팅을 건너뜁니다.');
+  }
+
+  // Public API만 NetworkFirst로 캐싱합니다.
+  const PUBLIC_API_PATHS = [
+    '/api/items',
+    '/api/categories',
+  ];
+
   registerRoute(
-    new NavigationRoute(createHandlerBoundToURL('/index.html'), {
-      denylist: [/^\/api\//, /^\/firebase-config\.js$/, /^\/firebase-messaging-sw\.js$/],
+    ({ url, request }) => {
+      const isApiPath = url.pathname.startsWith('/api/');
+      const isGetMethod = request.method === 'GET';
+      const isPublicApi = PUBLIC_API_PATHS.some((p) => url.pathname.startsWith(p));
+      return isApiPath && isGetMethod && isPublicApi;
+    },
+    new NetworkFirst({
+      cacheName: 'api-cache',
+      networkTimeoutSeconds: 10,
+      plugins: [
+        new ExpirationPlugin({ maxEntries: 64, maxAgeSeconds: 5 * 60 }),
+        new CacheableResponsePlugin({ statuses: [0, 200] }),
+      ],
     })
   );
 
@@ -53,30 +76,25 @@ if (typeof workbox !== 'undefined') {
   console.warn('[SW] Workbox 로드 실패 — 캐싱 기능이 비활성화됩니다.');
 }
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    (async () => {
-      const cacheKeys = await caches.keys();
-      await Promise.all(
-        cacheKeys
-          .filter((cacheName) => cacheName === 'api-cache')
-          .map((cacheName) => caches.delete(cacheName))
-      );
-    })()
-  );
-});
-
 // --- [2] Firebase Cloud Messaging ---
-// firebase-config.js는 서버가 동적으로 제공하는 파일입니다.
-// NOTE: SW는 importScripts로 compat CDN 빌드를 직접 불러와야 합니다.
-//   CDN 버전(10.12.2)은 앱 의존성(package.json firebase: ^12.x)과 다를 수 있습니다.
-//   업그레이드 시 https://www.gstatic.com/firebasejs/{version}/firebase-app-compat.js 확인
-importScripts('/firebase-config.js');
+// 🚨 기존에 있던 importScripts('/firebase-config.js'); 완전 삭제!
+
 importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
 
-if (typeof self.FIREBASE_CONFIG !== 'undefined') {
-  firebase.initializeApp(self.FIREBASE_CONFIG);
+// 🚀 [수정됨] 하드코딩된 Firebase 설정 (알려주신 키값 적용)
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDQC6UGOzC5n-de2xQpKOraZve9c7mJerg",
+  authDomain: "lost-item-finder-f59cd.firebaseapp.com",
+  projectId: "lost-item-finder-f59cd",
+  storageBucket: "lost-item-finder-f59cd.firebasestorage.app",
+  messagingSenderId: "203102757353",
+  appId: "1:203102757353:web:27d0b8badcdea7676beb78"
+};
+
+try {
+  // 빈 값이 아닌 진짜 값으로 초기화 실행!
+  firebase.initializeApp(FIREBASE_CONFIG);
   const messaging = firebase.messaging();
 
   // 앱이 백그라운드/종료 상태일 때 수신되는 FCM 메시지 처리
@@ -92,17 +110,16 @@ if (typeof self.FIREBASE_CONFIG !== 'undefined') {
     });
   });
 
-  console.log('[FCM SW] Firebase 초기화 완료');
-} else {
-  console.error('[FCM SW] FIREBASE_CONFIG가 없습니다. /firebase-config.js 응답을 확인하세요.');
+  console.log('[FCM SW] Firebase 하드코딩 초기화 완료');
+} catch (error) {
+  console.error('[FCM SW] Firebase 초기화 실패:', error);
 }
 
 // 알림 클릭 시 해당 채팅방으로 이동
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const roomId = event.notification.data?.roomId;
-  const targetPath = event.notification.data?.path;
-  const url = targetPath || (roomId ? `/chat/${roomId}` : '/');
+  const url = roomId ? `/chat/${roomId}` : '/';
 
   event.waitUntil(
     clients
