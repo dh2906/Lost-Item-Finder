@@ -1,5 +1,4 @@
 import {
-  favorites,
   items,
   itemEmbeddings,
   itemMatches,
@@ -212,9 +211,6 @@ export interface IStorage {
     userId: number,
     notificationId: number
   ): Promise<MatchNotificationRecord | undefined>;
-  getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>>;
-  addFavorite(userId: number, itemId: number): Promise<void>;
-  removeFavorite(userId: number, itemId: number): Promise<boolean>;
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -642,36 +638,6 @@ export class DatabaseStorage implements IStorage {
 
     const [hydrated] = await this.hydrateMatchNotifications([row]);
     return hydrated;
-  }
-
-  async getFavoriteItems(userId: number): Promise<Array<{ item: Item; createdAt: Date }>> {
-    const rows = await db
-      .select({
-        item: items,
-        createdAt: favorites.createdAt,
-      })
-      .from(favorites)
-      .innerJoin(items, eq(favorites.itemId, items.id))
-      .where(eq(favorites.userId, userId))
-      .orderBy(desc(favorites.createdAt));
-
-    return rows.map((row) => ({
-      item: row.item,
-      createdAt: row.createdAt,
-    }));
-  }
-
-  async addFavorite(userId: number, itemId: number): Promise<void> {
-    await db.insert(favorites).values({ userId, itemId }).onConflictDoNothing();
-  }
-
-  async removeFavorite(userId: number, itemId: number): Promise<boolean> {
-    const deletedRows = await db
-      .delete(favorites)
-      .where(and(eq(favorites.userId, userId), eq(favorites.itemId, itemId)))
-      .returning({ id: favorites.id });
-
-    return deletedRows.length > 0;
   }
 
   async getUser(id: number): Promise<User | undefined> {
