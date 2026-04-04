@@ -6,6 +6,7 @@ vite.config.ts.*
 *.tar.gz
 .env
 .env.*
+.png
 !.env.example
 .postgres-data
 google-key.json
