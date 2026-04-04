@@ -2467,8 +2467,11 @@ export async function registerRoutes(
             orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
           });
 
+          const otherUser = room.senderId === userId ? room.receiver : room.sender;
+
           return {
             ...room,
+            otherUser,
             hasUnread: Boolean(unreadMessage),
             latestMessage: latestMessage
               ? {
