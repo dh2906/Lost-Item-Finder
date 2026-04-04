@@ -22,8 +22,8 @@ export function useMatchNotifications() {
       });
 
       if (res.status === 401) {
-        queryClient.setQueryData(AUTH_QUERY_KEY, null);
-        throw new Error("로그인 세션이 만료되었어요.");
+        void queryClient.invalidateQueries({ queryKey: AUTH_QUERY_KEY });
+        return [];
       }
 
       if (!res.ok) {
