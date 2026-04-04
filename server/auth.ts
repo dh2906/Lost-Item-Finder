@@ -26,6 +26,12 @@ export function setupAuth(app: Express) {
     tableName: "sessions",
     createTableIfMissing: true,
   });
+  const sessionSecure =
+    process.env.SESSION_SECURE === "true"
+      ? true
+      : process.env.SESSION_SECURE === "false"
+        ? false
+        : "auto";
 
   app.use(
     session({
@@ -34,10 +40,7 @@ export function setupAuth(app: Express) {
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure:
-          process.env.SESSION_SECURE === "true" ||
-          (process.env.NODE_ENV === "production" &&
-            process.env.SESSION_SECURE !== "false"),
+        secure: sessionSecure,
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000,
         sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
