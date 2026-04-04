@@ -1,77 +1,80 @@
 import { useState, useEffect } from "react";
 
-interface BeforeInstallPromptEvent extends Event {
+export interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-/**
- * PWA 설치 프롬프트를 관리하는 훅
- *
- * - `isInstallable`: 설치 가능 상태 (beforeinstallprompt 이벤트 수신 시 true)
- * - `isInstalled`  : 이미 홈 화면에 설치된 상태 (standalone 모드 감지, iOS 포함)
- * - `install`      : 설치 프롬프트를 띄우는 비동기 함수 (수락 시 true 반환)
- *
- * 지원 브라우저: Chrome, Edge, Samsung Internet (Android)
- * iOS Safari는 beforeinstallprompt를 지원하지 않아 별도 안내 필요
- */
+let globalDeferredPrompt: BeforeInstallPromptEvent | null = null;
+let isGlobalInstallable = false;
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    globalDeferredPrompt = e as BeforeInstallPromptEvent;
+    isGlobalInstallable = true;
+    window.dispatchEvent(new Event("pwa-prompt-ready"));
+  });
+
+  window.addEventListener("appinstalled", () => {
+    globalDeferredPrompt = null;
+    isGlobalInstallable = false;
+    window.dispatchEvent(new Event("pwa-installed"));
+  });
+}
+
 export function usePWAInstall() {
-  const [installPrompt, setInstallPrompt] =
-    useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isInstallable, setIsInstallable] = useState(false);
+  const [isInstallable, setIsInstallable] = useState(isGlobalInstallable);
+  const [isInstalled, setIsInstalled] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone === true
+    );
+  });
 
   useEffect(() => {
-    // iOS Safari는 navigator.standalone === true 로 홈 화면 추가 여부를 감지
-    // Android/Chrome은 (display-mode: standalone) media query로 감지
-    const isStandalone =
-      window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone === true;
-
-    if (isStandalone) {
-      setIsInstalled(true);
-      return;
+    if (globalDeferredPrompt) {
+      setIsInstallable(true);
     }
 
-    const handleBeforeInstall = (e: Event) => {
-      e.preventDefault(); // 브라우저 기본 설치 프롬프트 억제
-      setInstallPrompt(e as BeforeInstallPromptEvent);
-      setIsInstallable(true);
-    };
-
-    const handleAppInstalled = () => {
-      setIsInstalled(true);
+    const handleReady = () => setIsInstallable(true);
+    const handleInstalled = () => {
       setIsInstallable(false);
-      setInstallPrompt(null);
+      setIsInstalled(true);
     };
 
-    window.addEventListener("beforeinstallprompt", handleBeforeInstall);
-    window.addEventListener("appinstalled", handleAppInstalled);
+    window.addEventListener("pwa-prompt-ready", handleReady);
+    window.addEventListener("pwa-installed", handleInstalled);
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
-      window.removeEventListener("appinstalled", handleAppInstalled);
+      window.removeEventListener("pwa-prompt-ready", handleReady);
+      window.removeEventListener("pwa-installed", handleInstalled);
     };
   }, []);
 
-  /**
-   * 설치 프롬프트를 표시합니다.
-   * @returns 사용자가 수락하면 true, 거절/오류 시 false
-   */
   const install = async (): Promise<boolean> => {
-    if (!installPrompt) return false;
+    if (!globalDeferredPrompt) return false;
 
     try {
-      await installPrompt.prompt();
-      const { outcome } = await installPrompt.userChoice;
-      return outcome === "accepted";
+      await globalDeferredPrompt.prompt();
+      const { outcome } = await globalDeferredPrompt.userChoice;
+      
+      if (outcome === "accepted") {
+        globalDeferredPrompt = null;
+        isGlobalInstallable = false;
+        window.dispatchEvent(new Event("pwa-installed"));
+        return true;
+      }
+      return false;
     } catch {
-      // prompt() 또는 userChoice 처리 중 예외 발생 시 설치 실패로 간주
       return false;
     } finally {
-      // outcome과 무관하게 상태를 초기화 (beforeinstallprompt는 1회성이므로)
-      setInstallPrompt(null);
-      setIsInstallable(false);
+      if (globalDeferredPrompt) {
+        globalDeferredPrompt = null;
+        isGlobalInstallable = false;
+        setIsInstallable(false);
+      }
     }
   };
 

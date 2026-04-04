@@ -14,6 +14,8 @@ import {
   Search,
   Trash2,
   UserRound,
+  Download,
+  Smartphone
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { ItemCard } from "@/components/item-card";
@@ -25,6 +27,7 @@ import {
 } from "@/hooks/use-notifications";
 import { useDeleteItem, useMyItems, useUpdateItem } from "@/hooks/use-items";
 import { useToast } from "@/hooks/use-toast";
+import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -52,6 +55,13 @@ export default function MyPage() {
   const markNotificationAsReadMutation = useMarkMatchNotificationAsRead();
   const updateItemMutation = useUpdateItem();
   const deleteItemMutation = useDeleteItem();
+  
+  // 🚀 PWA 설치 상태 가져오기
+  const { isInstallable, isInstalled, install } = usePWAInstall();
+  
+  // 🚀 현재 기기가 iOS(아이폰/아이패드)인지 판별
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  
   const [filter, setFilter] = useState<FilterType>("all");
 
   const filteredMyItems = useMemo(
@@ -159,56 +169,112 @@ export default function MyPage() {
               </div>
             </div>
 
-            <Card className="border-border/70 bg-white/92 shadow-sm">
-              <CardHeader className="pb-4">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <UserRound className="h-5 w-5 text-primary" />
-                  계정 요약
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-xl font-semibold text-foreground">
-                    {user?.name || user?.username}
-                  </p>
-                  <p className="text-sm text-muted-foreground">{user?.username}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      전체 글
+            {/* 우측 사이드바 패널 */}
+            <div className="space-y-4">
+              <Card className="border-border/70 bg-white/92 shadow-sm">
+                <CardHeader className="pb-4">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <UserRound className="h-5 w-5 text-primary" />
+                    계정 요약
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="text-xl font-semibold text-foreground">
+                      {user?.name || user?.username}
                     </p>
-                    <p className="mt-2 text-2xl font-bold text-foreground">
-                      {myItems.length}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{user?.username}</p>
                   </div>
-                  <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      해결 완료
-                    </p>
-                    <p className="mt-2 text-2xl font-bold text-foreground">
-                      {resolvedCount}
-                    </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                        전체 글
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-foreground">
+                        {myItems.length}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                        해결 완료
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-foreground">
+                        {resolvedCount}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                        습득
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-foreground">
+                        {foundCount}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
+                      <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                        분실
+                      </p>
+                      <p className="mt-2 text-2xl font-bold text-foreground">
+                        {lostCount}
+                      </p>
+                    </div>
                   </div>
-                  <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      습득
-                    </p>
-                    <p className="mt-2 text-2xl font-bold text-foreground">
-                      {foundCount}
-                    </p>
+                </CardContent>
+              </Card>
+
+              {/* 🚀 앱 설정 (PWA 설치) 카드 */}
+              <Card className="border-border/70 bg-white/92 shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <Smartphone className="h-5 w-5 text-primary" />
+                    앱 설정
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between rounded-[20px] border border-border/70 bg-secondary/40 p-4">
+                    <div>
+                      <p className="font-semibold text-sm text-foreground">Findy 앱 설치</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        바탕화면에 바로가기 추가
+                      </p>
+                    </div>
+                    
+                    {/* 🚀 설치 상태에 따른 버튼 분기 처리 (iOS 대응 완벽) */}
+                    {isInstalled ? (
+                      <Button variant="secondary" size="sm" disabled className="gap-1.5 rounded-full px-4">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                        설치됨
+                      </Button>
+                    ) : isInstallable ? (
+                      <Button onClick={install} size="sm" className="gap-1.5 rounded-full px-4">
+                        <Download className="w-4 h-4" />
+                        설치하기
+                      </Button>
+                    ) : isIOS ? (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="gap-1.5 rounded-full px-4 border-primary/50 text-primary hover:bg-primary/5"
+                        onClick={() => {
+                          toast({
+                            title: "🍎 아이폰(iOS) 앱 설치 방법",
+                            description: "사파리 화면 하단의 [공유(↑)] 아이콘을 누른 후, [홈 화면에 추가]를 선택해 주세요!",
+                            duration: 5000,
+                          });
+                        }}
+                      >
+                        <Download className="w-4 h-4" />
+                        iOS 설치 방법
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled className="rounded-full px-4">
+                        지원 안함
+                      </Button>
+                    )}
                   </div>
-                  <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
-                    <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                      분실
-                    </p>
-                    <p className="mt-2 text-2xl font-bold text-foreground">
-                      {lostCount}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       </section>
