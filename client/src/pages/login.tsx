@@ -26,7 +26,6 @@ export function LoginPage() {
   const redirectTo = sanitizeRedirect(params.get("redirect"));
   const registerHref =
     redirectTo === "/" ? "/register" : `/register?redirect=${encodeURIComponent(redirectTo)}`;
-
   const loginMutation = useMutation({
     mutationFn: async (credentials: { username: string; password: string }) => {
       const res = await fetch(api.auth.login.path, {

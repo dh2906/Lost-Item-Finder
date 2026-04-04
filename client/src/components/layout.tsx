@@ -116,7 +116,7 @@ export function Layout({ children }: { children: ReactNode }) {
                         <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
                       </button>
 
-                      {reportMenuOpen && (
+                      {reportMenuOpen ? (
                         <>
                           <div
                             className="absolute inset-x-0 top-full h-4"
@@ -146,7 +146,7 @@ export function Layout({ children }: { children: ReactNode }) {
                             })}
                           </div>
                         </>
-                      )}
+                      ) : null}
                     </div>
                   );
                 }
@@ -300,7 +300,7 @@ export function Layout({ children }: { children: ReactNode }) {
             )}
 
             <div className="flex items-center gap-1 md:hidden">
-              {!isAuthenticated && (
+              {!isAuthenticated ? (
                 <Button
                   variant="ghost"
                   size="icon"
@@ -312,7 +312,7 @@ export function Layout({ children }: { children: ReactNode }) {
                     <UserIcon className="h-5 w-5" />
                   </Link>
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

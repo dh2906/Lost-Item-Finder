@@ -52,7 +52,6 @@ export function RegisterPage() {
   const redirectTo = sanitizeRedirect(params.get("redirect"));
   const loginHref =
     redirectTo === "/" ? "/login" : `/login?redirect=${encodeURIComponent(redirectTo)}`;
-
   const passwordsMatch = confirmPassword === "" || password === confirmPassword;
   const confirmPasswordErrorId = "confirm-password-error";
 

@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import passport from "passport";
 import { isAdmin, isAuthenticated } from "./auth";
@@ -97,6 +97,65 @@ function getErrorMessage(error: unknown): string {
   }
 
   return "Internal server error";
+}
+
+function getSafeUserResponse(user: Express.User) {
+  const { password: _password, ...safeUser } = user;
+  return safeUser;
+}
+
+function finalizeLogin(
+  req: Request,
+  res: Response,
+  user: Express.User,
+  status = 200,
+) {
+  req.session.regenerate((regenerateError) => {
+    if (regenerateError) {
+      console.error("Failed to regenerate session:", regenerateError);
+      return res.status(500).json({ message: "Failed to create session" });
+    }
+
+    req.login(user, (loginError) => {
+      if (loginError) {
+        console.error("Failed to login user:", loginError);
+        return res.status(500).json({ message: "Failed to login user" });
+      }
+
+      req.session.save((saveError) => {
+        if (saveError) {
+          console.error("Failed to save session:", saveError);
+          return res.status(500).json({ message: "Failed to save session" });
+        }
+
+        return res.status(status).json(getSafeUserResponse(user));
+      });
+    });
+  });
+}
+
+function finalizeLogout(req: Request, res: Response) {
+  req.logout((logoutError) => {
+    if (logoutError) {
+      console.error("Failed to logout user:", logoutError);
+      return res.status(500).json({ message: "Failed to logout user" });
+    }
+
+    if (!req.session) {
+      res.clearCookie("connect.sid");
+      return res.json({ message: "Logged out" });
+    }
+
+    req.session.destroy((destroyError) => {
+      if (destroyError) {
+        console.error("Failed to destroy session:", destroyError);
+        return res.status(500).json({ message: "Failed to destroy session" });
+      }
+
+      res.clearCookie("connect.sid");
+      return res.json({ message: "Logged out" });
+    });
+  });
 }
 
 function extractCompletionMessageContent(content: unknown): string | null {
@@ -1413,6 +1472,69 @@ function queueAutomaticMatchNotificationsForFoundItem(
     });
 }
 
+async function sendAutomaticMatchPushNotifications(
+  foundItem: FoundItemForAutoMatch,
+  matchedNotifications: Array<{
+    userId: number;
+    lostItemId: number;
+    foundItemId: number;
+    score: number;
+    reasoning: string;
+  }>
+): Promise<void> {
+  if (matchedNotifications.length === 0) {
+    return;
+  }
+
+  const notificationsByUser = new Map<
+    number,
+    Array<{
+      userId: number;
+      lostItemId: number;
+      foundItemId: number;
+      score: number;
+      reasoning: string;
+    }>
+  >();
+
+  for (const notification of matchedNotifications) {
+    const currentNotifications =
+      notificationsByUser.get(notification.userId) ?? [];
+    currentNotifications.push(notification);
+    notificationsByUser.set(notification.userId, currentNotifications);
+  }
+
+  const recipients = await Promise.all(
+    Array.from(notificationsByUser.keys()).map((userId) => storage.getUser(userId))
+  );
+
+  await Promise.all(
+    recipients.map(async (recipient) => {
+      if (!recipient?.fcmToken) {
+        return;
+      }
+
+      const userNotifications = notificationsByUser.get(recipient.id) ?? [];
+      const matchCount = userNotifications.length;
+      const body =
+        matchCount > 1
+          ? `내 분실물 ${matchCount}건과 유사한 습득물 "${foundItem.title}"이 등록되었어요.`
+          : `내 분실물과 유사한 습득물 "${foundItem.title}"이 등록되었어요.`;
+
+      await sendFcmNotification({
+        fcmToken: recipient.fcmToken,
+        title: "새 자동 매칭 알림",
+        body,
+        data: {
+          path: "/mypage#alerts",
+          foundItemId: String(foundItem.id),
+          lostItemId: String(userNotifications[0]?.lostItemId ?? ""),
+        },
+      });
+    })
+  );
+}
+
 async function runAutomaticMatchNotificationsForFoundItem(
   foundItem: FoundItemForAutoMatch,
   existingEmbedding?: number[],
@@ -1538,6 +1660,8 @@ async function runAutomaticMatchNotificationsForFoundItem(
       storage.upsertMatchNotification(notification)
     )
   );
+
+  await sendAutomaticMatchPushNotifications(foundItem, matchedNotifications);
 }
 
 async function rerankCandidates(params: {
@@ -1649,15 +1773,7 @@ export async function registerRoutes(
       }
 
       const user = await storage.createUser(input);
-      req.login(user, (err) => {
-        if (err) {
-          return res
-            .status(500)
-            .json({ message: "로그인 처리 중 오류가 발생했습니다" });
-        }
-        const { password: _, ...userWithoutPassword } = user;
-        res.status(201).json(userWithoutPassword);
-      });
+      return finalizeLogin(req, res, user, 201);
     } catch (err) {
       console.error("Register error:", err);
       if (err instanceof z.ZodError) {
@@ -1688,29 +1804,12 @@ export async function registerRoutes(
             .status(401)
             .json({ message: info?.message || "로그인에 실패했습니다" });
         }
-        req.login(user, (err) => {
-          if (err) {
-            return res
-              .status(500)
-              .json({ message: "로그인 처리 중 오류가 발생했습니다" });
-          }
-          const { password: _, ...userWithoutPassword } = user;
-          res.json(userWithoutPassword);
-        });
+        return finalizeLogin(req, res, user);
       }
     )(req, res, next);
   });
 
-  app.post(api.auth.logout.path, (req, res) => {
-    req.logout((err) => {
-      if (err) {
-        return res
-          .status(500)
-          .json({ message: "로그아웃 중 오류가 발생했습니다" });
-      }
-      res.json({ message: "로그아웃 되었습니다" });
-    });
-  });
+  app.post(api.auth.logout.path, (req, res) => finalizeLogout(req, res));
 
   app.get(api.auth.me.path, (req, res) => {
     if (!req.user) {
@@ -1876,7 +1975,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.items.create.path, async (req, res) => {
+  app.post(api.items.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.items.create.input.parse(req.body);
       const normalizedInput = normalizeItemMetadata(input);
@@ -2467,8 +2566,11 @@ export async function registerRoutes(
             orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
           });
 
+          const otherUser = room.senderId === userId ? room.receiver : room.sender;
+
           return {
             ...room,
+            otherUser,
             hasUnread: Boolean(unreadMessage),
             latestMessage: latestMessage
               ? {
