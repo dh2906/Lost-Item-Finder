@@ -10,6 +10,8 @@ const app = express();
 const httpServer = createServer(app);
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
 
+app.set("trust proxy", 1);
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
