@@ -10,6 +10,8 @@ import {
   ArrowLeft,
   CheckCircle2,
   AlertCircle,
+  Images,
+  X,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LocationPicker } from "@/components/location-picker";
+import {
+  MAX_ITEM_IMAGE_COUNT,
+  normalizeItemImageUrls,
+} from "@shared/item-images";
 
 const formSchema = z.object({
   title: z.string().min(3, "제목은 3자 이상이어야 합니다."),
@@ -51,7 +57,7 @@ const formSchema = z.object({
       }
     ),
   tags: z.array(z.string()).optional(),
-  imageUrl: z.string().optional(),
+  imageUrls: z.array(z.string()).max(MAX_ITEM_IMAGE_COUNT).optional(),
   reportType: z.enum(["found", "lost"]).default("found"),
   latitude: z.string().optional(),
   longitude: z.string().optional(),
@@ -147,7 +153,8 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const [reportType, setReportType] = useState<ReportType>(() =>
     getInitialReportType(forcedType)
   );
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const form = useForm<FormValues>({
@@ -162,7 +169,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       location: "",
       contactInfo: "",
       tags: [],
-      imageUrl: "",
+      imageUrls: [],
       latitude: "",
       longitude: "",
     },
@@ -187,8 +194,10 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     }
 
     const nextType = existingItem.reportType as ReportType;
+    const nextImageUrls = normalizeItemImageUrls(existingItem);
     setReportType(nextType);
-    setImagePreview(existingItem.imageUrl ?? null);
+    setImagePreviews(nextImageUrls);
+    setActiveImageIndex(0);
     form.reset({
       reportType: nextType,
       title: existingItem.title,
@@ -199,7 +208,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       location: existingItem.location ?? "",
       contactInfo: existingItem.contactInfo ?? "",
       tags: existingItem.tags ?? [],
-      imageUrl: existingItem.imageUrl ?? "",
+      imageUrls: nextImageUrls,
       latitude: existingItem.latitude ?? "",
       longitude: existingItem.longitude ?? "",
     });
@@ -225,8 +234,47 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     form.setValue("longitude", nextLocation.longitude);
   };
 
-  const processSelectedFile = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
+  const syncImagePreviews = (nextImages: string[], preferredIndex?: number) => {
+    setImagePreviews(nextImages);
+    form.setValue("imageUrls", nextImages, {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+    setActiveImageIndex((currentIndex) => {
+      if (nextImages.length === 0) {
+        return 0;
+      }
+
+      if (typeof preferredIndex === "number") {
+        return Math.min(preferredIndex, nextImages.length - 1);
+      }
+
+      return Math.min(currentIndex, nextImages.length - 1);
+    });
+  };
+
+  const setFieldIfEmpty = (
+    field: "itemCategory" | "color" | "size" | "description" | "tags",
+    value: string | string[]
+  ) => {
+    const currentValue = form.getValues(field) as string | string[] | undefined;
+    const isEmptyArray = Array.isArray(currentValue) && currentValue.length === 0;
+    const isEmptyString =
+      typeof currentValue === "string" && currentValue.trim().length === 0;
+
+    if ((currentValue === undefined || isEmptyArray || isEmptyString) && value !== undefined) {
+      form.setValue(field, value as never, {
+        shouldDirty: true,
+        shouldTouch: true,
+      });
+    }
+  };
+
+  const processSelectedFiles = async (files: File[]) => {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    const skippedCount = files.length - imageFiles.length;
+
+    if (imageFiles.length === 0) {
       toast({
         title: "이미지 파일만 업로드할 수 있어요.",
         variant: "destructive",
@@ -234,24 +282,42 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       return;
     }
 
+    const currentImages = form.getValues("imageUrls") ?? [];
+    const remainingSlots = MAX_ITEM_IMAGE_COUNT - currentImages.length;
+
+    if (remainingSlots <= 0) {
+      toast({
+        title: `이미지는 최대 ${MAX_ITEM_IMAGE_COUNT}장까지 올릴 수 있어요.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const filesToAdd = imageFiles.slice(0, remainingSlots);
+    const firstAddedIndex = currentImages.length;
+
     try {
       setIsAnalyzing(true);
-      const base64 = await optimizeImageForUpload(file);
-      setImagePreview(base64);
-      form.setValue("imageUrl", base64);
+      const optimizedImages = await Promise.all(
+        filesToAdd.map((file) => optimizeImageForUpload(file))
+      );
+      let nextImages = [...currentImages, ...optimizedImages];
+      syncImagePreviews(nextImages, firstAddedIndex);
 
-      const analysis = await analyzeMutation.mutateAsync({ imageUrl: base64 });
+      const analysis = await analyzeMutation.mutateAsync({ imageUrl: optimizedImages[0] });
 
       if (analysis.maskedImage) {
-        setImagePreview(analysis.maskedImage);
-        form.setValue("imageUrl", analysis.maskedImage);
+        nextImages = nextImages.map((imageUrl, index) =>
+          index === firstAddedIndex ? analysis.maskedImage! : imageUrl
+        );
+        syncImagePreviews(nextImages, firstAddedIndex);
       }
 
-      form.setValue("itemCategory", analysis.itemCategory);
-      form.setValue("color", analysis.color);
-      form.setValue("size", analysis.size);
-      form.setValue("description", analysis.description);
-      form.setValue("tags", analysis.tags);
+      setFieldIfEmpty("itemCategory", analysis.itemCategory);
+      setFieldIfEmpty("color", analysis.color);
+      setFieldIfEmpty("size", analysis.size);
+      setFieldIfEmpty("description", analysis.description);
+      setFieldIfEmpty("tags", analysis.tags);
 
       if (!form.getValues("title")) {
         form.setValue("title", `${analysis.color} ${analysis.itemCategory}`.trim());
@@ -261,6 +327,16 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
         title: "AI 분석 완료",
         description: "입력 가능한 정보를 먼저 채워 두었어요.",
       });
+
+      if (skippedCount > 0 || filesToAdd.length < imageFiles.length) {
+        toast({
+          title: `${nextImages.length}장의 사진을 저장했어요.`,
+          description:
+            skippedCount > 0
+              ? "이미지가 아닌 파일은 제외했어요."
+              : `최대 ${MAX_ITEM_IMAGE_COUNT}장까지만 등록할 수 있어요.`,
+        });
+      }
     } catch {
       toast({
         title: "이미지 분석에 실패했어요.",
@@ -273,14 +349,19 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   };
 
   const handleImageSelect = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    await processSelectedFile(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    await processSelectedFiles(files);
     e.target.value = "";
   };
 
+  const handleRemoveImage = (indexToRemove: number) => {
+    const nextImages = imagePreviews.filter((_, index) => index !== indexToRemove);
+    syncImagePreviews(nextImages, Math.max(0, indexToRemove - 1));
+  };
+
   const onSubmit = async (data: FormValues) => {
-    if (reportType === "found" && !data.imageUrl) {
+    if (reportType === "found" && (!data.imageUrls || data.imageUrls.length === 0)) {
       toast({
         title: "습득물 등록에는 사진이 필요해요.",
         variant: "destructive",
@@ -301,7 +382,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
             location: data.location,
             contactInfo: data.contactInfo,
             tags: data.tags,
-            imageUrl: data.imageUrl,
+            imageUrls: data.imageUrls,
             latitude: data.latitude,
             longitude: data.longitude,
           },
@@ -476,6 +557,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                 <input
                   type="file"
                   accept="image/*"
+                  multiple
                   className="hidden"
                   ref={fileInputRef}
                   onChange={handleImageSelect}
@@ -483,18 +565,80 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                 <div
                   className={cn(
                     "relative min-h-[240px] cursor-pointer overflow-hidden rounded-[22px] border-2 border-dashed transition-all xl:min-h-[300px]",
-                    imagePreview
+                    imagePreviews.length > 0
                       ? "border-primary bg-primary/5"
                       : "border-muted-foreground/25 bg-muted/50 hover:border-primary/50 hover:bg-muted"
                   )}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  {imagePreview ? (
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
+                  {imagePreviews.length > 0 ? (
+                    <div className="flex h-full flex-col">
+                      <div className="relative flex-1 overflow-hidden">
+                        <img
+                          src={imagePreviews[activeImageIndex]}
+                          alt={`업로드 미리보기 ${activeImageIndex + 1}`}
+                          className="absolute inset-0 h-full w-full object-cover"
+                        />
+                        <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-medium text-white">
+                          <Images className="h-3.5 w-3.5" />
+                          {imagePreviews.length} / {MAX_ITEM_IMAGE_COUNT}
+                        </div>
+                        <div className="absolute bottom-3 right-3 rounded-full bg-black/65 px-3 py-1 text-xs font-medium text-white">
+                          대표 사진은 첫 번째 이미지예요
+                        </div>
+                      </div>
+
+                      <div
+                        className="flex gap-2 overflow-x-auto border-t border-white/30 bg-black/15 p-3 backdrop-blur-sm"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {imagePreviews.map((imageUrl, index) => (
+                          <div key={`${imageUrl}-${index}`} className="relative shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setActiveImageIndex(index)}
+                              className={cn(
+                                "overflow-hidden rounded-2xl border-2 transition-all",
+                                index === activeImageIndex
+                                  ? "border-white shadow-lg"
+                                  : "border-white/35 hover:border-white/70"
+                              )}
+                              aria-label={`${index + 1}번째 이미지 선택`}
+                            >
+                              <img
+                                src={imageUrl}
+                                alt={`썸네일 ${index + 1}`}
+                                className="h-16 w-16 object-cover"
+                              />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveImage(index)}
+                              className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border border-white/60 bg-white/95 text-foreground shadow-sm hover:bg-white"
+                              aria-label={`${index + 1}번째 이미지 삭제`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                            {index === 0 ? (
+                              <span className="absolute bottom-1 left-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                대표
+                              </span>
+                            ) : null}
+                          </div>
+                        ))}
+
+                        {imagePreviews.length < MAX_ITEM_IMAGE_COUNT ? (
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-dashed border-white/60 bg-white/20 text-white transition-colors hover:bg-white/30"
+                            aria-label="이미지 추가"
+                          >
+                            <Upload className="h-5 w-5" />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
                   ) : (
                     <div className="flex h-full flex-col items-center justify-center py-7 text-center">
                       <div className="mb-1.5 rounded-full bg-background p-3 shadow-sm">
