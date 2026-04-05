@@ -3,11 +3,6 @@ import { format } from "date-fns";
 import { ko } from "date-fns/locale";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
-import {
-  useAddFavorite,
-  useFavoriteItems,
-  useRemoveFavorite,
-} from "@/hooks/use-favorites";
 import { useItem } from "@/hooks/use-items";
 import { ChatButton } from "@/components/chat-button";
 import { ItemCard } from "@/components/item-card";
@@ -18,8 +13,6 @@ import {
   Calendar,
   Tag,
   AlertCircle,
-  Heart,
-  Loader2,
   Mail,
   ArrowLeft,
 } from "lucide-react";
@@ -36,10 +29,6 @@ export default function ItemDetail() {
   const { isAuthenticated, user } = useAuth();
   const { data: item, isLoading, isError } = useItem(id);
   const { toast } = useToast();
-  const { data: favoriteItems = [], isLoading: isFavoriteItemsLoading } =
-    useFavoriteItems();
-  const addFavoriteMutation = useAddFavorite();
-  const removeFavoriteMutation = useRemoveFavorite();
   const isOwnedLostItem = Boolean(
     isAuthenticated && item?.userId === user?.id && item?.reportType === "lost"
   );
@@ -80,22 +69,7 @@ export default function ItemDetail() {
     );
   }
 
-  const favoriteEntry = favoriteItems.find(
-    (favoriteItem) => favoriteItem.item.id === item.id
-  );
-  const isFavorite = Boolean(favoriteEntry);
-  const isFavoriteMutating =
-    addFavoriteMutation.isPending || removeFavoriteMutation.isPending;
   const isOwner = item.userId !== null && item.userId === user?.id;
-
-  const handleFavoriteToggle = () => {
-    if (isFavorite) {
-      removeFavoriteMutation.mutate(item.id);
-      return;
-    }
-
-    addFavoriteMutation.mutate({ itemId: item.id });
-  };
 
   const handleMatchStatus = async (
     matchId: number,
@@ -339,54 +313,7 @@ export default function ItemDetail() {
                     </Link>
                   </Button>
                 )}
-                {isAuthenticated ? (
-                  <>
-                    <Button
-                      type="button"
-                      onClick={handleFavoriteToggle}
-                      disabled={isFavoriteItemsLoading || isFavoriteMutating}
-                      variant={isFavorite ? "default" : "outline"}
-                      className={cn(
-                        "w-full rounded-2xl",
-                        isFavorite
-                          ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                          : "border-border/70 bg-white"
-                      )}
-                    >
-                      {isFavoriteItemsLoading || isFavoriteMutating ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Heart
-                          className={cn(
-                            "mr-2 h-4 w-4",
-                            isFavorite && "fill-current"
-                          )}
-                        />
-                      )}
-                      {isFavorite
-                        ? "관심 게시물에서 제거"
-                        : "관심 게시물로 저장"}
-                    </Button>
-                    {favoriteEntry && (
-                      <div className="rounded-[22px] border border-border/70 bg-secondary/40 p-4 text-sm text-muted-foreground">
-                        {format(
-                          new Date(favoriteEntry.createdAt),
-                          "PPP p",
-                          { locale: ko }
-                        )}
-                        에 저장된 게시물입니다. 마이페이지에서 모아볼 수 있어요.
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <Button asChild variant="outline" className="w-full rounded-2xl">
-                    <Link href={`/login?redirect=${encodeURIComponent(`/item/${item.id}`)}`}>
-                      <Heart className="mr-2 h-4 w-4" />
-                      로그인하고 관심 게시물 저장
-                    </Link>
-                  </Button>
-                )}
-                 <div className="rounded-[22px] bg-secondary/45 p-4 text-sm leading-6 text-muted-foreground">
+                <div className="rounded-[22px] bg-secondary/45 p-4 text-sm leading-6 text-muted-foreground">
                   핵심 정보와 연락 수단을 오른쪽에 고정해 두어, 큰 화면에서도 스크롤 이동 없이 바로 판단할 수 있게 했습니다.
                 </div>
               </CardContent>
