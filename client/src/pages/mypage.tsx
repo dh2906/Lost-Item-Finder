@@ -4,9 +4,7 @@ import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import {
   BellRing,
-  BookmarkCheck,
   CheckCircle2,
-  Heart,
   MapPin,
   PackageSearch,
   Pencil,
@@ -18,9 +16,7 @@ import {
   Smartphone
 } from "lucide-react";
 import { Layout } from "@/components/layout";
-import { ItemCard } from "@/components/item-card";
 import { useAuth } from "@/hooks/use-auth";
-import { useFavoriteItems } from "@/hooks/use-favorites";
 import {
   useMarkMatchNotificationAsRead,
   useMatchNotifications,
@@ -49,7 +45,6 @@ export default function MyPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const { data: myItems = [], isLoading: isMyItemsLoading } = useMyItems();
-  const { data: favorites = [], isLoading: isFavoritesLoading } = useFavoriteItems();
   const { data: notifications = [], isLoading: isNotificationsLoading } =
     useMatchNotifications();
   const markNotificationAsReadMutation = useMarkMatchNotificationAsRead();
@@ -163,7 +158,7 @@ export default function MyPage() {
                   한곳에서 관리해요
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-                  게시글 상태 변경, 즐겨찾기 확인, 자동 매칭 알림까지 한 번에
+                  게시글 상태 변경과 자동 매칭 알림 확인을 한 번에
                   살펴볼 수 있어요.
                 </p>
               </div>
@@ -679,83 +674,13 @@ export default function MyPage() {
             </Card>
             <Card className="border-border/70 bg-white/92">
               <CardContent className="p-5">
-                <p className="text-sm text-muted-foreground">관심 게시글</p>
+                <p className="text-sm text-muted-foreground">읽지 않은 알림</p>
                 <p className="mt-2 text-2xl font-bold text-foreground">
-                  {favorites.length}
+                  {unreadNotificationCount}
                 </p>
               </CardContent>
             </Card>
           </div>
-        </div>
-      </section>
-
-      <section className="pb-16">
-        <div className="container mx-auto max-w-6xl px-5">
-          <div className="mb-6 space-y-2">
-            <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-              <BookmarkCheck className="h-6 w-6 text-primary" />
-              관심 게시글
-            </h2>
-            <p className="text-sm leading-6 text-muted-foreground">
-              나중에 다시 보고 싶은 글은 여기에서 모아볼 수 있어요.
-            </p>
-          </div>
-
-          {isFavoritesLoading ? (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {[1, 2, 3].map((index) => (
-                <div
-                  key={index}
-                  className="h-[330px] animate-pulse rounded-[26px] bg-muted"
-                />
-              ))}
-            </div>
-          ) : favorites.length === 0 ? (
-            <Card className="border-dashed border-border/80 bg-secondary/35">
-              <CardContent className="flex flex-col items-center py-14 text-center">
-                <div className="mb-5 rounded-full border border-border/70 bg-white p-4 shadow-sm">
-                  <Heart className="h-8 w-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-semibold text-foreground">
-                  저장해 둔 관심 게시글이 아직 없어요
-                </h3>
-                <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-                  상세 페이지에서 관심 게시글로 추가하면 마이페이지에서 다시 쉽게
-                  확인할 수 있어요.
-                </p>
-                <div className="mt-8 flex flex-wrap justify-center gap-3">
-                  <Button asChild className="rounded-full px-5">
-                    <Link href="/items">
-                      <PackageSearch className="mr-2 h-4 w-4" />
-                      전체 게시글 보기
-                    </Link>
-                  </Button>
-                  <Button asChild variant="outline" className="rounded-full px-5">
-                    <Link href="/search">
-                      <Search className="mr-2 h-4 w-4" />
-                      AI로 찾기
-                    </Link>
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {favorites.map((favorite) => (
-                <div key={favorite.item.id} className="space-y-3">
-                  <div className="flex items-center justify-between px-1 text-xs font-medium text-muted-foreground">
-                    <span>저장한 시각</span>
-                    <span>
-                      {format(new Date(favorite.createdAt), "PPP p", {
-                        locale: ko,
-                      })}
-                    </span>
-                  </div>
-                  <ItemCard item={favorite.item} />
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </section>
     </Layout>
