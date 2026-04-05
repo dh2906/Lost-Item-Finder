@@ -11,6 +11,9 @@ import {
   userStatuses,
 } from "./schema";
 
+export const itemDateRanges = ["all", "7d", "30d", "90d"] as const;
+export const itemSortOrders = ["latest", "oldest"] as const;
+
 const itemResponseSchema = z.custom<typeof items.$inferSelect>();
 
 const matchResponseSchema = z.object({
@@ -154,6 +157,10 @@ export const api = {
         .object({
           type: z.enum(reportTypes).optional(),
           search: z.string().optional(),
+          category: z.string().trim().min(1).optional(),
+          color: z.string().trim().min(1).optional(),
+          dateRange: z.enum(itemDateRanges).optional(),
+          sort: z.enum(itemSortOrders).optional(),
         })
         .optional(),
       responses: {
@@ -377,6 +384,7 @@ export function buildUrl(
 export type ItemInput = z.infer<typeof api.items.create.input>;
 export type ItemResponse = z.infer<(typeof api.items.create.responses)[201]>;
 export type ItemsListResponse = z.infer<(typeof api.items.list.responses)[200]>;
+export type ItemsListFilters = NonNullable<z.infer<typeof api.items.list.input>>;
 export type MyItemsResponse = z.infer<(typeof api.items.mine.responses)[200]>;
 export type UpdateItemInput = z.infer<typeof api.items.update.input>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
