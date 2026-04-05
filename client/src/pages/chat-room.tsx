@@ -1,12 +1,18 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRoute } from "wouter";
+import { isSameDay } from "date-fns";
 import { ArrowLeft, Send } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
 import { useChatMessages, useChatRooms, useSendChatMessage } from "@/hooks/use-chat";
+import {
+  formatChatDateDivider,
+  formatChatMessageTime,
+  parseChatDate,
+} from "@/lib/chat-time";
 import { cn } from "@/lib/utils";
 
 export default function ChatRoomPage() {
@@ -20,6 +26,36 @@ export default function ChatRoomPage() {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const room = useMemo(() => rooms.find((entry) => entry.id === roomId), [rooms, roomId]);
+  const messageGroups = useMemo(() => {
+    return messages.reduce<Array<
+      | { type: "date"; key: string; label: string }
+      | { type: "message"; key: string; message: (typeof messages)[number] }
+    >>((acc, message, index) => {
+      const previousMessage = messages[index - 1];
+      const currentDate = parseChatDate(message.createdAt);
+      const previousDate = parseChatDate(previousMessage?.createdAt);
+
+      if (
+        currentDate &&
+        (!previousDate || !isSameDay(currentDate, previousDate))
+      ) {
+        acc.push({
+          type: "date",
+          key: `date-${message.id}`,
+          label: formatChatDateDivider(message.createdAt),
+        });
+      }
+
+      acc.push({
+        type: "message",
+        key: `message-${message.id}`,
+        message,
+      });
+
+      return acc;
+    }, []);
+  }, [messages]);
+
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) {
@@ -80,23 +116,69 @@ export default function ChatRoomPage() {
               ) : messages.length === 0 ? (
                 <p className="text-sm text-muted-foreground">아직 메시지가 없습니다. 먼저 말을 걸어보세요.</p>
               ) : (
-                messages.map((message) => {
+                messageGroups.map((entry) => {
+                  if (entry.type === "date") {
+                    return (
+                      <div key={entry.key} className="flex justify-center py-1">
+                        <span className="rounded-full border border-border/70 bg-white/90 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
+                          {entry.label}
+                        </span>
+                      </div>
+                    );
+                  }
+
+                  const { message } = entry;
                   const isMine = message.senderId === user?.id;
+                  const unreadCount =
+                    isMine && message.isRead !== 1 ? 1 : 0;
+                  const timeLabel = formatChatMessageTime(message.createdAt);
 
                   return (
                     <div
-                      key={message.id}
+                      key={entry.key}
                       className={cn("flex", isMine ? "justify-end" : "justify-start")}
                     >
                       <div
                         className={cn(
-                          "max-w-[80%] rounded-[22px] px-4 py-3 text-sm leading-6 shadow-sm",
-                          isMine
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-white border border-border/70"
+                          "flex max-w-[88%] items-end gap-2",
+                          isMine ? "flex-row" : "flex-row"
                         )}
                       >
-                        <p>{message.content}</p>
+                        {isMine ? (
+                          <>
+                            <div className="flex min-w-[2.5rem] flex-col items-end leading-none">
+                              {unreadCount > 0 ? (
+                                <span className="text-[11px] font-semibold text-amber-500">
+                                  {unreadCount}
+                                </span>
+                              ) : null}
+                              <span className="mt-1 text-[11px] text-muted-foreground">
+                                {timeLabel}
+                              </span>
+                            </div>
+                            <div
+                              className={cn(
+                                "max-w-[80%] rounded-[22px] px-4 py-3 text-sm leading-6 shadow-sm",
+                                "bg-primary text-primary-foreground"
+                              )}
+                            >
+                              <p>{message.content}</p>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div
+                              className={cn(
+                                "max-w-[80%] rounded-[22px] border border-border/70 bg-white px-4 py-3 text-sm leading-6 shadow-sm"
+                              )}
+                            >
+                              <p>{message.content}</p>
+                            </div>
+                            <span className="text-[11px] text-muted-foreground">
+                              {timeLabel}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
