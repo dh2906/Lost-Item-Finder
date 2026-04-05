@@ -1,6 +1,11 @@
 import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
-import { ensureChatSchema, ensureItemMatchSchema, ensureVectorExtension } from "./db";
+import {
+  ensureChatSchema,
+  ensureItemImageSchema,
+  ensureItemMatchSchema,
+  ensureVectorExtension,
+} from "./db";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { setupAuth } from "./auth";
@@ -126,6 +131,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await ensureVectorExtension();
+  await ensureItemImageSchema();
   await ensureChatSchema();
   await ensureItemMatchSchema();
   setupAuth(app);

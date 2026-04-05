@@ -2406,7 +2406,13 @@ export async function registerRoutes(
           eq(chatRooms.receiverId, userId)
         ),
         with: {
-          item: true,
+          item: {
+            columns: {
+              id: true,
+              title: true,
+              reportType: true,
+            },
+          },
           sender: {
             columns: { id: true, username: true, name: true }
           },
