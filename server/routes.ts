@@ -2407,6 +2407,7 @@ export async function registerRoutes(
             columns: {
               content: true,
               senderId: true,
+              createdAt: true,
             },
             where: eq(chatMessages.roomId, room.id),
             orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
@@ -2419,6 +2420,7 @@ export async function registerRoutes(
               ? {
                   content: latestMessage.content,
                   senderId: latestMessage.senderId,
+                  createdAt: latestMessage.createdAt,
                 }
               : null,
           };

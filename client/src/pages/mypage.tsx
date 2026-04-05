@@ -169,10 +169,10 @@ export default function MyPage() {
               <Card className="border-border/70 bg-white/92 shadow-sm">
                 <CardHeader className="pb-4">
                   <CardTitle className="flex items-center gap-2 text-lg">
-                    <UserRound className="h-5 w-5 text-primary" />
-                    계정 요약
-                  </CardTitle>
-                </CardHeader>
+                  <UserRound className="h-5 w-5 text-primary" />
+                  계정 정보
+                </CardTitle>
+              </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
                     <p className="text-xl font-semibold text-foreground">
