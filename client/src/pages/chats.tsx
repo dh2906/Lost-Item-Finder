@@ -4,6 +4,7 @@ import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { useChatRooms } from "@/hooks/use-chat";
+import { formatChatRoomTimestamp } from "@/lib/chat-time";
 
 export default function ChatsPage() {
   const { user } = useAuth();
@@ -28,6 +29,9 @@ export default function ChatsPage() {
               <div className="space-y-3">
                 {rooms.map((room) => {
                   const previewText = room.latestMessage?.content?.trim() || "아직 주고받은 메시지가 없습니다.";
+                  const latestTimeLabel = formatChatRoomTimestamp(
+                    room.latestMessage?.createdAt ?? room.updatedAt
+                  );
 
                   return (
                     <Link key={room.id} href={`/chat/${room.id}`}>
@@ -44,9 +48,16 @@ export default function ChatsPage() {
                               {previewText}
                             </p>
                           </div>
-                          <span className="rounded-full bg-white px-3 py-1 text-xs text-muted-foreground">
-                            {room.item?.reportType === "found" ? "습득물" : "분실물"}
-                          </span>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            {latestTimeLabel ? (
+                              <span className="text-xs font-medium text-muted-foreground">
+                                {latestTimeLabel}
+                              </span>
+                            ) : null}
+                            <span className="rounded-full bg-white px-3 py-1 text-xs text-muted-foreground">
+                              {room.item?.reportType === "found" ? "습득물" : "분실물"}
+                            </span>
+                          </div>
                         </div>
                       </a>
                     </Link>

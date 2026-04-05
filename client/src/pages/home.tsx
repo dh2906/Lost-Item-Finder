@@ -16,7 +16,6 @@ const features = [
   },
   {
     icon: Camera,
-    badge: "AI 추천",
     highlighted: true,
     title: "사진으로 바로 찾기",
     description: "사진 한 장으로 비슷한 분실물과 습득물을 빠르게 비교해보세요.",
@@ -35,7 +34,6 @@ const actions = [
     title: "분실물 바로 찾아보기",
     description: "설명이나 사진으로 등록된 습득물과 빠르게 비교해보세요.",
     support: "바로 검색 시작",
-    benefit: "지금 필요한 건 복잡한 절차가 아니라 빠른 확인입니다.",
     icon: Search,
     primary: true,
     cta: "지금 찾기",
@@ -46,7 +44,6 @@ const actions = [
     title: "습득물 바로 등록하기",
     description: "주운 장소와 물건 정보를 남겨 주인을 더 빨리 찾을 수 있어요.",
     support: "빠르게 등록 완료",
-    benefit: "지금 등록해두면 찾는 사람에게 더 빨리 보여줄 수 있어요.",
     icon: Plus,
     primary: false,
     cta: "등록하기",
@@ -131,12 +128,6 @@ export default function Home() {
                       )}>
                         {action.description}
                       </p>
-                      <p className={cn(
-                        "mt-3 text-sm font-medium leading-6",
-                        action.primary ? "text-primary-foreground" : "text-foreground"
-                      )}>
-                        {action.benefit}
-                      </p>
                     </div>
                     <div className={cn(
                        "flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] border shadow-sm transition-all duration-250 group-hover:scale-105 group-hover:-translate-y-0.5",
@@ -190,11 +181,6 @@ export default function Home() {
                      )}>
                       <feature.icon className="h-5 w-5" />
                     </div>
-                    {feature.badge ? (
-                       <span className="inline-flex rounded-full border border-primary/18 bg-primary/12 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
-                         {feature.badge}
-                        </span>
-                    ) : null}
                   </div>
                   <h3 className="mt-4 text-base font-semibold text-foreground">{feature.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">{feature.description}</p>
@@ -211,9 +197,6 @@ export default function Home() {
           <div className="rounded-[30px] border border-border/70 bg-white/84 p-6 shadow-[0_22px_42px_-34px_rgba(27,31,59,0.18)] backdrop-blur-sm md:p-8">
             <div className="mb-7 flex flex-col gap-5 border-b border-border/70 pb-6 md:flex-row md:items-start md:justify-between">
               <div className="space-y-3.5">
-                <span className="inline-flex rounded-full border border-primary/10 bg-accent px-3 py-1 text-xs font-semibold text-primary">
-                    실시간 등록 흐름
-                </span>
                 <div className="space-y-3">
                   <h2 className="text-2xl font-bold tracking-tight text-foreground">{sectionTitle}</h2>
                   <Tabs value={tab} onValueChange={(value) => setTab(value as "found" | "lost")}>
@@ -265,7 +248,7 @@ export default function Home() {
             ) : (
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {items.map((item) => (
-                  <ItemCard key={item.id} item={item} variant="compact" />
+                  <ItemCard key={item.id} item={item} variant="compact" showDateTime />
                 ))}
               </div>
             )}

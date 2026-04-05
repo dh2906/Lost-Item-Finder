@@ -23,6 +23,7 @@ interface ItemCardProps {
   distanceText?: string;
   className?: string;
   variant?: "default" | "compact" | "list";
+  showDateTime?: boolean;
 }
 
 export function getDisplayTitle(item: Item) {
@@ -49,6 +50,7 @@ export function ItemCard({
   distanceText,
   className,
   variant = "default",
+  showDateTime = false,
 }: ItemCardProps) {
   const [isReasonExpanded, setIsExpanded] = useState(false);
   const reportLabel = item.reportType === "found" ? "습득" : "분실";
@@ -187,7 +189,11 @@ export function ItemCard({
                   <div className="flex items-center gap-2 leading-none">
                     <Calendar className="h-3.5 w-3.5 shrink-0 text-primary/50" />
                     <span className="pt-px font-medium text-slate-600">
-                      {format(new Date(item.date), "PPP", { locale: ko })}
+                      {format(
+                        new Date(item.date),
+                        showDateTime ? "PPP p" : "PPP",
+                        { locale: ko }
+                      )}
                     </span>
                   </div>
                 ) : null}
