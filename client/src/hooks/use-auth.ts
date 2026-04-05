@@ -3,7 +3,6 @@ import { useLocation } from "wouter";
 import { api } from "@shared/routes";
 import {
   AUTH_QUERY_KEY,
-  FAVORITES_QUERY_KEY,
   MATCH_NOTIFICATIONS_QUERY_KEY,
 } from "@/lib/query-keys";
 import { useToast } from "./use-toast";
@@ -47,7 +46,6 @@ export function useAuth() {
     },
     onSuccess: () => {
       queryClient.setQueryData(AUTH_QUERY_KEY, null);
-      queryClient.removeQueries({ queryKey: FAVORITES_QUERY_KEY });
       queryClient.removeQueries({ queryKey: MATCH_NOTIFICATIONS_QUERY_KEY });
       toast({ title: "로그아웃 되었습니다" });
       setLocation("/");
