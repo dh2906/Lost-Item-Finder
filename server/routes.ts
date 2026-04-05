@@ -2361,7 +2361,7 @@ export async function registerRoutes(
     }
   });
 
-  // --- Chat API ---
+// --- Chat API ---
   app.post("/api/chat/rooms", isAuthenticated, async (req, res) => {
     try {
       const { itemId, receiverId } = req.body;
@@ -2411,85 +2411,10 @@ export async function registerRoutes(
               id: true,
               title: true,
               reportType: true,
+              imageUrl: true, 
             },
           },
           sender: {
-            columns: { id: true, username: true, name: true }
-          },
-          receiver: {
-            columns: { id: true, username: true, name: true }
-          }
-        },
-        orderBy: desc(chatRooms.updatedAt),
-      });
-
-      const roomsWithUnread = await Promise.all(
-        rooms.map(async (room) => {
-          const unreadMessage = await db.query.chatMessages.findFirst({
-            where: and(
-              eq(chatMessages.roomId, room.id),
-              ne(chatMessages.senderId, userId),
-              or(
-                eq(chatMessages.isRead, 0),
-                isNull(chatMessages.isRead)
-              )
-            ),
-          });
-
-          const latestMessage = await db.query.chatMessages.findFirst({
-            columns: {
-              content: true,
-              senderId: true,
-              createdAt: true,
-            },
-            where: eq(chatMessages.roomId, room.id),
-            orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
-          });
-
-          const otherUser = room.senderId === userId ? room.receiver : room.sender;
-
-          return {
-            ...room,
-            otherUser,
-            hasUnread: Boolean(unreadMessage),
-            latestMessage: latestMessage
-              ? {
-                  content: latestMessage.content,
-                  senderId: latestMessage.senderId,
-                  createdAt: latestMessage.createdAt,
-                }
-              : null,
-          };
-        })
-      );
-
-      res.json(roomsWithUnread);
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: getErrorMessage(err) });
-    }
-  });
-
-app.get("/api/chat/rooms", isAuthenticated, async (req, res) => {
-    try {
-      const userId = req.user!.id;
-
-      const rooms = await db.query.chatRooms.findMany({
-        where: or(
-          eq(chatRooms.senderId, userId),
-          eq(chatRooms.receiverId, userId)
-        ),
-        with: {
-          item: {
-            columns: {
-              id: true,
-              title: true,
-              reportType: true,
-              imageUrl: true, // 🚀 수정 1: DB에서 물건 사진 URL도 같이 가져오도록 추가!
-            },
-          },
-          sender: {
-            // 만약 users 스키마에 nickname 컬럼이 있다면 여기에 nickname: true 도 추가해 주세요.
             columns: { id: true, username: true, name: true } 
           },
           receiver: {
@@ -2524,10 +2449,9 @@ app.get("/api/chat/rooms", isAuthenticated, async (req, res) => {
 
           const rawOtherUser = room.senderId === userId ? room.receiver : room.sender;
           
-          // 🚀 수정 2: 프론트엔드에서 otherUser.nickname으로 바로 쓸 수 있게 데이터 가공
           const otherUser = {
             ...rawOtherUser,
-            nickname: rawOtherUser.name ?? rawOtherUser.username ?? "알 수 없음",
+            nickname: rawOtherUser?.name ?? rawOtherUser?.username ?? "알 수 없음",
           };
           
           return {
@@ -2546,6 +2470,49 @@ app.get("/api/chat/rooms", isAuthenticated, async (req, res) => {
       );
 
       res.json(roomsWithUnread);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get("/api/chat/rooms/:id/messages", isAuthenticated, async (req, res) => {
+    try {
+      const roomId = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+      const userId = req.user!.id;
+
+      const room = await db.query.chatRooms.findFirst({
+        where: eq(chatRooms.id, roomId),
+      });
+
+      if (!room || (room.senderId !== userId && room.receiverId !== userId)) {
+        return res.status(403).json({ message: "접근 권한이 없습니다" });
+      }
+
+      await db.update(chatMessages)
+        .set({ isRead: 1 })
+        .where(
+          and(
+            eq(chatMessages.roomId, roomId),
+            ne(chatMessages.senderId, userId),
+            or(
+              eq(chatMessages.isRead, 0),
+              isNull(chatMessages.isRead)
+            )
+          )
+        );
+
+      const messages = await db.query.chatMessages.findMany({
+        where: eq(chatMessages.roomId, roomId),
+        with: {
+          sender: {
+            columns: { id: true, username: true, name: true }
+          }
+        },
+        orderBy: asc(chatMessages.createdAt),
+      });
+
+      res.json(messages);
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: getErrorMessage(err) });
@@ -2581,7 +2548,7 @@ app.get("/api/chat/rooms", isAuthenticated, async (req, res) => {
         updatedAt: new Date(),
       }).where(eq(chatRooms.id, roomId));
 
-      // 수신자에게 FCM 알림 발송 (실패해도 메시지 전송은 성공 처리)
+      // 수신자에게 FCM 알림 발송
       const receiverId = room.senderId === senderId ? room.receiverId : room.senderId;
       const [receiver, sender] = await Promise.all([
         db.query.users.findFirst({ where: eq(users.id, receiverId) }),
@@ -2589,7 +2556,6 @@ app.get("/api/chat/rooms", isAuthenticated, async (req, res) => {
       ]);
       if (receiver?.fcmToken) {
         const senderName = sender?.name ?? sender?.username ?? "누군가";
-        // sendFcmNotification은 내부적으로 에러를 처리하므로 void로 fire-and-forget
         void sendFcmNotification({
           fcmToken: receiver.fcmToken,
           title: `${senderName}님의 새 메시지`,
