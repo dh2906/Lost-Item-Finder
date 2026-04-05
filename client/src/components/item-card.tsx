@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { getPrimaryItemImageUrl } from "@shared/item-images";
 import type { Item } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
@@ -57,6 +58,7 @@ export function ItemCard({
   const statusLabel = item.status === "resolved" ? "해결 완료" : "진행 중";
   const isCompact = variant === "compact" || variant === "list";
   const displayTitle = getDisplayTitle(item);
+  const primaryImageUrl = getPrimaryItemImageUrl(item);
 
   const getMatchBadge = (scoreValue?: number) => {
     if (scoreValue === undefined) return null;
@@ -105,9 +107,9 @@ export function ItemCard({
               isCompact ? "aspect-[5/4]" : "aspect-[4/3]"
             )}
           >
-            {item.imageUrl ? (
+            {primaryImageUrl ? (
               <img
-                src={item.imageUrl}
+                src={primaryImageUrl}
                 alt={displayTitle}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
               />

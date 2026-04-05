@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { getPrimaryItemImageUrl } from "@shared/item-images";
 import type { Item } from "@shared/schema";
 
 type FilterType = "all" | "active" | "resolved";
@@ -536,9 +537,9 @@ export default function MyPage() {
                     <div className="grid gap-0 sm:grid-cols-[180px_minmax(0,1fr)]">
                       <Link href={`/item/${item.id}`} className="block h-full">
                         <div className="relative h-full min-h-[180px] overflow-hidden bg-muted">
-                          {item.imageUrl ? (
+                          {getPrimaryItemImageUrl(item) ? (
                             <img
-                              src={item.imageUrl}
+                              src={getPrimaryItemImageUrl(item)}
                               alt={item.title}
                               className="h-full w-full object-cover"
                             />

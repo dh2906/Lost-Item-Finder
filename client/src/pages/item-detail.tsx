@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
@@ -20,7 +21,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+  type CarouselApi,
+} from "@/components/ui/carousel";
 import { cn } from "@/lib/utils";
+import { normalizeItemImageUrls } from "@shared/item-images";
 
 export default function ItemDetail() {
   const [, params] = useRoute("/item/:id");
@@ -37,6 +47,28 @@ export default function ItemDetail() {
     isOwnedLostItem
   );
   const updateMatchStatus = useUpdateMatchStatus();
+  const [carouselApi, setCarouselApi] = useState<CarouselApi>();
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+  const itemImageUrls = item ? normalizeItemImageUrls(item) : [];
+
+  useEffect(() => {
+    if (!carouselApi) {
+      return;
+    }
+
+    const syncSelectedIndex = () => {
+      setSelectedImageIndex(carouselApi.selectedScrollSnap());
+    };
+
+    syncSelectedIndex();
+    carouselApi.on("select", syncSelectedIndex);
+    carouselApi.on("reInit", syncSelectedIndex);
+
+    return () => {
+      carouselApi.off("select", syncSelectedIndex);
+      carouselApi.off("reInit", syncSelectedIndex);
+    };
+  }, [carouselApi]);
 
   if (isLoading) {
     return (
@@ -101,12 +133,58 @@ export default function ItemDetail() {
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px] xl:gap-8">
           <div className="space-y-5">
             <div className="relative mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-muted/70 shadow-card">
-              {item.imageUrl ? (
-                <img
-                  src={item.imageUrl}
-                  alt={item.title}
-                  className="max-h-[540px] w-full object-cover"
-                />
+              {itemImageUrls.length > 0 ? (
+                <>
+                  <Carousel
+                    setApi={setCarouselApi}
+                    opts={{ loop: itemImageUrls.length > 1 }}
+                    className="w-full"
+                  >
+                    <CarouselContent className="-ml-0">
+                      {itemImageUrls.map((imageUrl, index) => (
+                        <CarouselItem key={`${imageUrl}-${index}`} className="pl-0">
+                          <div className="aspect-[4/3] bg-muted">
+                            <img
+                              src={imageUrl}
+                              alt={`${item.title} 이미지 ${index + 1}`}
+                              className="h-full w-full object-cover"
+                            />
+                          </div>
+                        </CarouselItem>
+                      ))}
+                    </CarouselContent>
+                    {itemImageUrls.length > 1 ? (
+                      <>
+                        <CarouselPrevious className="left-4 h-11 w-11 border-white/70 bg-white/90 text-foreground shadow-lg hover:bg-white" />
+                        <CarouselNext className="right-4 h-11 w-11 border-white/70 bg-white/90 text-foreground shadow-lg hover:bg-white" />
+                      </>
+                    ) : null}
+                  </Carousel>
+
+                  {itemImageUrls.length > 1 ? (
+                    <>
+                      <div className="absolute bottom-4 right-4 rounded-full bg-black/65 px-3 py-1 text-sm font-medium text-white">
+                        {selectedImageIndex + 1} / {itemImageUrls.length}
+                      </div>
+                      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2 rounded-full bg-black/35 px-3 py-2 backdrop-blur-sm">
+                        {itemImageUrls.map((imageUrl, index) => (
+                          <button
+                            key={`${imageUrl}-dot-${index}`}
+                            type="button"
+                            onClick={() => carouselApi?.scrollTo(index)}
+                            className={cn(
+                              "h-2.5 w-2.5 rounded-full transition-all",
+                              index === selectedImageIndex
+                                ? "bg-white"
+                                : "bg-white/45 hover:bg-white/70"
+                            )}
+                            aria-label={`${index + 1}번째 이미지 보기`}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                </>
               ) : (
                 <div className="flex aspect-[4/3] items-center justify-center">
                   <Tag className="h-12 w-12 text-muted-foreground/30" />
@@ -123,6 +201,31 @@ export default function ItemDetail() {
                 {item.reportType === "found" ? "습득" : "분실"}
               </Badge>
             </div>
+
+            {itemImageUrls.length > 1 ? (
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {itemImageUrls.map((imageUrl, index) => (
+                  <button
+                    key={`${imageUrl}-thumbnail-${index}`}
+                    type="button"
+                    onClick={() => carouselApi?.scrollTo(index)}
+                    className={cn(
+                      "relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border-2 bg-muted transition-all",
+                      index === selectedImageIndex
+                        ? "border-primary shadow-[0_14px_24px_-18px_hsl(var(--primary)/0.42)]"
+                        : "border-transparent hover:border-primary/30"
+                    )}
+                    aria-label={`${index + 1}번째 이미지 썸네일`}
+                  >
+                    <img
+                      src={imageUrl}
+                      alt={`${item.title} 썸네일 ${index + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                <div className="rounded-[24px] border border-border/70 bg-white/88 p-4 shadow-sm">

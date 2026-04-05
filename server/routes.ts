@@ -5,6 +5,7 @@ import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
+import { normalizeItemImageUrls } from "@shared/item-images";
 import { z } from "zod";
 import OpenAI from "openai";
 import { db } from "./db";
@@ -497,6 +498,8 @@ const KEYWORD_SYNONYM_GROUPS = [
 type NormalizableItemMetadata = {
   title?: string | null;
   description?: string | null;
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
   itemCategory?: string | null;
   color?: string | null;
   size?: string | null;
@@ -557,6 +560,12 @@ function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
     normalizedItem.description = normalizePlainText(
       item.description
     ) as T["description"];
+  }
+
+  if (item.imageUrl !== undefined || item.imageUrls !== undefined) {
+    const normalizedImageUrls = normalizeItemImageUrls(item);
+    normalizedItem.imageUrls = normalizedImageUrls as T["imageUrls"];
+    normalizedItem.imageUrl = (normalizedImageUrls[0] ?? null) as T["imageUrl"];
   }
 
   if (item.itemCategory !== undefined) {
@@ -1350,6 +1359,7 @@ type FoundItemForAutoMatch = {
   title?: string | null;
   description?: string | null;
   imageUrl?: string | null;
+  imageUrls?: string[] | null;
   itemCategory?: string | null;
   color?: string | null;
   size?: string | null;
@@ -1961,7 +1971,10 @@ export async function registerRoutes(
         item.reportType === "found" &&
         item.status === "active" &&
         (Object.keys(normalizedInput).some(
-          (field) => embeddingRelevantFields.has(field) || field === "imageUrl"
+          (field) =>
+            embeddingRelevantFields.has(field) ||
+            field === "imageUrl" ||
+            field === "imageUrls"
         ) ||
           normalizedInput.status === "active");
       const canQueueAutomaticMatching =
