@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { MAX_ITEM_IMAGE_COUNT } from "./item-images";
 
 export const reportTypes = ["lost", "found"] as const;
 export type ReportType = (typeof reportTypes)[number];
@@ -29,6 +30,7 @@ export const items = pgTable("items", {
   title: text("title").notNull(),
   description: text("description"),
   imageUrl: text("image_url"),
+  imageUrls: jsonb("image_urls").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   itemCategory: text("item_category"),
   color: text("color"),
   size: text("size"),
@@ -80,6 +82,8 @@ export const itemMatches = pgTable(
 const itemBaseSchema = createInsertSchema(items, {
   reportType: z.enum(reportTypes),
   status: z.enum(itemStatuses),
+  imageUrl: z.string().trim().min(1).optional(),
+  imageUrls: z.array(z.string().trim().min(1)).max(MAX_ITEM_IMAGE_COUNT).optional(),
 }).omit({
   id: true,
   userId: true,
