@@ -57,6 +57,21 @@ export async function ensureChatSchema(): Promise<void> {
   `);
 }
 
+export async function ensureItemImageSchema(): Promise<void> {
+  await pool.query(`ALTER TABLE items ADD COLUMN IF NOT EXISTS image_url text;`);
+  await pool.query(
+    `ALTER TABLE items ADD COLUMN IF NOT EXISTS image_urls jsonb NOT NULL DEFAULT '[]'::jsonb;`
+  );
+  await pool.query(`
+    UPDATE items
+    SET image_urls = CASE
+      WHEN image_url IS NULL OR btrim(image_url) = '' THEN '[]'::jsonb
+      ELSE jsonb_build_array(image_url)
+    END
+    WHERE image_urls IS NULL OR jsonb_typeof(image_urls) <> 'array';
+  `);
+}
+
 export async function ensureItemMatchSchema(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS item_matches (
