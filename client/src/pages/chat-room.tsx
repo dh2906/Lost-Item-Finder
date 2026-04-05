@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRoute } from "wouter";
-import { ArrowLeft, Send, ChevronRight, Image as ImageIcon } from "lucide-react"; // 🚀 아이콘 추가
+import { isSameDay } from "date-fns";
+import { ArrowLeft, Send, ChevronRight, Image as ImageIcon } from "lucide-react"; 
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -93,7 +94,6 @@ export default function ChatRoomPage() {
     <Layout>
       <div className="container flex h-[calc(100dvh-120px)] min-h-0 flex-col overflow-hidden py-3 md:h-[calc(100dvh-124px)] md:py-4 xl:max-w-[960px]">
         
-        {/* 🚀 수정된 상단 헤더 (뒤로가기 + 당근마켓 스타일 물건 배너) */}
         <div className="mb-3 flex items-center gap-3">
           <Button variant="ghost" size="icon" asChild className="shrink-0 rounded-full hover:bg-secondary">
             <Link href="/chats">
