@@ -1,7 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRoute } from "wouter";
-import { isSameDay } from "date-fns";
-import { ArrowLeft, Send } from "lucide-react";
+import { ArrowLeft, Send, ChevronRight, Image as ImageIcon } from "lucide-react"; // 🚀 아이콘 추가
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -93,16 +92,53 @@ export default function ChatRoomPage() {
   return (
     <Layout>
       <div className="container flex h-[calc(100dvh-120px)] min-h-0 flex-col overflow-hidden py-3 md:h-[calc(100dvh-124px)] md:py-4 xl:max-w-[960px]">
-        <div className="mb-2 flex items-center gap-2">
-          <Button variant="ghost" size="sm" asChild className="w-fit rounded-full">
+        
+        {/* 🚀 수정된 상단 헤더 (뒤로가기 + 당근마켓 스타일 물건 배너) */}
+        <div className="mb-3 flex items-center gap-3">
+          <Button variant="ghost" size="icon" asChild className="shrink-0 rounded-full hover:bg-secondary">
             <Link href="/chats">
-              <ArrowLeft className="mr-1 h-4 w-4" />
-              채팅 목록
+              <ArrowLeft className="h-5 w-5" />
+              <span className="sr-only">채팅 목록</span>
             </Link>
           </Button>
-          <h1 className="truncate text-lg font-semibold">
-            {room?.item?.title ?? "채팅"}
-          </h1>
+
+          {room?.item ? (
+            <Link href={`/items/${room.itemId}`}>
+              <a className="flex flex-1 items-center gap-3 rounded-2xl border border-border/70 bg-white/90 p-2 shadow-sm transition-all hover:bg-secondary/40 hover:shadow">
+                
+                {/* 물건 썸네일 */}
+                <div className="shrink-0">
+                  {room.item.imageUrl ? (
+                    <img 
+                      src={room.item.imageUrl} 
+                      alt={room.item.title} 
+                      className="h-11 w-11 rounded-xl border border-border/50 object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/50 bg-secondary/50 text-muted-foreground">
+                      <ImageIcon className="h-5 w-5 opacity-50" />
+                    </div>
+                  )}
+                </div>
+
+                {/* 물건 제목 및 상태 */}
+                <div className="flex min-w-0 flex-1 flex-col justify-center">
+                  <p className="truncate text-sm font-bold text-foreground">
+                    {room.item.title}
+                  </p>
+                  <p className="text-[11px] font-semibold text-primary">
+                    {room.item.reportType === "found" ? "습득물" : "분실물"}
+                  </p>
+                </div>
+
+                <ChevronRight className="mr-2 h-5 w-5 shrink-0 text-muted-foreground/50" />
+              </a>
+            </Link>
+          ) : (
+            <h1 className="truncate text-lg font-semibold flex-1">
+              채팅
+            </h1>
+          )}
         </div>
 
         <Card className="flex h-full min-h-0 flex-1 flex-col overflow-hidden border-border/70 bg-white/90">
