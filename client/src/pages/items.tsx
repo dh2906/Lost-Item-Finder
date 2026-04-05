@@ -1,47 +1,188 @@
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { PackageOpen, PlusCircle, Search as SearchIcon } from "lucide-react";
+import {
+  Filter,
+  PackageOpen,
+  PlusCircle,
+  RotateCcw,
+  Search as SearchIcon,
+} from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ItemCard } from "@/components/item-card";
 import { useItems } from "@/hooks/use-items";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-function getTabFromSearch(search: string): "found" | "lost" {
+type ItemTab = "found" | "lost";
+type ItemDateRange = "all" | "7d" | "30d" | "90d";
+type ItemSortOrder = "latest" | "oldest";
+
+type ItemsPageFilters = {
+  type: ItemTab;
+  category: string;
+  color: string;
+  dateRange: ItemDateRange;
+  sort: ItemSortOrder;
+};
+
+const DEFAULT_FILTERS = {
+  category: "",
+  color: "",
+  dateRange: "all" as const,
+  sort: "latest" as const,
+};
+
+const dateRangeOptions: Array<{ value: ItemDateRange; label: string }> = [
+  { value: "all", label: "전체 기간" },
+  { value: "7d", label: "최근 7일" },
+  { value: "30d", label: "최근 30일" },
+  { value: "90d", label: "최근 90일" },
+];
+
+const sortOptions: Array<{ value: ItemSortOrder; label: string }> = [
+  { value: "latest", label: "최신순" },
+  { value: "oldest", label: "오래된순" },
+];
+
+function getValidDateRange(value: string | null): ItemDateRange {
+  return dateRangeOptions.some((option) => option.value === value)
+    ? (value as ItemDateRange)
+    : "all";
+}
+
+function getValidSortOrder(value: string | null): ItemSortOrder {
+  return sortOptions.some((option) => option.value === value)
+    ? (value as ItemSortOrder)
+    : "latest";
+}
+
+function getFiltersFromSearch(search: string): ItemsPageFilters {
   const params = new URLSearchParams(search);
-  return params.get("type") === "lost" ? "lost" : "found";
+
+  return {
+    type: params.get("type") === "lost" ? "lost" : "found",
+    category: params.get("category")?.trim() ?? "",
+    color: params.get("color")?.trim() ?? "",
+    dateRange: getValidDateRange(params.get("dateRange")),
+    sort: getValidSortOrder(params.get("sort")),
+  };
+}
+
+function buildItemsUrl(filters: ItemsPageFilters): string {
+  const params = new URLSearchParams();
+  params.set("type", filters.type);
+
+  if (filters.category) {
+    params.set("category", filters.category);
+  }
+
+  if (filters.color) {
+    params.set("color", filters.color);
+  }
+
+  if (filters.dateRange !== "all") {
+    params.set("dateRange", filters.dateRange);
+  }
+
+  if (filters.sort !== "latest") {
+    params.set("sort", filters.sort);
+  }
+
+  return `/items?${params.toString()}`;
+}
+
+function getActiveFilterCount(filters: ItemsPageFilters): number {
+  return [
+    Boolean(filters.category),
+    Boolean(filters.color),
+    filters.dateRange !== "all",
+    filters.sort !== "latest",
+  ].filter(Boolean).length;
 }
 
 export default function ItemsPage() {
   const [, setLocation] = useLocation();
-  const [tab, setTab] = useState<"found" | "lost">(() => getTabFromSearch(window.location.search));
-  const { data: items, isLoading } = useItems({ type: tab });
+  const [filters, setFilters] = useState<ItemsPageFilters>(() =>
+    getFiltersFromSearch(window.location.search)
+  );
+  const [draftFilters, setDraftFilters] = useState<ItemsPageFilters>(() =>
+    getFiltersFromSearch(window.location.search)
+  );
+
+  const { data: items, isLoading } = useItems({
+    type: filters.type,
+    category: filters.category || undefined,
+    color: filters.color || undefined,
+    dateRange: filters.dateRange === "all" ? undefined : filters.dateRange,
+    sort: filters.sort === "latest" ? undefined : filters.sort,
+  });
 
   useEffect(() => {
-    const syncTabFromUrl = () => {
-      setTab(getTabFromSearch(window.location.search));
+    const syncFiltersFromUrl = () => {
+      const nextFilters = getFiltersFromSearch(window.location.search);
+      setFilters(nextFilters);
+      setDraftFilters(nextFilters);
     };
 
-    syncTabFromUrl();
-    window.addEventListener("popstate", syncTabFromUrl);
+    syncFiltersFromUrl();
+    window.addEventListener("popstate", syncFiltersFromUrl);
 
     return () => {
-      window.removeEventListener("popstate", syncTabFromUrl);
+      window.removeEventListener("popstate", syncFiltersFromUrl);
     };
   }, []);
 
-  const title = tab === "found" ? "등록된 습득물 전체보기" : "등록된 분실물 전체보기";
+  const title =
+    filters.type === "found" ? "등록된 습득물 전체보기" : "등록된 분실물 전체보기";
   const description =
-    tab === "found"
-      ? "지금까지 올라온 습득물 게시물을 한 번에 살펴보고 비슷한 물건이 있는지 확인해보세요."
-      : "지금까지 올라온 분실물 게시물을 한 번에 살펴보고 관련 제보가 필요한 물건을 확인해보세요.";
+    filters.type === "found"
+      ? "카테고리, 색상, 날짜 조건으로 습득물 게시물을 빠르게 좁혀서 비슷한 물건을 찾아보세요."
+      : "카테고리, 색상, 날짜 조건으로 분실물 게시물을 좁혀서 필요한 제보를 더 빨리 확인해보세요.";
+  const emptyLabel = filters.type === "found" ? "습득물" : "분실물";
+  const activeFilterCount = getActiveFilterCount(filters);
+  const hasActiveFilters = activeFilterCount > 0;
 
-  const emptyLabel = tab === "found" ? "습득물" : "분실물";
+  const applyFilters = (nextFilters: ItemsPageFilters) => {
+    const normalizedFilters = {
+      ...nextFilters,
+      category: nextFilters.category.trim(),
+      color: nextFilters.color.trim(),
+    };
+
+    setFilters(normalizedFilters);
+    setDraftFilters(normalizedFilters);
+    void setLocation(buildItemsUrl(normalizedFilters));
+  };
 
   const handleTabChange = (value: string) => {
-    const nextTab = value === "lost" ? "lost" : "found";
-    setTab(nextTab);
-    void setLocation(`/items?type=${nextTab}`);
+    const nextType = value === "lost" ? "lost" : "found";
+    applyFilters({
+      ...filters,
+      type: nextType,
+    });
+  };
+
+  const handleFilterSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    applyFilters({
+      ...draftFilters,
+      type: filters.type,
+    });
+  };
+
+  const handleResetFilters = () => {
+    applyFilters({
+      type: filters.type,
+      ...DEFAULT_FILTERS,
+    });
   };
 
   return (
@@ -54,24 +195,38 @@ export default function ItemsPage() {
             </div>
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="space-y-3">
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">{title}</h1>
-                <p className="max-w-2xl text-base leading-7 text-muted-foreground">{description}</p>
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                  {title}
+                </h1>
+                <p className="max-w-2xl text-base leading-7 text-muted-foreground">
+                  {description}
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-3">
-                <Tabs value={tab} onValueChange={handleTabChange}>
+                <Tabs value={filters.type} onValueChange={handleTabChange}>
                   <TabsList className="h-11 rounded-full border border-border/70 bg-white/90 p-1 shadow-sm">
-                    <TabsTrigger value="found" className="rounded-full px-4 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    <TabsTrigger
+                      value="found"
+                      className="rounded-full px-4 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
                       습득물
                     </TabsTrigger>
-                    <TabsTrigger value="lost" className="rounded-full px-4 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                    <TabsTrigger
+                      value="lost"
+                      className="rounded-full px-4 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    >
                       분실물
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
-                <Button asChild variant="outline" className="rounded-full border-border/70 bg-white/92 px-4 shadow-sm">
-                  <Link href={tab === "found" ? "/report/found" : "/report/lost"}>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="rounded-full border-border/70 bg-white/92 px-4 shadow-sm"
+                >
+                  <Link href={filters.type === "found" ? "/report/found" : "/report/lost"}>
                     <PlusCircle className="mr-2 h-4 w-4" />
-                    {tab === "found" ? "습득물 등록" : "분실물 신고"}
+                    {filters.type === "found" ? "습득물 등록" : "분실물 신고"}
                   </Link>
                 </Button>
               </div>
@@ -82,54 +237,207 @@ export default function ItemsPage() {
 
       <section className="pb-16 pt-10">
         <div className="container mx-auto max-w-6xl px-5">
-          {isLoading ? (
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {[1, 2, 3, 4, 5].map((index) => (
-                <div key={index} className="h-[290px] animate-pulse rounded-[26px] bg-muted" />
-              ))}
-            </div>
-          ) : !items || items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
-              <div className="mb-4 rounded-full border border-border/70 bg-white p-4 shadow-sm">
-                <PackageOpen className="h-8 w-8 text-muted-foreground/55" />
-              </div>
-              <h3 className="mb-2 text-lg font-bold text-foreground">등록된 {emptyLabel}이 없어요</h3>
-              <p className="mb-8 max-w-sm text-center leading-relaxed text-muted-foreground">
-                첫 게시물을 등록해서 더 빠르게 연결을 시작해보세요.
-              </p>
-              <Button asChild className="h-11 rounded-full px-6 font-medium">
-                <Link href={tab === "found" ? "/report/found" : "/report/lost"}>
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  {tab === "found" ? "습득물 등록하기" : "분실물 신고하기"}
-                </Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between border-b border-border/60 pb-4">
-                <h2 className="flex items-center gap-3 text-2xl font-bold text-foreground">
-                  전체 게시물
-                  <span className="inline-flex items-center justify-center rounded-full bg-accent px-3 py-0.5 text-sm font-bold text-primary">
-                    {items.length}건
-                  </span>
-                </h2>
-                {tab === "found" && (
-                  <Button asChild variant="outline" className="rounded-full px-4">
-                    <Link href="/search">
-                      <SearchIcon className="mr-2 h-4 w-4" />
-                      AI로 찾기
-                    </Link>
-                  </Button>
-                )}
-              </div>
+          <div className="space-y-6">
+            <form
+              onSubmit={handleFilterSubmit}
+              className="rounded-[28px] border border-border/70 bg-white/92 p-5 shadow-[0_20px_40px_-32px_rgba(27,31,59,0.2)]"
+            >
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Filter className="h-4 w-4 text-primary" />
+                      게시글 필터
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      카테고리, 색상, 날짜, 정렬 기준으로 목록을 좁혀보세요.
+                    </p>
+                  </div>
+                  {hasActiveFilters ? (
+                    <div className="inline-flex items-center self-start rounded-full bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary lg:self-auto">
+                      적용된 필터 {activeFilterCount}개
+                    </div>
+                  ) : null}
+                </div>
 
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {items.map((item) => (
-                  <ItemCard key={item.id} item={item} />
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_160px_auto]">
+                  <div className="space-y-2">
+                    <label htmlFor="category-filter" className="text-sm font-medium text-foreground">
+                      카테고리
+                    </label>
+                    <Input
+                      id="category-filter"
+                      value={draftFilters.category}
+                      onChange={(event) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          category: event.target.value,
+                        }))
+                      }
+                      placeholder="예: 지갑"
+                      className="rounded-2xl"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="color-filter" className="text-sm font-medium text-foreground">
+                      색상
+                    </label>
+                    <Input
+                      id="color-filter"
+                      value={draftFilters.color}
+                      onChange={(event) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          color: event.target.value,
+                        }))
+                      }
+                      placeholder="예: 검정"
+                      className="rounded-2xl"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">날짜</label>
+                    <Select
+                      value={draftFilters.dateRange}
+                      onValueChange={(value) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          dateRange: value as ItemDateRange,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-11 rounded-2xl">
+                        <SelectValue placeholder="기간 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {dateRangeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">정렬</label>
+                    <Select
+                      value={draftFilters.sort}
+                      onValueChange={(value) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          sort: value as ItemSortOrder,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-11 rounded-2xl">
+                        <SelectValue placeholder="정렬 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sortOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-end gap-2">
+                    <Button type="submit" className="h-11 flex-1 rounded-2xl px-4">
+                      적용
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleResetFilters}
+                      className="h-11 rounded-2xl px-4"
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      초기화
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </form>
+
+            {isLoading ? (
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {[1, 2, 3, 4, 5].map((index) => (
+                  <div key={index} className="h-[290px] animate-pulse rounded-[26px] bg-muted" />
                 ))}
               </div>
-            </div>
-          )}
+            ) : !items || items.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
+                <div className="mb-4 rounded-full border border-border/70 bg-white p-4 shadow-sm">
+                  <PackageOpen className="h-8 w-8 text-muted-foreground/55" />
+                </div>
+                <h3 className="mb-2 text-lg font-bold text-foreground">
+                  {hasActiveFilters
+                    ? `조건에 맞는 ${emptyLabel}이 없어요`
+                    : `등록된 ${emptyLabel}이 없어요`}
+                </h3>
+                <p className="mb-8 max-w-sm text-center leading-relaxed text-muted-foreground">
+                  {hasActiveFilters
+                    ? "카테고리, 색상, 날짜 조건을 바꿔서 다시 확인해보세요."
+                    : "첫 게시물을 등록해서 더 빠르게 연결을 시작해보세요."}
+                </p>
+                <div className="flex flex-wrap justify-center gap-3">
+                  {hasActiveFilters ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleResetFilters}
+                      className="h-11 rounded-full px-6 font-medium"
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      필터 초기화
+                    </Button>
+                  ) : null}
+                  <Button asChild className="h-11 rounded-full px-6 font-medium">
+                    <Link href={filters.type === "found" ? "/report/found" : "/report/lost"}>
+                      <PlusCircle className="mr-2 h-4 w-4" />
+                      {filters.type === "found" ? "습득물 등록하기" : "분실물 신고하기"}
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="flex items-center gap-3 text-2xl font-bold text-foreground">
+                    전체 게시물
+                    <span className="inline-flex items-center justify-center rounded-full bg-accent px-3 py-0.5 text-sm font-bold text-primary">
+                      {items.length}건
+                    </span>
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {hasActiveFilters ? (
+                      <span className="inline-flex items-center rounded-full border border-primary/15 bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
+                        필터 적용 중
+                      </span>
+                    ) : null}
+                    {filters.type === "found" ? (
+                      <Button asChild variant="outline" className="rounded-full px-4">
+                        <Link href="/search">
+                          <SearchIcon className="mr-2 h-4 w-4" />
+                          AI로 찾기
+                        </Link>
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {items.map((item) => (
+                    <ItemCard key={item.id} item={item} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </Layout>
