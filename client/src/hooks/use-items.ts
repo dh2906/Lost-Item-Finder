@@ -4,6 +4,7 @@ import {
   buildUrl,
   type ItemInput,
   type ItemResponse,
+  type ItemsListFilters,
   type ItemsListResponse,
   type MyItemsResponse,
   type UpdateItemInput,
@@ -20,12 +21,16 @@ function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: strin
   return result.data;
 }
 
-export function useItems(filters?: { type?: 'lost' | 'found', search?: string }) {
+export function useItems(filters?: Partial<ItemsListFilters>) {
   const queryParams = new URLSearchParams();
-  if (filters?.type) queryParams.set('type', filters.type);
-  if (filters?.search) queryParams.set('search', filters.search);
+  if (filters?.type) queryParams.set("type", filters.type);
+  if (filters?.search) queryParams.set("search", filters.search);
+  if (filters?.category) queryParams.set("category", filters.category);
+  if (filters?.color) queryParams.set("color", filters.color);
+  if (filters?.dateRange) queryParams.set("dateRange", filters.dateRange);
+  if (filters?.sort) queryParams.set("sort", filters.sort);
   
-  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
   const url = `${api.items.list.path}${queryString}`;
 
   return useQuery({
