@@ -5,12 +5,14 @@ export interface ChatUser {
   id: number;
   username: string;
   name: string | null;
+  nickname?: string; //백엔드에서 가공해서 보내주는 닉네임
 }
 
 export interface ChatItem {
   id: number;
   title: string;
   reportType: string;
+  imageUrl?: string | null;
 }
 
 export interface ChatRoom {
@@ -29,6 +31,7 @@ export interface ChatRoom {
   item?: ChatItem;
   sender?: ChatUser;
   receiver?: ChatUser;
+  otherUser?: ChatUser;
 }
 
 export interface ChatMessage {
@@ -63,7 +66,9 @@ export function useChatMessages(roomId: number) {
   return useQuery<ChatMessage[]>({
     queryKey: ["/api/chat/rooms", roomId, "messages"],
     queryFn: async () => {
-      const res = await fetch(`/api/chat/rooms/${roomId}/messages`, { credentials: "include" });
+      const res = await fetch(`/api/chat/rooms/${roomId}/messages`, {
+        credentials: "include",
+      });
       if (!res.ok) {
         throw new Error("채팅 메시지를 불러오지 못했습니다");
       }
@@ -79,11 +84,17 @@ export function useSendChatMessage(roomId: number) {
 
   return useMutation({
     mutationFn: async (content: string) => {
-      const res = await apiRequest("POST", `/api/chat/rooms/${roomId}/messages`, { content });
+      const res = await apiRequest(
+        "POST",
+        `/api/chat/rooms/${roomId}/messages`,
+        { content }
+      );
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/chat/rooms", roomId, "messages"] });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/chat/rooms", roomId, "messages"],
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/chat/rooms"] });
     },
   });

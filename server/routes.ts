@@ -2446,8 +2446,11 @@ export async function registerRoutes(
             orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
           });
 
+          const otherUser = room.senderId === userId ? room.receiver : room.sender;
+
           return {
             ...room,
+            otherUser,
             hasUnread: Boolean(unreadMessage),
             latestMessage: latestMessage
               ? {
@@ -2467,43 +2470,82 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/chat/rooms/:id/messages", isAuthenticated, async (req, res) => {
+app.get("/api/chat/rooms", isAuthenticated, async (req, res) => {
     try {
-      const roomId = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
       const userId = req.user!.id;
 
-      const room = await db.query.chatRooms.findFirst({
-        where: eq(chatRooms.id, roomId),
-      });
-
-      if (!room || (room.senderId !== userId && room.receiverId !== userId)) {
-        return res.status(403).json({ message: "접근 권한이 없습니다" });
-      }
-
-      await db.update(chatMessages)
-        .set({ isRead: 1 })
-        .where(
-          and(
-            eq(chatMessages.roomId, roomId),
-            ne(chatMessages.senderId, userId),
-            or(
-              eq(chatMessages.isRead, 0),
-              isNull(chatMessages.isRead)
-            )
-          )
-        );
-
-      const messages = await db.query.chatMessages.findMany({
-        where: eq(chatMessages.roomId, roomId),
+      const rooms = await db.query.chatRooms.findMany({
+        where: or(
+          eq(chatRooms.senderId, userId),
+          eq(chatRooms.receiverId, userId)
+        ),
         with: {
+          item: {
+            columns: {
+              id: true,
+              title: true,
+              reportType: true,
+              imageUrl: true, // 🚀 수정 1: DB에서 물건 사진 URL도 같이 가져오도록 추가!
+            },
+          },
           sender: {
+            // 만약 users 스키마에 nickname 컬럼이 있다면 여기에 nickname: true 도 추가해 주세요.
+            columns: { id: true, username: true, name: true } 
+          },
+          receiver: {
             columns: { id: true, username: true, name: true }
           }
         },
-        orderBy: asc(chatMessages.createdAt),
+        orderBy: desc(chatRooms.updatedAt),
       });
 
-      res.json(messages);
+      const roomsWithUnread = await Promise.all(
+        rooms.map(async (room) => {
+          const unreadMessage = await db.query.chatMessages.findFirst({
+            where: and(
+              eq(chatMessages.roomId, room.id),
+              ne(chatMessages.senderId, userId),
+              or(
+                eq(chatMessages.isRead, 0),
+                isNull(chatMessages.isRead)
+              )
+            ),
+          });
+
+          const latestMessage = await db.query.chatMessages.findFirst({
+            columns: {
+              content: true,
+              senderId: true,
+              createdAt: true,
+            },
+            where: eq(chatMessages.roomId, room.id),
+            orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
+          });
+
+          const rawOtherUser = room.senderId === userId ? room.receiver : room.sender;
+          
+          // 🚀 수정 2: 프론트엔드에서 otherUser.nickname으로 바로 쓸 수 있게 데이터 가공
+          const otherUser = {
+            ...rawOtherUser,
+            nickname: rawOtherUser.name ?? rawOtherUser.username ?? "알 수 없음",
+          };
+          
+          return {
+            ...room,
+            otherUser, // 가공된 otherUser 객체를 내려줍니다.
+            hasUnread: Boolean(unreadMessage),
+            latestMessage: latestMessage
+              ? {
+                  content: latestMessage.content,
+                  senderId: latestMessage.senderId,
+                  createdAt: latestMessage.createdAt,
+                }
+              : null,
+          };
+        })
+      );
+
+      res.json(roomsWithUnread);
     } catch (err) {
       console.error(err);
       res.status(500).json({ message: getErrorMessage(err) });
