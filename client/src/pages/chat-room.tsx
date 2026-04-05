@@ -122,7 +122,7 @@ export default function ChatRoomPage() {
 
           {room?.item ? (
             <Link
-              href={`/items/${room.itemId}`}
+              href={`/item/${room.itemId}`}
               className="flex flex-1 items-center gap-3 rounded-2xl border border-border/70 bg-white/90 p-2 shadow-sm transition-all hover:bg-secondary/40 hover:shadow"
             >
               {" "}
