@@ -39,67 +39,69 @@ export default function ChatsPage() {
                     room.latestMessage?.createdAt ?? room.updatedAt
                   );
 
-                  const otherUser = room.otherUser; 
+                  const otherUser = room.otherUser;
                   const imageUrl = room.item?.imageUrl;
 
                   return (
-                    <Link key={room.id} href={`/chat/${room.id}`}>
-                      <a className="block rounded-[20px] border border-border/70 bg-secondary/10 p-4 transition-colors hover:bg-secondary/30">
-                        <div className="flex items-center gap-4">
-                          <div className="shrink-0">
-                            {imageUrl ? (
-                              <img
-                                src={imageUrl}
-                                alt={room.item?.title || "물건 사진"}
-                                className="h-14 w-14 rounded-xl border border-border/50 object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-border/50 bg-secondary/50 text-muted-foreground">
-                                <ImageIcon className="h-6 w-6 opacity-50" />
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-foreground">
-                                {otherUser?.nickname}
-                              </p>
-                              <span className="truncate text-xs text-muted-foreground max-w-[120px]">
-                                {room.item?.title ?? `게시물 #${room.itemId}`}
-                              </span>
-                              {room.hasUnread && (
-                                <span
-                                  className="h-2 w-2 rounded-full bg-primary"
-                                  aria-label="읽지 않은 메시지 있음"
-                                />
-                              )}
+                    <Link
+                      key={room.id}
+                      href={`/chat/${room.id}`}
+                      className="block rounded-[20px] border border-border/70 bg-secondary/10 p-4 transition-colors hover:bg-secondary/30"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="shrink-0">
+                          {imageUrl ? (
+                            <img
+                              src={imageUrl}
+                              alt={room.item?.title || "물건 사진"}
+                              className="h-14 w-14 rounded-xl border border-border/50 object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-border/50 bg-secondary/50 text-muted-foreground">
+                              <ImageIcon className="h-6 w-6 opacity-50" />
                             </div>
-                            <p
-                              className={`mt-1 truncate text-sm ${
-                                room.hasUnread
-                                  ? "font-medium text-foreground"
-                                  : "text-muted-foreground"
-                              }`}
-                            >
-                              {previewText}
-                            </p>
-                          </div>
-
-                          <div className="flex shrink-0 flex-col items-end gap-2">
-                            {latestTimeLabel && (
-                              <span className="text-xs font-medium text-muted-foreground">
-                                {latestTimeLabel}
-                              </span>
-                            )}
-                            <span className="rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-muted-foreground border border-border/50 shadow-sm">
-                              {room.item?.reportType === "found"
-                                ? "습득물"
-                                : "분실물"}
-                            </span>
-                          </div>
+                          )}
                         </div>
-                      </a>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-foreground">
+                              {otherUser?.nickname}
+                            </p>
+                            <span className="truncate text-xs text-muted-foreground max-w-[120px]">
+                              {room.item?.title ?? `게시물 #${room.itemId}`}
+                            </span>
+                            {room.hasUnread && (
+                              <span
+                                className="h-2 w-2 rounded-full bg-primary"
+                                aria-label="읽지 않은 메시지 있음"
+                              />
+                            )}
+                          </div>
+                          <p
+                            className={`mt-1 truncate text-sm ${
+                              room.hasUnread
+                                ? "font-medium text-foreground"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            {previewText}
+                          </p>
+                        </div>
+
+                        <div className="flex shrink-0 flex-col items-end gap-2">
+                          {latestTimeLabel && (
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {latestTimeLabel}
+                            </span>
+                          )}
+                          <span className="rounded-md bg-white px-2 py-0.5 text-[11px] font-medium text-muted-foreground border border-border/50 shadow-sm">
+                            {room.item?.reportType === "found"
+                              ? "습득물"
+                              : "분실물"}
+                          </span>
+                        </div>
+                      </div>
                     </Link>
                   );
                 })}

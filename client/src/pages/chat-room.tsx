@@ -1,13 +1,22 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { isSameDay } from "date-fns";
-import { ArrowLeft, Send, ChevronRight, Image as ImageIcon } from "lucide-react"; 
+import {
+  ArrowLeft,
+  Send,
+  ChevronRight,
+  Image as ImageIcon,
+} from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth";
-import { useChatMessages, useChatRooms, useSendChatMessage } from "@/hooks/use-chat";
+import {
+  useChatMessages,
+  useChatRooms,
+  useSendChatMessage,
+} from "@/hooks/use-chat";
 import {
   formatChatDateDivider,
   formatChatMessageTime,
@@ -25,12 +34,17 @@ export default function ChatRoomPage() {
   const [content, setContent] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  const room = useMemo(() => rooms.find((entry) => entry.id === roomId), [rooms, roomId]);
+  const room = useMemo(
+    () => rooms.find((entry) => entry.id === roomId),
+    [rooms, roomId]
+  );
   const messageGroups = useMemo(() => {
-    return messages.reduce<Array<
-      | { type: "date"; key: string; label: string }
-      | { type: "message"; key: string; message: (typeof messages)[number] }
-    >>((acc, message, index) => {
+    return messages.reduce<
+      Array<
+        | { type: "date"; key: string; label: string }
+        | { type: "message"; key: string; message: (typeof messages)[number] }
+      >
+    >((acc, message, index) => {
       const previousMessage = messages[index - 1];
       const currentDate = parseChatDate(message.createdAt);
       const previousDate = parseChatDate(previousMessage?.createdAt);
@@ -93,9 +107,13 @@ export default function ChatRoomPage() {
   return (
     <Layout>
       <div className="container flex h-[calc(100dvh-120px)] min-h-0 flex-col overflow-hidden py-3 md:h-[calc(100dvh-124px)] md:py-4 xl:max-w-[960px]">
-        
         <div className="mb-3 flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild className="shrink-0 rounded-full hover:bg-secondary">
+          <Button
+            variant="ghost"
+            size="icon"
+            asChild
+            className="shrink-0 rounded-full hover:bg-secondary"
+          >
             <Link href="/chats">
               <ArrowLeft className="h-5 w-5" />
               <span className="sr-only">채팅 목록</span>
@@ -103,41 +121,36 @@ export default function ChatRoomPage() {
           </Button>
 
           {room?.item ? (
-            <Link href={`/items/${room.itemId}`}>
-              <a className="flex flex-1 items-center gap-3 rounded-2xl border border-border/70 bg-white/90 p-2 shadow-sm transition-all hover:bg-secondary/40 hover:shadow">
-                
-                {/* 물건 썸네일 */}
-                <div className="shrink-0">
-                  {room.item.imageUrl ? (
-                    <img 
-                      src={room.item.imageUrl} 
-                      alt={room.item.title} 
-                      className="h-11 w-11 rounded-xl border border-border/50 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/50 bg-secondary/50 text-muted-foreground">
-                      <ImageIcon className="h-5 w-5 opacity-50" />
-                    </div>
-                  )}
-                </div>
-
-                {/* 물건 제목 및 상태 */}
-                <div className="flex min-w-0 flex-1 flex-col justify-center">
-                  <p className="truncate text-sm font-bold text-foreground">
-                    {room.item.title}
-                  </p>
-                  <p className="text-[11px] font-semibold text-primary">
-                    {room.item.reportType === "found" ? "습득물" : "분실물"}
-                  </p>
-                </div>
-
-                <ChevronRight className="mr-2 h-5 w-5 shrink-0 text-muted-foreground/50" />
-              </a>
+            <Link
+              href={`/items/${room.itemId}`}
+              className="flex flex-1 items-center gap-3 rounded-2xl border border-border/70 bg-white/90 p-2 shadow-sm transition-all hover:bg-secondary/40 hover:shadow"
+            >
+              {" "}
+              <div className="shrink-0">
+                {room.item.imageUrl ? (
+                  <img
+                    src={room.item.imageUrl}
+                    alt={room.item.title}
+                    className="h-11 w-11 rounded-xl border border-border/50 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/50 bg-secondary/50 text-muted-foreground">
+                    <ImageIcon className="h-5 w-5 opacity-50" />
+                  </div>
+                )}
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col justify-center">
+                <p className="truncate text-sm font-bold text-foreground">
+                  {room.item.title}
+                </p>
+                <p className="text-[11px] font-semibold text-primary">
+                  {room.item.reportType === "found" ? "습득물" : "분실물"}
+                </p>
+              </div>
+              <ChevronRight className="mr-2 h-5 w-5 shrink-0 text-muted-foreground/50" />
             </Link>
           ) : (
-            <h1 className="truncate text-lg font-semibold flex-1">
-              채팅
-            </h1>
+            <h1 className="truncate text-lg font-semibold flex-1">채팅</h1>
           )}
         </div>
 
@@ -148,9 +161,13 @@ export default function ChatRoomPage() {
               className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto rounded-[24px] border border-border/70 bg-secondary/20 p-4"
             >
               {isLoading ? (
-                <p className="text-sm text-muted-foreground">메시지를 불러오는 중입니다.</p>
+                <p className="text-sm text-muted-foreground">
+                  메시지를 불러오는 중입니다.
+                </p>
               ) : messages.length === 0 ? (
-                <p className="text-sm text-muted-foreground">아직 메시지가 없습니다. 먼저 말을 걸어보세요.</p>
+                <p className="text-sm text-muted-foreground">
+                  아직 메시지가 없습니다. 먼저 말을 걸어보세요.
+                </p>
               ) : (
                 messageGroups.map((entry) => {
                   if (entry.type === "date") {
@@ -165,14 +182,16 @@ export default function ChatRoomPage() {
 
                   const { message } = entry;
                   const isMine = message.senderId === user?.id;
-                  const unreadCount =
-                    isMine && message.isRead !== 1 ? 1 : 0;
+                  const unreadCount = isMine && message.isRead !== 1 ? 1 : 0;
                   const timeLabel = formatChatMessageTime(message.createdAt);
 
                   return (
                     <div
                       key={entry.key}
-                      className={cn("flex", isMine ? "justify-end" : "justify-start")}
+                      className={cn(
+                        "flex",
+                        isMine ? "justify-end" : "justify-start"
+                      )}
                     >
                       <div
                         className={cn(
@@ -231,7 +250,11 @@ export default function ChatRoomPage() {
                 className="min-h-[84px] max-h-[140px] resize-none rounded-[22px]"
               />
               <div className="flex justify-end">
-                <Button type="submit" disabled={sendMessage.isPending || !content.trim()} className="rounded-full">
+                <Button
+                  type="submit"
+                  disabled={sendMessage.isPending || !content.trim()}
+                  className="rounded-full"
+                >
                   <Send className="mr-2 h-4 w-4" />
                   보내기
                 </Button>
