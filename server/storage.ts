@@ -19,6 +19,7 @@ import {
 import { db } from "./db";
 import {
   and,
+  asc,
   cosineDistance,
   desc,
   eq,
@@ -158,7 +159,14 @@ function sanitizeAdminUserRecord(user: User, itemCount: number): AdminUserRecord
 }
 
 export interface IStorage {
-  getItems(type?: "lost" | "found", search?: string): Promise<Item[]>;
+  getItems(filters?: {
+    type?: "lost" | "found";
+    search?: string;
+    category?: string;
+    color?: string;
+    dateRange?: "all" | "7d" | "30d" | "90d";
+    sort?: "latest" | "oldest";
+  }): Promise<Item[]>;
   getMyItems(
     userId: number,
     filters?: { type?: "lost" | "found"; status?: ItemStatus }
@@ -274,16 +282,55 @@ export class DatabaseStorage implements IStorage {
     });
   }
 
-  async getItems(type?: "lost" | "found", search?: string): Promise<Item[]> {
+  async getItems(filters?: {
+    type?: "lost" | "found";
+    search?: string;
+    category?: string;
+    color?: string;
+    dateRange?: "all" | "7d" | "30d" | "90d";
+    sort?: "latest" | "oldest";
+  }): Promise<Item[]> {
     const conditions = [eq(items.status, "active" as const)];
-    if (type) conditions.push(eq(items.reportType, type));
-    if (search) conditions.push(ilike(items.title, `%${search}%`));
+    const search = filters?.search?.trim();
+    const category = filters?.category?.trim();
+    const color = filters?.color?.trim();
+    const sort = filters?.sort ?? "latest";
+
+    if (filters?.type) {
+      conditions.push(eq(items.reportType, filters.type));
+    }
+
+    if (search) {
+      conditions.push(ilike(items.title, `%${search}%`));
+    }
+
+    if (category) {
+      conditions.push(ilike(items.itemCategory, `%${category}%`));
+    }
+
+    if (color) {
+      conditions.push(ilike(items.color, `%${color}%`));
+    }
+
+    if (filters?.dateRange && filters.dateRange !== "all") {
+      const daysByRange = {
+        "7d": 7,
+        "30d": 30,
+        "90d": 90,
+      } as const;
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - daysByRange[filters.dateRange]);
+      conditions.push(gte(items.date, startDate));
+    }
 
     return await db
       .select()
       .from(items)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(items.date));
+      .orderBy(
+        sort === "oldest" ? asc(items.date) : desc(items.date),
+        sort === "oldest" ? asc(items.id) : desc(items.id)
+      );
   }
 
   async getMyItems(
