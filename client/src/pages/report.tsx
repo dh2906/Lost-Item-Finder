@@ -360,6 +360,17 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     syncImagePreviews(nextImages, Math.max(0, indexToRemove - 1));
   };
 
+  const handleSetPrimaryImage = (indexToPromote: number) => {
+    if (indexToPromote <= 0 || indexToPromote >= imagePreviews.length) {
+      return;
+    }
+
+    const nextImages = [...imagePreviews];
+    const [selectedImage] = nextImages.splice(indexToPromote, 1);
+    nextImages.unshift(selectedImage);
+    syncImagePreviews(nextImages);
+  };
+
   const onSubmit = async (data: FormValues) => {
     if (reportType === "found" && (!data.imageUrls || data.imageUrls.length === 0)) {
       toast({
@@ -562,15 +573,118 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                   ref={fileInputRef}
                   onChange={handleImageSelect}
                 />
-                <div
-                  className={cn(
-                    "relative min-h-[240px] cursor-pointer overflow-hidden rounded-[22px] border-2 border-dashed transition-all xl:min-h-[300px]",
-                    imagePreviews.length > 0
-                      ? "border-primary bg-primary/5"
-                      : "border-muted-foreground/25 bg-muted/50 hover:border-primary/50 hover:bg-muted"
-                  )}
-                  onClick={() => fileInputRef.current?.click()}
-                >
+                <div className="space-y-4">
+                  <div className="rounded-[22px] border border-border/70 bg-secondary/30 p-4">
+                    <div className="space-y-1">
+                      <div className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary shadow-sm">
+                        <Images className="h-3.5 w-3.5" />
+                        {imagePreviews.length}/{MAX_ITEM_IMAGE_COUNT}
+                      </div>
+                      <p className="text-sm font-semibold text-foreground">
+                        첫 번째 사진이 대표 이미지로 사용돼요.
+                      </p>
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        정면이 잘 보이는 사진을 먼저 올리고, 다른 썸네일을 누르면 대표 이미지를 바로 바꿀 수 있어요.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div
+                    className={cn(
+                      "grid gap-3",
+                      imagePreviews.length === 0
+                        ? "grid-cols-1"
+                        : "grid-cols-2 sm:grid-cols-3 xl:grid-cols-2"
+                    )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className={cn(
+                        "group relative overflow-hidden rounded-[22px] border transition-all",
+                        imagePreviews.length === 0
+                          ? "aspect-[4/3] border-dashed border-primary/35 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] hover:border-primary/55"
+                          : "aspect-square border-border/70 bg-white hover:border-primary/45 hover:shadow-md"
+                      )}
+                    >
+                      <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+                        <div className="mb-3 rounded-full bg-[hsl(var(--primary-light))] p-3 text-primary shadow-sm transition-transform group-hover:scale-105">
+                          <Upload className="h-6 w-6" />
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">
+                          {imagePreviews.length === 0 ? "사진 등록하기" : "사진 추가"}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {imagePreviews.length === 0
+                            ? "큰 빈 영역 없이 썸네일 카드로 정리돼요."
+                            : "최대 10장까지 업로드할 수 있어요."}
+                        </p>
+                      </div>
+                    </button>
+
+                    {imagePreviews.map((imageUrl, index) => (
+                      <div
+                        key={`${imageUrl}-${index}`}
+                        className="group relative aspect-square overflow-hidden rounded-[22px] border border-border/70 bg-white shadow-sm"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleSetPrimaryImage(index)}
+                          className="h-full w-full"
+                          aria-label={
+                            index === 0
+                              ? "대표 이미지"
+                              : `${index + 1}번 이미지를 대표 이미지로 설정`
+                          }
+                        >
+                          <img
+                            src={imageUrl}
+                            alt={`업로드한 이미지 ${index + 1}`}
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                          />
+                        </button>
+                        <div className="absolute inset-x-0 top-0 flex items-start justify-between p-2.5">
+                          {index === 0 ? (
+                            <span className="rounded-full bg-black/70 px-2.5 py-1 text-[11px] font-semibold text-white">
+                              대표 이미지
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleSetPrimaryImage(index)}
+                              className="rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100"
+                            >
+                              대표로 설정
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(index)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/92 text-foreground shadow-sm transition hover:bg-white"
+                            aria-label={`${index + 1}번 이미지 제거`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    이미지 비율은 썸네일 카드로 정리되고, 상세 보기에서는 원본 비율에 맞춰 표시돼요.
+                  </p>
+
+                  {isAnalyzing ? (
+                    <div className="rounded-[22px] border border-primary/15 bg-background/90 px-4 py-6 text-center shadow-sm backdrop-blur-sm">
+                      <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-primary" />
+                      <p className="text-sm font-semibold text-foreground">AI가 사진을 분석하고 있어요.</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        카테고리와 색상 같은 정보를 자동으로 채우는 중입니다.
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+                <div className="hidden">
                   {imagePreviews.length > 0 ? (
                     <div className="flex h-full flex-col">
                       <div className="relative flex-1 overflow-hidden">
