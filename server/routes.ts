@@ -1841,11 +1841,25 @@ export async function registerRoutes(
   // --- Items API ---
   app.get(api.items.list.path, async (req, res) => {
     try {
-      const type = req.query.type as "lost" | "found" | undefined;
-      const search = req.query.search as string | undefined;
-      const itemsList = await storage.getItems(type, search);
+      const filters = api.items.list.input.parse({
+        type: typeof req.query.type === "string" ? req.query.type : undefined,
+        search: typeof req.query.search === "string" ? req.query.search : undefined,
+        category:
+          typeof req.query.category === "string" ? req.query.category : undefined,
+        color: typeof req.query.color === "string" ? req.query.color : undefined,
+        dateRange:
+          typeof req.query.dateRange === "string" ? req.query.dateRange : undefined,
+        sort: typeof req.query.sort === "string" ? req.query.sort : undefined,
+      });
+      const itemsList = await storage.getItems(filters);
       res.json(itemsList);
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
       res.status(500).json({ message: "Internal server error" });
     }
   });
