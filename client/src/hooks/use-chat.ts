@@ -24,6 +24,7 @@ export interface ChatRoom {
   latestMessage?: {
     content: string;
     senderId: number;
+    createdAt: string | null;
   } | null;
   item?: ChatItem;
   sender?: ChatUser;
