@@ -13,6 +13,8 @@ import { and, eq, ne, or, desc, asc, isNull } from "drizzle-orm";
 import {
   chatRooms,
   chatMessages,
+  itemMatches,
+  matchNotifications,
   updateItemMatchStatusSchema,
   users,
   type Item,
@@ -1272,7 +1274,7 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
 
   await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
 
-  // 매칭 생성 후 분실물 주인에게 FCM 발송
+  // 매칭 생성 후 분실물 주인에게 FCM 발송 (중복 방지)
   console.log(`[FCM] findAutomaticMatchesForFoundItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`);
   for (const match of matchesToPersist) {
     const lostItem = await storage.getItem(match.lostItemId);
@@ -1280,11 +1282,25 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
       console.log(`[FCM] 분실물 ${match.lostItemId}의 userId 없음 - 스킵`);
       continue;
     }
+
+    // 이미 알림 발송했는지 확인
+    const existingMatch = await db.query.itemMatches.findFirst({
+      where: and(
+        eq(itemMatches.lostItemId, match.lostItemId),
+        eq(itemMatches.foundItemId, match.foundItemId)
+      ),
+    });
+    if (existingMatch?.notifiedAt) {
+      console.log(`[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`);
+      continue;
+    }
+
     const user = await storage.getUser(lostItem.userId);
     if (!user?.fcmToken) {
       console.log(`[FCM] 사용자 ${lostItem.userId}의 FCM 토큰 없음 - 스킵`);
       continue;
     }
+
     console.log(`[FCM] 사용자 ${lostItem.userId}에게 매칭 알림 발송`);
     void sendFcmNotification({
       fcmToken: user.fcmToken,
@@ -1296,6 +1312,14 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
         foundItemId: String(match.foundItemId),
       },
     });
+
+    // 알림 발송 시간 업데이트
+    await db.update(itemMatches)
+      .set({ notifiedAt: new Date() })
+      .where(and(
+        eq(itemMatches.lostItemId, match.lostItemId),
+        eq(itemMatches.foundItemId, match.foundItemId)
+      ));
   }
 
   return matchesToPersist.length;
@@ -1368,7 +1392,7 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
 
   await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
 
-  // 매칭 생성 후 습득물 주인에게 FCM 발송
+  // 매칭 생성 후 습득물 주인에게 FCM 발송 (중복 방지)
   console.log(`[FCM] findAutomaticMatchesForLostItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`);
   for (const match of matchesToPersist) {
     const foundItem = await storage.getItem(match.foundItemId);
@@ -1376,11 +1400,25 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
       console.log(`[FCM] 습득물 ${match.foundItemId}의 userId 없음 - 스킵`);
       continue;
     }
+
+    // 이미 알림 발송했는지 확인
+    const existingMatch = await db.query.itemMatches.findFirst({
+      where: and(
+        eq(itemMatches.lostItemId, match.lostItemId),
+        eq(itemMatches.foundItemId, match.foundItemId)
+      ),
+    });
+    if (existingMatch?.notifiedAt) {
+      console.log(`[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`);
+      continue;
+    }
+
     const user = await storage.getUser(foundItem.userId);
     if (!user?.fcmToken) {
       console.log(`[FCM] 사용자 ${foundItem.userId}의 FCM 토큰 없음 - 스킵`);
       continue;
     }
+
     console.log(`[FCM] 사용자 ${foundItem.userId}에게 매칭 알림 발송`);
     void sendFcmNotification({
       fcmToken: user.fcmToken,
@@ -1392,6 +1430,14 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
         foundItemId: String(match.foundItemId),
       },
     });
+
+    // 알림 발송 시간 업데이트
+    await db.update(itemMatches)
+      .set({ notifiedAt: new Date() })
+      .where(and(
+        eq(itemMatches.lostItemId, match.lostItemId),
+        eq(itemMatches.foundItemId, match.foundItemId)
+      ));
   }
 
   return matchesToPersist.length;
@@ -1598,9 +1644,22 @@ async function runAutomaticMatchNotificationsForFoundItem(
     )
   );
 
-  // 매칭 알림 FCM 발송
+  // 매칭 알림 FCM 발송 (중복 방지)
   console.log(`[FCM] 매칭 알림 ${matchedNotifications.length}개 생성됨, FCM 발송 시작`);
   for (const notification of matchedNotifications) {
+    // 이미 알림 발송했는지 확인
+    const existingNotification = await db.query.matchNotifications.findFirst({
+      where: and(
+        eq(matchNotifications.userId, notification.userId),
+        eq(matchNotifications.lostItemId, notification.lostItemId),
+        eq(matchNotifications.foundItemId, notification.foundItemId)
+      ),
+    });
+    if (existingNotification?.notifiedAt) {
+      console.log(`[FCM] 매칭 알림 ${notification.lostItemId}-${notification.foundItemId} 이미 발송됨 - 스킵`);
+      continue;
+    }
+
     console.log(`[FCM] 사용자 ${notification.userId} 조회 중...`);
     const user = await storage.getUser(notification.userId);
     if (!user?.fcmToken) {
@@ -1619,6 +1678,15 @@ async function runAutomaticMatchNotificationsForFoundItem(
         foundItemId: String(notification.foundItemId),
       },
     });
+
+    // 알림 발송 시간 업데이트
+    await db.update(matchNotifications)
+      .set({ notifiedAt: new Date() })
+      .where(and(
+        eq(matchNotifications.userId, notification.userId),
+        eq(matchNotifications.lostItemId, notification.lostItemId),
+        eq(matchNotifications.foundItemId, notification.foundItemId)
+      ));
   }
 }
 

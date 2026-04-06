@@ -222,9 +222,15 @@
   "hotPaths": [
     {
       "path": "server/routes.ts",
-      "accessCount": 30,
-      "lastAccessed": 1775462850973,
+      "accessCount": 41,
+      "lastAccessed": 1775463673966,
       "type": "directory"
+    },
+    {
+      "path": "shared/schema.ts",
+      "accessCount": 4,
+      "lastAccessed": 1775463620602,
+      "type": "file"
     },
     {
       "path": "",
@@ -236,12 +242,6 @@
       "path": "server/fcm.ts",
       "accessCount": 2,
       "lastAccessed": 1775462103606,
-      "type": "file"
-    },
-    {
-      "path": "shared/schema.ts",
-      "accessCount": 1,
-      "lastAccessed": 1775460994455,
       "type": "file"
     },
     {
