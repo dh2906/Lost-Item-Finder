@@ -1973,13 +1973,16 @@ export async function registerRoutes(
   });
 
   app.post(api.items.create.path, async (req, res) => {
+    console.log("[API] POST /api/items - 물건 등록 시작", req.body?.reportType);
     try {
       const input = api.items.create.input.parse(req.body);
+      console.log("[API] 물건 데이터 파싱 완료:", input.reportType, input.title);
       const normalizedInput = normalizeItemMetadata(input);
       const item = await storage.createItem({
         ...normalizedInput,
         userId: req.user?.id ?? null,
       });
+      console.log(`[API] 물건 저장 완료 - ID: ${item.id}, type: ${item.reportType}`);
 
       let automaticMatchCount = 0;
 
