@@ -1997,18 +1997,24 @@ export async function registerRoutes(
         item.status === "active" &&
         itemEmbedding !== undefined
       ) {
+        console.log(`[AutoMatch] 습득물 ${item.id} - 매칭 알림 큐 추가 및 실행`);
         queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
         try {
           automaticMatchCount = await findAutomaticMatchesForFoundItem(item);
+          console.log(`[AutoMatch] 습득물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`);
         } catch (matchError) {
           console.error("Failed to create automatic matches for found item:", matchError);
         }
       } else if (item.reportType === "lost" && item.status === "active") {
+        console.log(`[AutoMatch] 분실물 ${item.id} - 매칭 실행`);
         try {
           automaticMatchCount = await findAutomaticMatchesForLostItem(item);
+          console.log(`[AutoMatch] 분실물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`);
         } catch (matchError) {
           console.error("Failed to create automatic matches for lost item:", matchError);
         }
+      } else {
+        console.log(`[AutoMatch] ${item.id} - 조건 불충족으로 매칭 스킵 (reportType: ${item.reportType}, status: ${item.status}, hasEmbedding: ${itemEmbedding !== undefined})`);
       }
 
       res.status(201).json({

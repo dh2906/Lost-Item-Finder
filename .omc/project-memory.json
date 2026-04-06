@@ -222,8 +222,8 @@
   "hotPaths": [
     {
       "path": "server/routes.ts",
-      "accessCount": 26,
-      "lastAccessed": 1775462296181,
+      "accessCount": 28,
+      "lastAccessed": 1775462705307,
       "type": "directory"
     },
     {
