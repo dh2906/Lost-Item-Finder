@@ -222,8 +222,8 @@
   "hotPaths": [
     {
       "path": "server/routes.ts",
-      "accessCount": 14,
-      "lastAccessed": 1775461244862,
+      "accessCount": 26,
+      "lastAccessed": 1775462296181,
       "type": "directory"
     },
     {
@@ -234,8 +234,8 @@
     },
     {
       "path": "server/fcm.ts",
-      "accessCount": 1,
-      "lastAccessed": 1775460994400,
+      "accessCount": 2,
+      "lastAccessed": 1775462103606,
       "type": "file"
     },
     {

@@ -1273,25 +1273,29 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
   await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
 
   // 매칭 생성 후 분실물 주인에게 FCM 발송
+  console.log(`[FCM] findAutomaticMatchesForFoundItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`);
   for (const match of matchesToPersist) {
-    const lostItemOwner = await storage.getItem(match.lostItemId);
-    if (lostItemOwner?.userId) {
-      const user = await storage.getUser(lostItemOwner.userId);
-      if (user?.fcmToken) {
-        const foundItem = await storage.getItem(match.foundItemId);
-        void sendFcmNotification({
-          fcmToken: user.fcmToken,
-          title: "새로운 매칭 발견!",
-          body: `"${lostItemOwner.title}"과 유사한 습득물이 등록되었어요.`,
-          data: {
-            type: "item_match",
-            lostItemId: String(match.lostItemId),
-            foundItemId: String(match.foundItemId),
-            matchId: String(match.lostItemId),
-          },
-        });
-      }
+    const lostItem = await storage.getItem(match.lostItemId);
+    if (!lostItem?.userId) {
+      console.log(`[FCM] 분실물 ${match.lostItemId}의 userId 없음 - 스킵`);
+      continue;
     }
+    const user = await storage.getUser(lostItem.userId);
+    if (!user?.fcmToken) {
+      console.log(`[FCM] 사용자 ${lostItem.userId}의 FCM 토큰 없음 - 스킵`);
+      continue;
+    }
+    console.log(`[FCM] 사용자 ${lostItem.userId}에게 매칭 알림 발송`);
+    void sendFcmNotification({
+      fcmToken: user.fcmToken,
+      title: "새로운 매칭 발견!",
+      body: `"${lostItem.title}"과 유사한 습득물이 등록되었어요.`,
+      data: {
+        type: "item_match",
+        lostItemId: String(match.lostItemId),
+        foundItemId: String(match.foundItemId),
+      },
+    });
   }
 
   return matchesToPersist.length;
@@ -1365,25 +1369,29 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
   await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
 
   // 매칭 생성 후 습득물 주인에게 FCM 발송
+  console.log(`[FCM] findAutomaticMatchesForLostItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`);
   for (const match of matchesToPersist) {
     const foundItem = await storage.getItem(match.foundItemId);
-    if (foundItem?.userId) {
-      const user = await storage.getUser(foundItem.userId);
-      if (user?.fcmToken) {
-        const lostItem = await storage.getItem(match.lostItemId);
-        void sendFcmNotification({
-          fcmToken: user.fcmToken,
-          title: "새로운 매칭 발견!",
-          body: `"${foundItem.title}"과 유사한 분실물이 등록되었어요.`,
-          data: {
-            type: "item_match",
-            lostItemId: String(match.lostItemId),
-            foundItemId: String(match.foundItemId),
-            matchId: String(match.lostItemId),
-          },
-        });
-      }
+    if (!foundItem?.userId) {
+      console.log(`[FCM] 습득물 ${match.foundItemId}의 userId 없음 - 스킵`);
+      continue;
     }
+    const user = await storage.getUser(foundItem.userId);
+    if (!user?.fcmToken) {
+      console.log(`[FCM] 사용자 ${foundItem.userId}의 FCM 토큰 없음 - 스킵`);
+      continue;
+    }
+    console.log(`[FCM] 사용자 ${foundItem.userId}에게 매칭 알림 발송`);
+    void sendFcmNotification({
+      fcmToken: user.fcmToken,
+      title: "새로운 매칭 발견!",
+      body: `"${foundItem.title}"과 유사한 분실물이 등록되었어요.`,
+      data: {
+        type: "item_match",
+        lostItemId: String(match.lostItemId),
+        foundItemId: String(match.foundItemId),
+      },
+    });
   }
 
   return matchesToPersist.length;
@@ -1591,21 +1599,26 @@ async function runAutomaticMatchNotificationsForFoundItem(
   );
 
   // 매칭 알림 FCM 발송
+  console.log(`[FCM] 매칭 알림 ${matchedNotifications.length}개 생성됨, FCM 발송 시작`);
   for (const notification of matchedNotifications) {
+    console.log(`[FCM] 사용자 ${notification.userId} 조회 중...`);
     const user = await storage.getUser(notification.userId);
-    if (user?.fcmToken) {
-      const foundItem = await storage.getItem(notification.foundItemId);
-      void sendFcmNotification({
-        fcmToken: user.fcmToken,
-        title: "새로운 매칭 발견!",
-        body: `"${foundItem?.title ?? "물건"}"과 유사한 습득물이 등록되었어요.`,
-        data: {
-          type: "match_notification",
-          lostItemId: String(notification.lostItemId),
-          foundItemId: String(notification.foundItemId),
-        },
-      });
+    if (!user?.fcmToken) {
+      console.log(`[FCM] 사용자 ${notification.userId} 토큰 없음 - 스킵`);
+      continue;
     }
+    console.log(`[FCM] 사용자 ${notification.userId} 토큰 확인됨, 발송 시도`);
+    const foundItemData = await storage.getItem(notification.foundItemId);
+    void sendFcmNotification({
+      fcmToken: user.fcmToken,
+      title: "새로운 매칭 발견!",
+      body: `"${foundItemData?.title ?? "물건"}"과 유사한 습득물이 등록되었어요.`,
+      data: {
+        type: "match_notification",
+        lostItemId: String(notification.lostItemId),
+        foundItemId: String(notification.foundItemId),
+      },
+    });
   }
 }
 
