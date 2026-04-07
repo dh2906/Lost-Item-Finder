@@ -26,11 +26,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { useAnalyzeImage } from "@/hooks/use-ai";
-import {
-  useCreateItem,
-  useItem,
-  useUpdateItem,
-} from "@/hooks/use-items";
+import { useCreateItem, useItem, useUpdateItem } from "@/hooks/use-items";
 import { useAuth } from "@/hooks/use-auth";
 import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -77,7 +73,8 @@ const config = {
     submitText: "습득물 등록하기",
     requireImage: true,
     title: "습득물 신고",
-    description: "사진과 위치를 함께 등록하면 찾는 사람이 더 빨리 확인할 수 있어요.",
+    description:
+      "사진과 위치를 함께 등록하면 찾는 사람이 더 빨리 확인할 수 있어요.",
     gradient: "from-primary to-[hsl(270_68%_61%)]",
     badge: "bg-emerald-100 text-emerald-700",
   },
@@ -258,11 +255,15 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     value: string | string[]
   ) => {
     const currentValue = form.getValues(field) as string | string[] | undefined;
-    const isEmptyArray = Array.isArray(currentValue) && currentValue.length === 0;
+    const isEmptyArray =
+      Array.isArray(currentValue) && currentValue.length === 0;
     const isEmptyString =
       typeof currentValue === "string" && currentValue.trim().length === 0;
 
-    if ((currentValue === undefined || isEmptyArray || isEmptyString) && value !== undefined) {
+    if (
+      (currentValue === undefined || isEmptyArray || isEmptyString) &&
+      value !== undefined
+    ) {
       form.setValue(field, value as never, {
         shouldDirty: true,
         shouldTouch: true,
@@ -304,7 +305,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       let nextImages = [...currentImages, ...optimizedImages];
       syncImagePreviews(nextImages, firstAddedIndex);
 
-      const analysis = await analyzeMutation.mutateAsync({ imageUrl: optimizedImages[0] });
+      const analysis = await analyzeMutation.mutateAsync({
+        imageUrl: optimizedImages[0],
+      });
 
       if (analysis.maskedImage) {
         nextImages = nextImages.map((imageUrl, index) =>
@@ -320,7 +323,10 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       setFieldIfEmpty("tags", analysis.tags);
 
       if (!form.getValues("title")) {
-        form.setValue("title", `${analysis.color} ${analysis.itemCategory}`.trim());
+        form.setValue(
+          "title",
+          `${analysis.color} ${analysis.itemCategory}`.trim()
+        );
       }
 
       toast({
@@ -356,7 +362,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   };
 
   const handleRemoveImage = (indexToRemove: number) => {
-    const nextImages = imagePreviews.filter((_, index) => index !== indexToRemove);
+    const nextImages = imagePreviews.filter(
+      (_, index) => index !== indexToRemove
+    );
     syncImagePreviews(nextImages, Math.max(0, indexToRemove - 1));
   };
 
@@ -372,7 +380,10 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   };
 
   const onSubmit = async (data: FormValues) => {
-    if (reportType === "found" && (!data.imageUrls || data.imageUrls.length === 0)) {
+    if (
+      reportType === "found" &&
+      (!data.imageUrls || data.imageUrls.length === 0)
+    ) {
       toast({
         title: "습득물 등록에는 사진이 필요해요.",
         variant: "destructive",
@@ -419,9 +430,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       setLocation(`/item/${createdItem.id}`);
     } catch (error) {
       const description =
-        error instanceof Error
-          ? error.message
-          : "처리 중 문제가 발생했습니다.";
+        error instanceof Error ? error.message : "처리 중 문제가 발생했습니다.";
 
       toast({
         title: isEditMode ? "수정에 실패했어요." : "등록에 실패했어요.",
@@ -443,7 +452,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
             <CardContent className="space-y-4 py-10 text-center">
               <AlertCircle className="mx-auto h-10 w-10 text-muted-foreground" />
               <div className="space-y-2">
-                <h1 className="text-2xl font-semibold">게시글을 찾을 수 없어요.</h1>
+                <h1 className="text-2xl font-semibold">
+                  게시글을 찾을 수 없어요.
+                </h1>
                 <p className="text-sm text-muted-foreground">
                   이미 삭제되었거나 접근할 수 없는 게시글입니다.
                 </p>
@@ -466,7 +477,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
             <CardContent className="space-y-4 py-10 text-center">
               <AlertCircle className="mx-auto h-10 w-10 text-muted-foreground" />
               <div className="space-y-2">
-                <h1 className="text-2xl font-semibold">내 게시글만 수정할 수 있어요.</h1>
+                <h1 className="text-2xl font-semibold">
+                  내 게시글만 수정할 수 있어요.
+                </h1>
                 <p className="text-sm text-muted-foreground">
                   이 게시글은 현재 로그인한 계정이 작성한 글이 아닙니다.
                 </p>
@@ -492,7 +505,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const pageDescription = isEditMode
     ? "기존 게시글 내용을 수정하고 다시 저장할 수 있어요."
     : currentConfig.description;
-  const submitLabel = isEditMode ? "수정 내용 저장하기" : currentConfig.submitText;
+  const submitLabel = isEditMode
+    ? "수정 내용 저장하기"
+    : currentConfig.submitText;
 
   return (
     <Layout>
@@ -543,9 +558,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
 
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)] xl:items-start"
+          className="grid gap-5 min-w-0 xl:grid-cols-[380px_minmax(0,1fr)] xl:items-start"
         >
-          <div className="space-y-5 xl:sticky xl:top-24">
+          <div className="space-y-5 min-w-0 xl:sticky xl:top-24">
             <Card className="overflow-hidden">
               <CardHeader
                 className={cn(
@@ -584,7 +599,8 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                         첫 번째 사진이 대표 이미지로 사용돼요.
                       </p>
                       <p className="text-xs leading-5 text-muted-foreground">
-                        정면이 잘 보이는 사진을 먼저 올리고, 다른 썸네일을 누르면 대표 이미지를 바로 바꿀 수 있어요.
+                        정면이 잘 보이는 사진을 먼저 올리고, 다른 썸네일을
+                        누르면 대표 이미지를 바로 바꿀 수 있어요.
                       </p>
                     </div>
                   </div>
@@ -612,7 +628,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                           <Upload className="h-6 w-6" />
                         </div>
                         <p className="text-sm font-semibold text-foreground">
-                          {imagePreviews.length === 0 ? "사진 등록하기" : "사진 추가"}
+                          {imagePreviews.length === 0
+                            ? "사진 등록하기"
+                            : "사진 추가"}
                         </p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
                           {imagePreviews.length === 0
@@ -671,13 +689,16 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                   </div>
 
                   <p className="text-xs leading-5 text-muted-foreground">
-                    이미지 비율은 썸네일 카드로 정리되고, 상세 보기에서는 원본 비율에 맞춰 표시돼요.
+                    이미지 비율은 썸네일 카드로 정리되고, 상세 보기에서는 원본
+                    비율에 맞춰 표시돼요.
                   </p>
 
                   {isAnalyzing ? (
                     <div className="rounded-[22px] border border-primary/15 bg-background/90 px-4 py-6 text-center shadow-sm backdrop-blur-sm">
                       <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-primary" />
-                      <p className="text-sm font-semibold text-foreground">AI가 사진을 분석하고 있어요.</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        AI가 사진을 분석하고 있어요.
+                      </p>
                       <p className="mt-1 text-xs text-muted-foreground">
                         카테고리와 색상 같은 정보를 자동으로 채우는 중입니다.
                       </p>
@@ -707,7 +728,10 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                         onClick={(event) => event.stopPropagation()}
                       >
                         {imagePreviews.map((imageUrl, index) => (
-                          <div key={`${imageUrl}-${index}`} className="relative shrink-0">
+                          <div
+                            key={`${imageUrl}-${index}`}
+                            className="relative shrink-0"
+                          >
                             <button
                               type="button"
                               onClick={() => setActiveImageIndex(index)}
@@ -811,7 +835,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
             </Card>
           </div>
 
-          <div className="space-y-5">
+          <div className="space-y-5 min-w-0">
             <Card className="border-primary/10 shadow-[0_18px_34px_-28px_rgba(27,31,59,0.16)]">
               <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
                 <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
@@ -922,7 +946,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                         id="contactInfo"
                         placeholder="010-1234-5678"
                         className="mt-2 rounded-xl border-border/85 placeholder:text-slate-800/80 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/38 focus-visible:ring-offset-0"
-                        value={formatPhoneNumber(form.watch("contactInfo") || "")}
+                        value={formatPhoneNumber(
+                          form.watch("contactInfo") || ""
+                        )}
                         onChange={handlePhoneChange}
                       />
                       <p className="mt-1.5 pl-0.5 text-[12px] leading-5 text-muted-foreground">
