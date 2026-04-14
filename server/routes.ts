@@ -99,6 +99,175 @@ function getErrorMessage(error: unknown): string {
   return "Internal server error";
 }
 
+type Lost112NormalizedItem = {
+  atcId?: string;
+  fdYmd?: string;
+  prdtClNm?: string;
+  fdFilePathImg?: string;
+  fdSbjt?: string;
+  fdPrdtNm?: string;
+  depPlace?: string;
+  fdHor?: string;
+  clrNm?: string;
+  fdPlace?: string;
+  tel?: string;
+  orgNm?: string;
+};
+
+type Lost112NormalizedResponse = {
+  response?: {
+    header?: {
+      resultCode?: string;
+      resultMsg?: string;
+    };
+    body?: {
+      items?: {
+        item?: Lost112NormalizedItem[] | Lost112NormalizedItem;
+      };
+      totalCount?: number;
+      numOfRows?: number;
+      pageNo?: number;
+    };
+  };
+};
+
+const LOST112_ITEM_FIELDS = [
+  "atcId",
+  "fdYmd",
+  "prdtClNm",
+  "fdFilePathImg",
+  "fdSbjt",
+  "fdPrdtNm",
+  "depPlace",
+  "fdHor",
+  "clrNm",
+  "fdPlace",
+  "tel",
+  "orgNm",
+] as const;
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getXmlTagValue(xml: string, tagName: string): string | undefined {
+  const escapedTagName = escapeRegExp(tagName);
+  const fullTagPattern = new RegExp(
+    `<${escapedTagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${escapedTagName}>`,
+    "i"
+  );
+  const fullTagMatch = xml.match(fullTagPattern);
+  if (fullTagMatch) {
+    return decodeXmlEntities(fullTagMatch[1]);
+  }
+
+  const selfClosingPattern = new RegExp(
+    `<${escapedTagName}(?:\\s[^>]*)?\\s*/>`,
+    "i"
+  );
+  if (selfClosingPattern.test(xml)) {
+    return "";
+  }
+
+  return undefined;
+}
+
+function getXmlTagBlocks(xml: string, tagName: string): string[] {
+  const escapedTagName = escapeRegExp(tagName);
+  const pattern = new RegExp(
+    `<${escapedTagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${escapedTagName}>`,
+    "gi"
+  );
+
+  return Array.from(xml.matchAll(pattern), (match) => match[1]);
+}
+
+function toOptionalNumber(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseLost112XmlResponse(xml: string): Lost112NormalizedResponse {
+  const responseXml = getXmlTagBlocks(xml, "response")[0] ?? xml;
+  const headerXml = getXmlTagBlocks(responseXml, "header")[0] ?? "";
+  const bodyXml = getXmlTagBlocks(responseXml, "body")[0];
+
+  if (!bodyXml) {
+    throw new Error(
+      `Lost112 API 응답 본문이 비어 있습니다: ${xml.slice(0, 160)}`
+    );
+  }
+
+  const resultCode = getXmlTagValue(headerXml, "resultCode");
+  const resultMsg = getXmlTagValue(headerXml, "resultMsg");
+  if (resultCode && resultCode !== "00") {
+    throw new Error(
+      `Lost112 API 오류: ${resultCode}${resultMsg ? ` ${resultMsg}` : ""}`
+    );
+  }
+
+  const itemsXml = getXmlTagBlocks(bodyXml, "items")[0] ?? "";
+  const items = getXmlTagBlocks(itemsXml, "item").map((itemXml) => {
+    const normalizedItem: Lost112NormalizedItem = {};
+
+    for (const field of LOST112_ITEM_FIELDS) {
+      const value = getXmlTagValue(itemXml, field);
+      if (value !== undefined) {
+        normalizedItem[field] = value;
+      }
+    }
+
+    return normalizedItem;
+  });
+
+  return {
+    response: {
+      header: {
+        resultCode,
+        resultMsg,
+      },
+      body: {
+        items: {
+          item: items,
+        },
+        totalCount: toOptionalNumber(getXmlTagValue(bodyXml, "totalCount")),
+        numOfRows: toOptionalNumber(getXmlTagValue(bodyXml, "numOfRows")),
+        pageNo: toOptionalNumber(getXmlTagValue(bodyXml, "pageNo")),
+      },
+    },
+  };
+}
+
+function parseLost112ApiResponse(rawText: string): Lost112NormalizedResponse {
+  try {
+    return JSON.parse(rawText) as Lost112NormalizedResponse;
+  } catch {
+    const trimmed = rawText.trim();
+    if (trimmed.startsWith("<")) {
+      return parseLost112XmlResponse(trimmed);
+    }
+
+    throw new Error(
+      `Lost112 API가 JSON/XML이 아닌 응답을 반환했습니다: ${rawText.slice(0, 160)}`
+    );
+  }
+}
+
 function extractCompletionMessageContent(content: unknown): string | null {
   if (typeof content === "string") {
     const trimmed = content.trim();
@@ -2776,9 +2945,13 @@ export async function registerRoutes(
         );
       }
 
+      const normalizedResponseText = rawText.trim().startsWith("<")
+        ? JSON.stringify(parseLost112ApiResponse(rawText))
+        : rawText;
+
       let data: unknown;
       try {
-        data = JSON.parse(rawText) as unknown;
+        data = JSON.parse(normalizedResponseText) as unknown;
       } catch {
         throw new Error(
           `Lost112 API가 JSON이 아닌 응답을 반환했습니다: ${rawText.slice(0, 160)}`
