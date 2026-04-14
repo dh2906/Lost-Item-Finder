@@ -93,6 +93,40 @@ const adminDashboardResponseSchema = z.object({
   recentItems: z.array(adminItemResponseSchema),
 });
 
+function getFirstQueryValue(value: unknown) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+const optionalQueryStringSchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return typeof normalizedValue === "string" ? normalizedValue : undefined;
+}, z.string().optional());
+
+const optionalPositiveIntegerQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return normalizedValue === undefined ? undefined : normalizedValue;
+}, z.coerce.number().int().positive().optional());
+
+const lost112ItemResponseSchema = z.object({
+  atcId: z.string(),
+  fdYmd: z.string(),
+  prdtClNm: z.string(),
+  fdFilePathImg: z.string(),
+  fdSbjt: z.string(),
+  fdHor: z.string(),
+  clrNm: z.string(),
+  fdPlace: z.string(),
+  tel: z.string(),
+  orgNm: z.string(),
+});
+
+const lost112ItemsResponseSchema = z.object({
+  items: z.array(lost112ItemResponseSchema),
+  totalCount: z.number(),
+  pageNo: z.number(),
+  numOfRows: z.number(),
+});
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -213,6 +247,25 @@ export const api = {
       responses: {
         200: z.object({ success: z.literal(true) }),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+  lost112: {
+    items: {
+      method: "GET" as const,
+      path: "/api/lost112/items" as const,
+      input: z.object({
+        category: optionalQueryStringSchema,
+        region: optionalQueryStringSchema,
+        startDate: optionalQueryStringSchema,
+        endDate: optionalQueryStringSchema,
+        page: optionalPositiveIntegerQuerySchema,
+        numOfRows: optionalPositiveIntegerQuerySchema,
+      }),
+      responses: {
+        200: lost112ItemsResponseSchema,
+        400: errorSchemas.validation,
+        500: errorSchemas.internal,
       },
     },
   },
@@ -386,6 +439,11 @@ export type ItemResponse = z.infer<(typeof api.items.create.responses)[201]>;
 export type ItemsListResponse = z.infer<(typeof api.items.list.responses)[200]>;
 export type ItemsListFilters = NonNullable<z.infer<typeof api.items.list.input>>;
 export type MyItemsResponse = z.infer<(typeof api.items.mine.responses)[200]>;
+export type Lost112ItemsInput = z.infer<typeof api.lost112.items.input>;
+export type Lost112ItemsResponse = z.infer<
+  (typeof api.lost112.items.responses)[200]
+>;
+export type Lost112ItemResponse = Lost112ItemsResponse["items"][number];
 export type UpdateItemInput = z.infer<typeof api.items.update.input>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<

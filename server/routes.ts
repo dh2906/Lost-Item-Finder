@@ -978,7 +978,7 @@ function buildAnalyzedTitle(result: {
   const cleanedDescriptionTitle = description
     .split(/[.!?\n]/)[0]
     ?.trim()
-    .replace(/[()\[\]{}]/g, " ")
+    .replace(/[(){}\[\]]/g, " ")
     .replace(/[,/]+/g, " ")
     .replace(
       /(?:으로\s*보이며|로\s*보이며|으로\s*보입니다|로\s*보입니다|으로\s*추정됩니다|로\s*추정됩니다|으로\s*추정됨|로\s*추정됨|으로\s*판단됩니다|로\s*판단됩니다|입니다|같습니다).*$/,
@@ -2513,7 +2513,7 @@ export async function registerRoutes(
     }
   });
 
-// --- Chat API ---
+  // --- Chat API ---
   app.post("/api/chat/rooms", isAuthenticated, async (req, res) => {
     try {
       const { itemId, receiverId } = req.body;
@@ -2563,11 +2563,11 @@ export async function registerRoutes(
               id: true,
               title: true,
               reportType: true,
-              imageUrl: true, 
+              imageUrl: true,
             },
           },
           sender: {
-            columns: { id: true, username: true, name: true } 
+            columns: { id: true, username: true, name: true }
           },
           receiver: {
             columns: { id: true, username: true, name: true }
@@ -2600,15 +2600,15 @@ export async function registerRoutes(
           });
 
           const rawOtherUser = room.senderId === userId ? room.receiver : room.sender;
-          
+
           const otherUser = {
             ...rawOtherUser,
             nickname: rawOtherUser?.name ?? rawOtherUser?.username ?? "알 수 없음",
           };
-          
+
           return {
             ...room,
-            otherUser, // 가공된 otherUser 객체를 내려줍니다.
+            otherUser,
             hasUnread: Boolean(unreadMessage),
             latestMessage: latestMessage
               ? {
@@ -2721,6 +2721,78 @@ export async function registerRoutes(
       res.status(201).json(message);
     } catch (err) {
       console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  // --- Lost112 (경찰청 습득물) API 프록시 ---
+  app.get(api.lost112.items.path, async (req, res) => {
+    try {
+      const apiKey = process.env.LOST112_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          message: "Lost112 API 키가 설정되지 않았습니다. .env에 LOST112_API_KEY를 추가해 주세요.",
+        });
+      }
+
+      const {
+        category = "",
+        region = "",
+        startDate = "",
+        endDate = "",
+        page = 1,
+        numOfRows = 20,
+      } = api.lost112.items.input.parse(req.query);
+
+      const safePageNo = Math.max(1, page);
+      const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
+
+      const params = new URLSearchParams({
+        serviceKey: apiKey,
+        pageNo: String(safePageNo),
+        numOfRows: String(safeNumOfRows),
+        _type: "json",
+      });
+
+      if (category) params.set("PRDT_CL_CD_01", category);
+      if (region) params.set("N_FD_LCT_CD", region);
+      if (startDate) params.set("START_YMD", startDate);
+      if (endDate) params.set("END_YMD", endDate);
+
+      const url = `https://apis.data.go.kr/1320000/LosfundInfoInqireService/getLosfundInfoAccToClAreaPd?${params.toString()}`;
+      const safeUrl = new URL(url);
+      safeUrl.searchParams.set("serviceKey", "***");
+      console.log("[Lost112] 요청:", safeUrl.toString());
+
+      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!response.ok) {
+        throw new Error(`Lost112 API HTTP 오류: ${response.status}`);
+      }
+
+      const data = await response.json() as unknown;
+      const body = (data as { response?: { body?: unknown } })?.response?.body as {
+        items?: { item?: unknown };
+        totalCount?: number;
+        numOfRows?: number;
+        pageNo?: number;
+      } | null | undefined;
+
+      const rawItems = body?.items?.item;
+      // 단건 결과는 배열이 아닌 객체로 오므로 정규화
+      const items = !rawItems
+        ? []
+        : Array.isArray(rawItems)
+        ? rawItems
+        : [rawItems];
+
+      res.json({
+        items,
+        totalCount: body?.totalCount ?? 0,
+        pageNo: body?.pageNo ?? 1,
+        numOfRows: body?.numOfRows ?? 20,
+      });
+    } catch (err) {
+      console.error("[Lost112] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });
