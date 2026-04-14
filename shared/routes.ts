@@ -109,15 +109,17 @@ const optionalPositiveIntegerQuerySchema = z.preprocess((value) => {
 
 const lost112ItemResponseSchema = z.object({
   atcId: z.string(),
-  fdYmd: z.string(),
-  prdtClNm: z.string(),
-  fdFilePathImg: z.string(),
-  fdSbjt: z.string(),
-  fdHor: z.string(),
-  clrNm: z.string(),
-  fdPlace: z.string(),
-  tel: z.string(),
-  orgNm: z.string(),
+  fdYmd: z.string().optional().default(""),
+  prdtClNm: z.string().optional().default(""),
+  fdFilePathImg: z.string().optional().default(""),
+  fdSbjt: z.string().optional().default(""),
+  fdPrdtNm: z.string().optional().default(""),
+  depPlace: z.string().optional().default(""),
+  fdHor: z.string().optional().default(""),
+  clrNm: z.string().optional().default(""),
+  fdPlace: z.string().optional().default(""),
+  tel: z.string().optional().default(""),
+  orgNm: z.string().optional().default(""),
 });
 
 const lost112ItemsResponseSchema = z.object({

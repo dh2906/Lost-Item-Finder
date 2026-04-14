@@ -2746,20 +2746,23 @@ export async function registerRoutes(
 
       const safePageNo = Math.max(1, page);
       const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
+      const normalizedCategory = category.trim();
+      const normalizedRegion = region.trim();
+      const externalNumOfRows = normalizedCategory || normalizedRegion
+        ? Math.min(100, Math.max(safeNumOfRows * 3, safeNumOfRows))
+        : safeNumOfRows;
 
       const params = new URLSearchParams({
         serviceKey: apiKey,
         pageNo: String(safePageNo),
-        numOfRows: String(safeNumOfRows),
+        numOfRows: String(externalNumOfRows),
         _type: "json",
       });
 
-      if (category) params.set("PRDT_CL_CD_01", category);
-      if (region) params.set("N_FD_LCT_CD", region);
       if (startDate) params.set("START_YMD", startDate);
       if (endDate) params.set("END_YMD", endDate);
 
-      const url = `https://apis.data.go.kr/1320000/LosfundInfoInqireService/getLosfundInfoAccToClAreaPd?${params.toString()}`;
+      const url = `https://apis.data.go.kr/1320000/LosPtfundInfoInqireService/getPtLosfundInfoAccToClAreaPd?${params.toString()}`;
       const safeUrl = new URL(url);
       safeUrl.searchParams.set("serviceKey", "***");
       console.log("[Lost112] 요청:", safeUrl.toString());
@@ -2797,17 +2800,42 @@ export async function registerRoutes(
 
       const rawItems = body?.items?.item;
       // 단건 결과는 배열이 아닌 객체로 오므로 정규화
-      const items = !rawItems
+      const items = (!rawItems
         ? []
         : Array.isArray(rawItems)
         ? rawItems
-        : [rawItems];
+        : [rawItems]) as Array<{
+          prdtClNm?: string;
+          fdSbjt?: string;
+          fdPrdtNm?: string;
+          depPlace?: string;
+          fdPlace?: string;
+          orgNm?: string;
+        }>;
+
+      const filteredItems = items.filter((item) => {
+        const categoryMatched = normalizedCategory
+          ? [item.prdtClNm, item.fdSbjt, item.fdPrdtNm]
+              .filter((value): value is string => Boolean(value))
+              .some((value) => value.includes(normalizedCategory))
+          : true;
+        const regionMatched = normalizedRegion
+          ? [item.depPlace, item.fdPlace, item.orgNm]
+              .filter((value): value is string => Boolean(value))
+              .some((value) => value.includes(normalizedRegion))
+          : true;
+
+        return categoryMatched && regionMatched;
+      });
 
       res.json({
-        items,
-        totalCount: body?.totalCount ?? 0,
-        pageNo: body?.pageNo ?? 1,
-        numOfRows: body?.numOfRows ?? 20,
+        items: filteredItems.slice(0, safeNumOfRows),
+        totalCount:
+          normalizedCategory || normalizedRegion
+            ? filteredItems.length
+            : body?.totalCount ?? filteredItems.length,
+        pageNo: body?.pageNo ?? safePageNo,
+        numOfRows: safeNumOfRows,
       });
     } catch (err) {
       console.error("[Lost112] 오류:", err);

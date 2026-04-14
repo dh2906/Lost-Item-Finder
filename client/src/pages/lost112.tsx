@@ -14,42 +14,42 @@ const ALL_REGIONS = "all-regions";
 // 경찰청 습득물 API 카테고리 코드
 const CATEGORIES = [
   { code: ALL_CATEGORIES, label: "전체" },
-  { code: "S001", label: "지갑" },
-  { code: "S002", label: "가방" },
-  { code: "S003", label: "도서용품" },
-  { code: "S004", label: "의류" },
-  { code: "S005", label: "잡화류" },
-  { code: "S006", label: "유가증권" },
-  { code: "S007", label: "스포츠용품" },
-  { code: "S008", label: "전자기기" },
-  { code: "S009", label: "귀금속" },
-  { code: "S010", label: "자동차" },
-  { code: "S011", label: "자전거/이륜차" },
-  { code: "S012", label: "동물" },
-  { code: "S014", label: "현금" },
-  { code: "S999", label: "기타" },
+  { code: "지갑", label: "지갑" },
+  { code: "가방", label: "가방" },
+  { code: "도서용품", label: "도서용품" },
+  { code: "의류", label: "의류" },
+  { code: "잡화", label: "잡화류" },
+  { code: "유가증권", label: "유가증권" },
+  { code: "스포츠", label: "스포츠용품" },
+  { code: "전자기기", label: "전자기기" },
+  { code: "귀금속", label: "귀금속" },
+  { code: "자동차", label: "자동차" },
+  { code: "자전거", label: "자전거/이륜차" },
+  { code: "동물", label: "동물" },
+  { code: "현금", label: "현금" },
+  { code: "기타", label: "기타" },
 ] as const;
 
 // 시도 코드
 const REGIONS = [
   { code: ALL_REGIONS, label: "전국" },
-  { code: "SEL", label: "서울" },
-  { code: "PUS", label: "부산" },
-  { code: "DAE", label: "대구" },
-  { code: "INC", label: "인천" },
-  { code: "GWJ", label: "광주" },
-  { code: "DJN", label: "대전" },
-  { code: "USN", label: "울산" },
-  { code: "SEJ", label: "세종" },
-  { code: "GGI", label: "경기" },
-  { code: "GWO", label: "강원" },
-  { code: "CCB", label: "충북" },
-  { code: "CCN", label: "충남" },
-  { code: "JNB", label: "전북" },
-  { code: "JNN", label: "전남" },
-  { code: "GGB", label: "경북" },
-  { code: "GGN", label: "경남" },
-  { code: "JEJ", label: "제주" },
+  { code: "서울", label: "서울" },
+  { code: "부산", label: "부산" },
+  { code: "대구", label: "대구" },
+  { code: "인천", label: "인천" },
+  { code: "광주", label: "광주" },
+  { code: "대전", label: "대전" },
+  { code: "울산", label: "울산" },
+  { code: "세종", label: "세종" },
+  { code: "경기", label: "경기" },
+  { code: "강원", label: "강원" },
+  { code: "충북", label: "충북" },
+  { code: "충남", label: "충남" },
+  { code: "전북", label: "전북" },
+  { code: "전남", label: "전남" },
+  { code: "경북", label: "경북" },
+  { code: "경남", label: "경남" },
+  { code: "제주", label: "제주" },
 ] as const;
 
 // 기간 옵션
@@ -79,6 +79,8 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
   const detailUrl = `https://www.lost112.go.kr/find/findDetailView.do?atcId=${item.atcId}`;
   const [imageFailed, setImageFailed] = useState(false);
   const hasImage = Boolean(item.fdFilePathImg) && !imageFailed;
+  const title = item.fdSbjt || item.fdPrdtNm || "물품명 없음";
+  const storagePlace = item.depPlace || item.fdHor;
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
@@ -87,7 +89,7 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
         {hasImage ? (
           <img
             src={item.fdFilePathImg}
-            alt={item.fdSbjt}
+            alt={title}
             className="w-full h-full object-cover"
             onError={() => {
               setImageFailed(true);
@@ -101,7 +103,7 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
         )}
         <div className="absolute top-2 left-2">
           <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-            경찰청 습득물
+            포털기관 습득물
           </Badge>
         </div>
       </div>
@@ -109,7 +111,7 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
       {/* 내용 */}
       <div className="p-3 space-y-2">
         <div>
-          <h3 className="font-semibold text-gray-900 text-sm line-clamp-1">{item.fdSbjt || "물품명 없음"}</h3>
+          <h3 className="font-semibold text-gray-900 text-sm line-clamp-1">{title}</h3>
           {item.prdtClNm && (
             <p className="text-xs text-gray-500 mt-0.5">{item.prdtClNm}{item.clrNm ? ` · ${item.clrNm}` : ""}</p>
           )}
@@ -122,10 +124,10 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
               <span className="line-clamp-1">습득: {item.fdPlace}</span>
             </div>
           )}
-          {item.fdHor && (
+          {storagePlace && (
             <div className="flex items-start gap-1.5 text-xs text-gray-600">
               <Building2 className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
-              <span className="line-clamp-1">보관: {item.fdHor}</span>
+              <span className="line-clamp-1">보관: {storagePlace}</span>
             </div>
           )}
           {item.fdYmd && (
@@ -221,10 +223,10 @@ export default function Lost112Page() {
         <div className="pt-6 pb-4">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-2xl">🚔</span>
-            <h1 className="text-xl font-bold text-gray-900">경찰청 습득물 조회</h1>
+            <h1 className="text-xl font-bold text-gray-900">포털기관 습득물 조회</h1>
           </div>
           <p className="text-sm text-gray-500">
-            전국 경찰관서 및 포털기관에서 보관 중인 습득물을 조회합니다
+            전국 포털기관에서 보관 중인 습득물을 조회합니다
           </p>
         </div>
 
@@ -384,7 +386,7 @@ export default function Lost112Page() {
 
         {/* 출처 안내 */}
         <div className="mt-6 p-3 bg-blue-50 rounded-lg text-xs text-blue-600 text-center">
-          데이터 출처: 경찰청 유실물 종합관리시스템 (lost112.go.kr) · 공공데이터포털
+          데이터 출처: 경찰청 유실물 통합포털 (lost112.go.kr) · 공공데이터포털
         </div>
       </div>
     </Layout>
