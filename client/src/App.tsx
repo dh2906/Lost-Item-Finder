@@ -25,6 +25,7 @@ import MyPage from "@/pages/mypage";
 import AdminDashboardPage from "@/pages/admin-dashboard";
 import { RegisterPage } from "@/pages/register";
 import InstallPage from "@/pages/install";
+import Lost112Page from "@/pages/lost112";
 import { useLocation } from "wouter";
 
 function FoundReportPage() {
@@ -106,6 +107,7 @@ function Router() {
               <ChatRoomPage />
             </ProtectedRoute>
           </Route>
+          <Route path="/lost112" component={Lost112Page} />
           <Route path="/login" component={LoginPage} />
           <Route path="/register" component={RegisterPage} />
           <Route component={NotFound} />

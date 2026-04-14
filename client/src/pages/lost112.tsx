@@ -1,0 +1,391 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Layout } from "@/components/layout";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MapPin, Calendar, Building2, Phone, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+
+// 경찰청 습득물 API 카테고리 코드
+const CATEGORIES = [
+  { code: "", label: "전체" },
+  { code: "S001", label: "지갑" },
+  { code: "S002", label: "가방" },
+  { code: "S003", label: "도서용품" },
+  { code: "S004", label: "의류" },
+  { code: "S005", label: "잡화류" },
+  { code: "S006", label: "유가증권" },
+  { code: "S007", label: "스포츠용품" },
+  { code: "S008", label: "전자기기" },
+  { code: "S009", label: "귀금속" },
+  { code: "S010", label: "자동차" },
+  { code: "S011", label: "자전거/이륜차" },
+  { code: "S012", label: "동물" },
+  { code: "S014", label: "현금" },
+  { code: "S999", label: "기타" },
+] as const;
+
+// 시도 코드
+const REGIONS = [
+  { code: "", label: "전국" },
+  { code: "SEL", label: "서울" },
+  { code: "PUS", label: "부산" },
+  { code: "DAE", label: "대구" },
+  { code: "INC", label: "인천" },
+  { code: "GWJ", label: "광주" },
+  { code: "DJN", label: "대전" },
+  { code: "USN", label: "울산" },
+  { code: "SEJ", label: "세종" },
+  { code: "GGI", label: "경기" },
+  { code: "GWO", label: "강원" },
+  { code: "CCB", label: "충북" },
+  { code: "CCN", label: "충남" },
+  { code: "JNB", label: "전북" },
+  { code: "JNN", label: "전남" },
+  { code: "GGB", label: "경북" },
+  { code: "GGN", label: "경남" },
+  { code: "JEJ", label: "제주" },
+] as const;
+
+// 기간 옵션
+const DATE_RANGES = [
+  { value: "7", label: "1주일" },
+  { value: "30", label: "1개월" },
+  { value: "90", label: "3개월" },
+  { value: "180", label: "6개월" },
+  { value: "365", label: "1년" },
+] as const;
+
+type Lost112Item = {
+  atcId: string;
+  fdYmd: string;
+  prdtClNm: string;
+  fdFilePathImg: string;
+  fdSbjt: string;
+  fdHor: string;
+  clrNm: string;
+  fdPlace: string;
+  tel: string;
+  orgNm: string;
+};
+
+type Lost112Response = {
+  items: Lost112Item[];
+  totalCount: number;
+  pageNo: number;
+  numOfRows: number;
+};
+
+function getDateString(daysAgo: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  return date.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+function formatDate(ymd: string): string {
+  if (!ymd || ymd.length < 8) return ymd;
+  return `${ymd.slice(0, 4)}.${ymd.slice(4, 6)}.${ymd.slice(6, 8)}`;
+}
+
+function Lost112ItemCard({ item }: { item: Lost112Item }) {
+  const detailUrl = `https://www.lost112.go.kr/find/findDetailView.do?atcId=${item.atcId}`;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+      {/* 이미지 */}
+      <div className="relative h-44 bg-gray-50 flex items-center justify-center overflow-hidden">
+        {item.fdFilePathImg ? (
+          <img
+            src={item.fdFilePathImg}
+            alt={item.fdSbjt}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-gray-300">
+            <Building2 className="w-12 h-12" />
+            <span className="text-xs">이미지 없음</span>
+          </div>
+        )}
+        <div className="absolute top-2 left-2">
+          <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+            경찰청 습득물
+          </Badge>
+        </div>
+      </div>
+
+      {/* 내용 */}
+      <div className="p-3 space-y-2">
+        <div>
+          <h3 className="font-semibold text-gray-900 text-sm line-clamp-1">{item.fdSbjt || "물품명 없음"}</h3>
+          {item.prdtClNm && (
+            <p className="text-xs text-gray-500 mt-0.5">{item.prdtClNm}{item.clrNm ? ` · ${item.clrNm}` : ""}</p>
+          )}
+        </div>
+
+        <div className="space-y-1">
+          {item.fdPlace && (
+            <div className="flex items-start gap-1.5 text-xs text-gray-600">
+              <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+              <span className="line-clamp-1">습득: {item.fdPlace}</span>
+            </div>
+          )}
+          {item.fdHor && (
+            <div className="flex items-start gap-1.5 text-xs text-gray-600">
+              <Building2 className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
+              <span className="line-clamp-1">보관: {item.fdHor}</span>
+            </div>
+          )}
+          {item.fdYmd && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <Calendar className="w-3 h-3 flex-shrink-0 text-gray-400" />
+              <span>{formatDate(item.fdYmd)}</span>
+            </div>
+          )}
+          {item.tel && (
+            <div className="flex items-center gap-1.5 text-xs text-gray-500">
+              <Phone className="w-3 h-3 flex-shrink-0 text-gray-400" />
+              <span>{item.tel}</span>
+            </div>
+          )}
+        </div>
+
+        <a
+          href={detailUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-1.5 w-full py-2 mt-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-medium transition-colors"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          경찰청에서 상세보기
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function Lost112SkeletonCard() {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+      <Skeleton className="h-44 w-full" />
+      <div className="p-3 space-y-2">
+        <Skeleton className="h-4 w-3/4" />
+        <Skeleton className="h-3 w-1/2" />
+        <Skeleton className="h-3 w-2/3" />
+        <Skeleton className="h-8 w-full" />
+      </div>
+    </div>
+  );
+}
+
+export default function Lost112Page() {
+  const [category, setCategory] = useState("");
+  const [region, setRegion] = useState("");
+  const [dateRange, setDateRange] = useState("30");
+  const [page, setPage] = useState(1);
+  const numOfRows = 20;
+
+  const startDate = getDateString(Number(dateRange));
+  const endDate = getDateString(0);
+
+  const queryKey = ["lost112", { category, region, startDate, endDate, page, numOfRows }];
+
+  const { data, isLoading, isError } = useQuery<Lost112Response>({
+    queryKey,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: String(page),
+        numOfRows: String(numOfRows),
+      });
+      if (category) params.set("category", category);
+      if (region) params.set("region", region);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+
+      const res = await fetch(`/api/lost112/items?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch Lost112 data");
+      return res.json() as Promise<Lost112Response>;
+    },
+    staleTime: 1000 * 60 * 5, // 5분 캐시
+  });
+
+  const totalPages = data ? Math.ceil(data.totalCount / numOfRows) : 0;
+
+  const handleFilterChange = () => {
+    setPage(1);
+  };
+
+  return (
+    <Layout>
+      <div className="max-w-2xl mx-auto px-4 pb-24">
+        {/* 헤더 */}
+        <div className="pt-6 pb-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-2xl">🚔</span>
+            <h1 className="text-xl font-bold text-gray-900">경찰청 습득물 조회</h1>
+          </div>
+          <p className="text-sm text-gray-500">
+            전국 경찰관서 및 포털기관에서 보관 중인 습득물을 조회합니다
+          </p>
+        </div>
+
+        {/* 필터 */}
+        <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">카테고리</label>
+              <Select
+                value={category}
+                onValueChange={(v) => { setCategory(v); handleFilterChange(); }}
+              >
+                <SelectTrigger className="h-9 text-sm bg-white">
+                  <SelectValue placeholder="전체" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CATEGORIES.map((cat) => (
+                    <SelectItem key={cat.code} value={cat.code}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">지역</label>
+              <Select
+                value={region}
+                onValueChange={(v) => { setRegion(v); handleFilterChange(); }}
+              >
+                <SelectTrigger className="h-9 text-sm bg-white">
+                  <SelectValue placeholder="전국" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REGIONS.map((r) => (
+                    <SelectItem key={r.code} value={r.code}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-600">기간</label>
+            <div className="flex gap-2 flex-wrap">
+              {DATE_RANGES.map((dr) => (
+                <button
+                  key={dr.value}
+                  onClick={() => { setDateRange(dr.value); handleFilterChange(); }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    dateRange === dr.value
+                      ? "bg-blue-600 text-white"
+                      : "bg-white text-gray-600 border border-gray-200 hover:border-blue-300"
+                  }`}
+                >
+                  {dr.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* 결과 수 */}
+        {!isLoading && data && (
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm text-gray-500">
+              총 <span className="font-semibold text-gray-800">{data.totalCount.toLocaleString()}</span>건
+            </p>
+            <p className="text-xs text-gray-400">{page} / {totalPages || 1} 페이지</p>
+          </div>
+        )}
+
+        {/* 오류 */}
+        {isError && (
+          <div className="text-center py-16 text-gray-500">
+            <p className="text-4xl mb-3">⚠️</p>
+            <p className="font-medium">데이터를 불러오지 못했습니다</p>
+            <p className="text-sm mt-1">잠시 후 다시 시도해 주세요</p>
+          </div>
+        )}
+
+        {/* 로딩 스켈레톤 */}
+        {isLoading && (
+          <div className="grid grid-cols-2 gap-3">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <Lost112SkeletonCard key={i} />
+            ))}
+          </div>
+        )}
+
+        {/* 빈 결과 */}
+        {!isLoading && !isError && data?.items.length === 0 && (
+          <div className="text-center py-16 text-gray-500">
+            <p className="text-4xl mb-3">🔍</p>
+            <p className="font-medium">조건에 맞는 습득물이 없습니다</p>
+            <p className="text-sm mt-1">필터를 변경해 다시 검색해 보세요</p>
+          </div>
+        )}
+
+        {/* 아이템 그리드 */}
+        {!isLoading && !isError && data && data.items.length > 0 && (
+          <div className="grid grid-cols-2 gap-3">
+            {data.items.map((item) => (
+              <Lost112ItemCard key={item.atcId} item={item} />
+            ))}
+          </div>
+        )}
+
+        {/* 페이지네이션 */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-6">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1 || isLoading}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+
+            {/* 페이지 번호 (최대 5개) */}
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const startPage = Math.max(1, Math.min(page - 2, totalPages - 4));
+              const pageNum = startPage + i;
+              return (
+                <Button
+                  key={pageNum}
+                  variant={pageNum === page ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPage(pageNum)}
+                  disabled={isLoading}
+                  className="w-9 h-9 p-0 text-sm"
+                >
+                  {pageNum}
+                </Button>
+              );
+            })}
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages || isLoading}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+
+        {/* 출처 안내 */}
+        <div className="mt-6 p-3 bg-blue-50 rounded-lg text-xs text-blue-600 text-center">
+          데이터 출처: 경찰청 유실물 종합관리시스템 (lost112.go.kr) · 공공데이터포털
+        </div>
+      </div>
+    </Layout>
+  );
+}
