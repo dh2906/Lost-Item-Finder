@@ -2765,17 +2765,35 @@ export async function registerRoutes(
       console.log("[Lost112] 요청:", safeUrl.toString());
 
       const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const rawText = await response.text();
+
       if (!response.ok) {
-        throw new Error(`Lost112 API HTTP 오류: ${response.status}`);
+        throw new Error(
+          `Lost112 API HTTP 오류: ${response.status} ${rawText.slice(0, 160)}`
+        );
       }
 
-      const data = await response.json() as unknown;
+      let data: unknown;
+      try {
+        data = JSON.parse(rawText) as unknown;
+      } catch {
+        throw new Error(
+          `Lost112 API가 JSON이 아닌 응답을 반환했습니다: ${rawText.slice(0, 160)}`
+        );
+      }
+
       const body = (data as { response?: { body?: unknown } })?.response?.body as {
         items?: { item?: unknown };
         totalCount?: number;
         numOfRows?: number;
         pageNo?: number;
       } | null | undefined;
+
+      if (!body) {
+        throw new Error(
+          `Lost112 API 응답 본문이 비어 있습니다: ${rawText.slice(0, 160)}`
+        );
+      }
 
       const rawItems = body?.items?.item;
       // 단건 결과는 배열이 아닌 객체로 오므로 정규화

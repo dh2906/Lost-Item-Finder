@@ -8,9 +8,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Calendar, Building2, Phone, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
 import { api, type Lost112ItemsResponse } from "@shared/routes";
 
+const ALL_CATEGORIES = "all-categories";
+const ALL_REGIONS = "all-regions";
+
 // 경찰청 습득물 API 카테고리 코드
 const CATEGORIES = [
-  { code: "", label: "전체" },
+  { code: ALL_CATEGORIES, label: "전체" },
   { code: "S001", label: "지갑" },
   { code: "S002", label: "가방" },
   { code: "S003", label: "도서용품" },
@@ -29,7 +32,7 @@ const CATEGORIES = [
 
 // 시도 코드
 const REGIONS = [
-  { code: "", label: "전국" },
+  { code: ALL_REGIONS, label: "전국" },
   { code: "SEL", label: "서울" },
   { code: "PUS", label: "부산" },
   { code: "DAE", label: "대구" },
@@ -168,8 +171,8 @@ function Lost112SkeletonCard() {
 }
 
 export default function Lost112Page() {
-  const [category, setCategory] = useState("");
-  const [region, setRegion] = useState("");
+  const [category, setCategory] = useState(ALL_CATEGORIES);
+  const [region, setRegion] = useState(ALL_REGIONS);
   const [dateRange, setDateRange] = useState("30");
   const [page, setPage] = useState(1);
   const numOfRows = 20;
@@ -179,20 +182,27 @@ export default function Lost112Page() {
 
   const queryKey = ["lost112", { category, region, startDate, endDate, page, numOfRows }];
 
-  const { data, isLoading, isError } = useQuery<Lost112ItemsResponse>({
+  const { data, error, isLoading, isError } = useQuery<Lost112ItemsResponse>({
     queryKey,
     queryFn: async () => {
       const params = new URLSearchParams({
         page: String(page),
         numOfRows: String(numOfRows),
       });
-      if (category) params.set("category", category);
-      if (region) params.set("region", region);
+      if (category !== ALL_CATEGORIES) params.set("category", category);
+      if (region !== ALL_REGIONS) params.set("region", region);
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
 
       const res = await fetch(`${api.lost112.items.path}?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to fetch Lost112 data");
+      if (!res.ok) {
+        const errorPayload = (await res.json().catch(() => null)) as
+          | { message?: string }
+          | null;
+        throw new Error(
+          errorPayload?.message ?? "Lost112 데이터를 불러오지 못했습니다."
+        );
+      }
       return res.json() as Promise<Lost112ItemsResponse>;
     },
     staleTime: 1000 * 60 * 5, // 5분 캐시
@@ -296,7 +306,11 @@ export default function Lost112Page() {
           <div className="text-center py-16 text-gray-500">
             <p className="text-4xl mb-3">⚠️</p>
             <p className="font-medium">데이터를 불러오지 못했습니다</p>
-            <p className="text-sm mt-1">잠시 후 다시 시도해 주세요</p>
+            <p className="text-sm mt-1">
+              {error instanceof Error
+                ? error.message
+                : "잠시 후 다시 시도해 주세요"}
+            </p>
           </div>
         )}
 
