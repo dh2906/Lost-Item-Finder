@@ -11,3 +11,4 @@ vite.config.ts.*
 .postgres-data
 google-key.json
 .idea/
+.md
