@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Calendar, Building2, Phone, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import { api, type Lost112ItemsResponse } from "@shared/routes";
 
 // 경찰청 습득물 API 카테고리 코드
 const CATEGORIES = [
@@ -57,26 +58,6 @@ const DATE_RANGES = [
   { value: "365", label: "1년" },
 ] as const;
 
-type Lost112Item = {
-  atcId: string;
-  fdYmd: string;
-  prdtClNm: string;
-  fdFilePathImg: string;
-  fdSbjt: string;
-  fdHor: string;
-  clrNm: string;
-  fdPlace: string;
-  tel: string;
-  orgNm: string;
-};
-
-type Lost112Response = {
-  items: Lost112Item[];
-  totalCount: number;
-  pageNo: number;
-  numOfRows: number;
-};
-
 function getDateString(daysAgo: number): string {
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
@@ -91,7 +72,7 @@ function formatDate(ymd: string): string {
   return `${ymd.slice(0, 4)}.${ymd.slice(4, 6)}.${ymd.slice(6, 8)}`;
 }
 
-function Lost112ItemCard({ item }: { item: Lost112Item }) {
+function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number] }) {
   const detailUrl = `https://www.lost112.go.kr/find/findDetailView.do?atcId=${item.atcId}`;
   const [imageFailed, setImageFailed] = useState(false);
   const hasImage = Boolean(item.fdFilePathImg) && !imageFailed;
@@ -198,7 +179,7 @@ export default function Lost112Page() {
 
   const queryKey = ["lost112", { category, region, startDate, endDate, page, numOfRows }];
 
-  const { data, isLoading, isError } = useQuery<Lost112Response>({
+  const { data, isLoading, isError } = useQuery<Lost112ItemsResponse>({
     queryKey,
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -210,9 +191,9 @@ export default function Lost112Page() {
       if (startDate) params.set("startDate", startDate);
       if (endDate) params.set("endDate", endDate);
 
-      const res = await fetch(`/api/lost112/items?${params.toString()}`);
+      const res = await fetch(`${api.lost112.items.path}?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch Lost112 data");
-      return res.json() as Promise<Lost112Response>;
+      return res.json() as Promise<Lost112ItemsResponse>;
     },
     staleTime: 1000 * 60 * 5, // 5분 캐시
   });
@@ -285,6 +266,7 @@ export default function Lost112Page() {
               {DATE_RANGES.map((dr) => (
                 <button
                   key={dr.value}
+                  type="button"
                   onClick={() => { setDateRange(dr.value); handleFilterChange(); }}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                     dateRange === dr.value

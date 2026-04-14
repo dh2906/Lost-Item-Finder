@@ -2726,7 +2726,7 @@ export async function registerRoutes(
   });
 
   // --- Lost112 (경찰청 습득물) API 프록시 ---
-  app.get("/api/lost112/items", async (req, res) => {
+  app.get(api.lost112.items.path, async (req, res) => {
     try {
       const apiKey = process.env.LOST112_API_KEY;
       if (!apiKey) {
@@ -2740,16 +2740,12 @@ export async function registerRoutes(
         region = "",
         startDate = "",
         endDate = "",
-        page = "1",
-        numOfRows = "20",
-      } = req.query as Record<string, string>;
+        page = 1,
+        numOfRows = 20,
+      } = api.lost112.items.input.parse(req.query);
 
-      const parsedPage = Number(page);
-      const parsedNumOfRows = Number(numOfRows);
-      const safePageNo = Number.isFinite(parsedPage) ? Math.max(1, Math.trunc(parsedPage)) : 1;
-      const safeNumOfRows = Number.isFinite(parsedNumOfRows)
-        ? Math.min(100, Math.max(1, Math.trunc(parsedNumOfRows)))
-        : 20;
+      const safePageNo = Math.max(1, page);
+      const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
 
       const params = new URLSearchParams({
         serviceKey: apiKey,
