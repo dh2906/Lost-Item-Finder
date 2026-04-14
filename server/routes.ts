@@ -101,6 +101,7 @@ function getErrorMessage(error: unknown): string {
 
 type Lost112NormalizedItem = {
   atcId?: string;
+  fdSn?: string;
   fdYmd?: string;
   prdtClNm?: string;
   fdFilePathImg?: string;
@@ -133,6 +134,7 @@ type Lost112NormalizedResponse = {
 
 const LOST112_ITEM_FIELDS = [
   "atcId",
+  "fdSn",
   "fdYmd",
   "prdtClNm",
   "fdFilePathImg",
@@ -2981,6 +2983,8 @@ export async function registerRoutes(
           prdtClNm?: string;
           fdSbjt?: string;
           fdPrdtNm?: string;
+          fdSn?: string;
+          atcId?: string;
           depPlace?: string;
           fdPlace?: string;
           orgNm?: string;

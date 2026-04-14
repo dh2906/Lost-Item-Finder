@@ -76,7 +76,9 @@ function formatDate(ymd: string): string {
 }
 
 function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number] }) {
-  const detailUrl = `https://www.lost112.go.kr/find/findDetailView.do?atcId=${item.atcId}`;
+  const detailUrl = `https://www.lost112.go.kr/find/findDetail.do?ATC_ID=${encodeURIComponent(
+    item.atcId
+  )}&FD_SN=${encodeURIComponent(item.fdSn || "1")}&pageIndex=1`;
   const [imageFailed, setImageFailed] = useState(false);
   const hasImage = Boolean(item.fdFilePathImg) && !imageFailed;
   const title = item.fdSbjt || item.fdPrdtNm || "물품명 없음";
