@@ -80,7 +80,10 @@ type Lost112Response = {
 function getDateString(daysAgo: number): string {
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);
-  return date.toISOString().slice(0, 10).replace(/-/g, "");
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
 }
 
 function formatDate(ymd: string): string {
@@ -90,18 +93,20 @@ function formatDate(ymd: string): string {
 
 function Lost112ItemCard({ item }: { item: Lost112Item }) {
   const detailUrl = `https://www.lost112.go.kr/find/findDetailView.do?atcId=${item.atcId}`;
+  const [imageFailed, setImageFailed] = useState(false);
+  const hasImage = Boolean(item.fdFilePathImg) && !imageFailed;
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
       {/* 이미지 */}
       <div className="relative h-44 bg-gray-50 flex items-center justify-center overflow-hidden">
-        {item.fdFilePathImg ? (
+        {hasImage ? (
           <img
             src={item.fdFilePathImg}
             alt={item.fdSbjt}
             className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
+            onError={() => {
+              setImageFailed(true);
             }}
           />
         ) : (

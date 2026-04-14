@@ -2744,10 +2744,17 @@ export async function registerRoutes(
         numOfRows = "20",
       } = req.query as Record<string, string>;
 
+      const parsedPage = Number(page);
+      const parsedNumOfRows = Number(numOfRows);
+      const safePageNo = Number.isFinite(parsedPage) ? Math.max(1, Math.trunc(parsedPage)) : 1;
+      const safeNumOfRows = Number.isFinite(parsedNumOfRows)
+        ? Math.min(100, Math.max(1, Math.trunc(parsedNumOfRows)))
+        : 20;
+
       const params = new URLSearchParams({
         serviceKey: apiKey,
-        pageNo: String(Math.max(1, Number(page))),
-        numOfRows: String(Math.min(100, Math.max(1, Number(numOfRows)))),
+        pageNo: String(safePageNo),
+        numOfRows: String(safeNumOfRows),
         _type: "json",
       });
 
@@ -2756,8 +2763,10 @@ export async function registerRoutes(
       if (startDate) params.set("START_YMD", startDate);
       if (endDate) params.set("END_YMD", endDate);
 
-      const url = `http://apis.data.go.kr/1320000/LosfundInfoInqireService/getLosfundInfoAccToClAreaPd?${params.toString()}`;
-      console.log("[Lost112] 요청:", url.replace(apiKey, "***"));
+      const url = `https://apis.data.go.kr/1320000/LosfundInfoInqireService/getLosfundInfoAccToClAreaPd?${params.toString()}`;
+      const safeUrl = new URL(url);
+      safeUrl.searchParams.set("serviceKey", "***");
+      console.log("[Lost112] 요청:", safeUrl.toString());
 
       const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
       if (!response.ok) {
