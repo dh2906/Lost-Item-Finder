@@ -9,6 +9,7 @@ import {
   MessageCircleMore,
   Shield,
   User as UserIcon,
+  Menu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 type NavigationItem = {
   href: string;
@@ -55,6 +62,9 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: notifications = [] } = useMatchNotifications();
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
 
+  // 🚀 모바일 햄버거 메뉴 상태 추가
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const hasUnreadChats = chatRooms.some((room) => room.hasUnread);
   const unreadNotificationCount = notifications.filter(
     (notification) => !notification.isRead
@@ -62,6 +72,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const handleReportMenuNavigate = (href: string) => {
     setReportMenuOpen(false);
+    setMobileMenuOpen(false); // 모바일 메뉴에서도 클릭 시 닫히도록 추가
     void setLocation(href);
   };
 
@@ -70,6 +81,69 @@ export function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/94 backdrop-blur supports-[backdrop-filter]:bg-background/78">
         <div className="container flex h-[68px] items-center justify-between gap-4 xl:max-w-[1440px]">
           <div className="flex items-center gap-3 md:gap-5">
+            {/*모바일 햄버거 메뉴 (Sheet) 영역 시작 */}
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="lg:hidden shrink-0 -ml-2"
+                >
+                  <Menu className="h-6 w-6 text-foreground" />
+                  <span className="sr-only">메뉴 열기</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[280px] sm:w-[320px]">
+                <SheetTitle className="text-left font-bold mb-4">
+                  메뉴
+                </SheetTitle>
+                <nav className="flex flex-col gap-6 mt-4">
+                  {navigation.map((item) => (
+                    <div key={item.href} className="flex flex-col space-y-3">
+                      {item.children ? (
+                        <>
+                          <h4 className="font-semibold text-base text-foreground">
+                            {item.label}
+                          </h4>
+                          <div className="flex flex-col space-y-3 pl-4 border-l-2 border-muted">
+                            {item.children.map((child) => (
+                              <button
+                                key={child.href}
+                                onClick={() =>
+                                  handleReportMenuNavigate(child.href)
+                                }
+                                className="text-left text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+                              >
+                                {child.label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleReportMenuNavigate(item.href)}
+                          className="text-left font-semibold text-base text-foreground hover:text-primary transition-colors"
+                        >
+                          {item.label}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {user?.role === "admin" && (
+                    <div className="flex flex-col space-y-3 pt-4 border-t border-border">
+                      <button
+                        onClick={() => handleReportMenuNavigate("/admin")}
+                        className="text-left font-semibold text-base text-amber-700 hover:text-amber-800 transition-colors"
+                      >
+                        관리자 대시보드
+                      </button>
+                    </div>
+                  )}
+                </nav>
+              </SheetContent>
+            </Sheet>
+            {/* 모바일 햄버거 메뉴 끝 */}
+
             <Link
               href="/"
               className="flex items-center gap-3 text-sm font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/80"
@@ -253,16 +327,22 @@ export function Layout({ children }: { children: ReactNode }) {
                       <Heart className="mr-2 h-4 w-4" />
                       마이페이지
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => void setLocation("/matches")}>
+                    <DropdownMenuItem
+                      onClick={() => void setLocation("/matches")}
+                    >
                       내 매칭
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => void setLocation("/chats")}>
+                    <DropdownMenuItem
+                      onClick={() => void setLocation("/chats")}
+                    >
                       채팅 목록
                     </DropdownMenuItem>
                     {user?.role === "admin" ? (
                       <>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => void setLocation("/admin")}>
+                        <DropdownMenuItem
+                          onClick={() => void setLocation("/admin")}
+                        >
                           <Shield className="mr-2 h-4 w-4" />
                           관리자 대시보드
                         </DropdownMenuItem>

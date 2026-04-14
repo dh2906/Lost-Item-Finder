@@ -13,6 +13,8 @@ import { and, eq, ne, or, desc, asc, isNull } from "drizzle-orm";
 import {
   chatRooms,
   chatMessages,
+  itemMatches,
+  matchNotifications,
   updateItemMatchStatusSchema,
   users,
   type Item,
@@ -976,7 +978,7 @@ function buildAnalyzedTitle(result: {
   const cleanedDescriptionTitle = description
     .split(/[.!?\n]/)[0]
     ?.trim()
-    .replace(/[()\[\]{}]/g, " ")
+    .replace(/[(){}\[\]]/g, " ")
     .replace(/[,/]+/g, " ")
     .replace(
       /(?:으로\s*보이며|로\s*보이며|으로\s*보입니다|로\s*보입니다|으로\s*추정됩니다|로\s*추정됩니다|으로\s*추정됨|로\s*추정됨|으로\s*판단됩니다|로\s*판단됩니다|입니다|같습니다).*$/,
@@ -1272,6 +1274,54 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
 
   await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
 
+  // 매칭 생성 후 분실물 주인에게 FCM 발송 (중복 방지)
+  console.log(`[FCM] findAutomaticMatchesForFoundItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`);
+  for (const match of matchesToPersist) {
+    const lostItem = await storage.getItem(match.lostItemId);
+    if (!lostItem?.userId) {
+      console.log(`[FCM] 분실물 ${match.lostItemId}의 userId 없음 - 스킵`);
+      continue;
+    }
+
+    // 이미 알림 발송했는지 확인
+    const existingMatch = await db.query.itemMatches.findFirst({
+      where: and(
+        eq(itemMatches.lostItemId, match.lostItemId),
+        eq(itemMatches.foundItemId, match.foundItemId)
+      ),
+    });
+    if (existingMatch?.notifiedAt) {
+      console.log(`[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`);
+      continue;
+    }
+
+    const user = await storage.getUser(lostItem.userId);
+    if (!user?.fcmToken) {
+      console.log(`[FCM] 사용자 ${lostItem.userId}의 FCM 토큰 없음 - 스킵`);
+      continue;
+    }
+
+    console.log(`[FCM] 사용자 ${lostItem.userId}에게 매칭 알림 발송`);
+    void sendFcmNotification({
+      fcmToken: user.fcmToken,
+      title: "새로운 매칭 발견!",
+      body: `"${lostItem.title}"과 유사한 습득물이 등록되었어요.`,
+      data: {
+        type: "item_match",
+        lostItemId: String(match.lostItemId),
+        foundItemId: String(match.foundItemId),
+      },
+    });
+
+    // 알림 발송 시간 업데이트
+    await db.update(itemMatches)
+      .set({ notifiedAt: new Date() })
+      .where(and(
+        eq(itemMatches.lostItemId, match.lostItemId),
+        eq(itemMatches.foundItemId, match.foundItemId)
+      ));
+  }
+
   return matchesToPersist.length;
 }
 
@@ -1341,6 +1391,54 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
     .slice(0, AUTO_MATCH_MAX_RESULTS);
 
   await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
+
+  // 매칭 생성 후 습득물 주인에게 FCM 발송 (중복 방지)
+  console.log(`[FCM] findAutomaticMatchesForLostItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`);
+  for (const match of matchesToPersist) {
+    const foundItem = await storage.getItem(match.foundItemId);
+    if (!foundItem?.userId) {
+      console.log(`[FCM] 습득물 ${match.foundItemId}의 userId 없음 - 스킵`);
+      continue;
+    }
+
+    // 이미 알림 발송했는지 확인
+    const existingMatch = await db.query.itemMatches.findFirst({
+      where: and(
+        eq(itemMatches.lostItemId, match.lostItemId),
+        eq(itemMatches.foundItemId, match.foundItemId)
+      ),
+    });
+    if (existingMatch?.notifiedAt) {
+      console.log(`[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`);
+      continue;
+    }
+
+    const user = await storage.getUser(foundItem.userId);
+    if (!user?.fcmToken) {
+      console.log(`[FCM] 사용자 ${foundItem.userId}의 FCM 토큰 없음 - 스킵`);
+      continue;
+    }
+
+    console.log(`[FCM] 사용자 ${foundItem.userId}에게 매칭 알림 발송`);
+    void sendFcmNotification({
+      fcmToken: user.fcmToken,
+      title: "새로운 매칭 발견!",
+      body: `"${foundItem.title}"과 유사한 분실물이 등록되었어요.`,
+      data: {
+        type: "item_match",
+        lostItemId: String(match.lostItemId),
+        foundItemId: String(match.foundItemId),
+      },
+    });
+
+    // 알림 발송 시간 업데이트
+    await db.update(itemMatches)
+      .set({ notifiedAt: new Date() })
+      .where(and(
+        eq(itemMatches.lostItemId, match.lostItemId),
+        eq(itemMatches.foundItemId, match.foundItemId)
+      ));
+  }
 
   return matchesToPersist.length;
 }
@@ -1545,6 +1643,51 @@ async function runAutomaticMatchNotificationsForFoundItem(
       storage.upsertMatchNotification(notification)
     )
   );
+
+  // 매칭 알림 FCM 발송 (중복 방지)
+  console.log(`[FCM] 매칭 알림 ${matchedNotifications.length}개 생성됨, FCM 발송 시작`);
+  for (const notification of matchedNotifications) {
+    // 이미 알림 발송했는지 확인
+    const existingNotification = await db.query.matchNotifications.findFirst({
+      where: and(
+        eq(matchNotifications.userId, notification.userId),
+        eq(matchNotifications.lostItemId, notification.lostItemId),
+        eq(matchNotifications.foundItemId, notification.foundItemId)
+      ),
+    });
+    if (existingNotification?.notifiedAt) {
+      console.log(`[FCM] 매칭 알림 ${notification.lostItemId}-${notification.foundItemId} 이미 발송됨 - 스킵`);
+      continue;
+    }
+
+    console.log(`[FCM] 사용자 ${notification.userId} 조회 중...`);
+    const user = await storage.getUser(notification.userId);
+    if (!user?.fcmToken) {
+      console.log(`[FCM] 사용자 ${notification.userId} 토큰 없음 - 스킵`);
+      continue;
+    }
+    console.log(`[FCM] 사용자 ${notification.userId} 토큰 확인됨, 발송 시도`);
+    const foundItemData = await storage.getItem(notification.foundItemId);
+    void sendFcmNotification({
+      fcmToken: user.fcmToken,
+      title: "새로운 매칭 발견!",
+      body: `"${foundItemData?.title ?? "물건"}"과 유사한 습득물이 등록되었어요.`,
+      data: {
+        type: "match_notification",
+        lostItemId: String(notification.lostItemId),
+        foundItemId: String(notification.foundItemId),
+      },
+    });
+
+    // 알림 발송 시간 업데이트
+    await db.update(matchNotifications)
+      .set({ notifiedAt: new Date() })
+      .where(and(
+        eq(matchNotifications.userId, notification.userId),
+        eq(matchNotifications.lostItemId, notification.lostItemId),
+        eq(matchNotifications.foundItemId, notification.foundItemId)
+      ));
+  }
 }
 
 async function rerankCandidates(params: {
@@ -1898,13 +2041,16 @@ export async function registerRoutes(
   });
 
   app.post(api.items.create.path, async (req, res) => {
+    console.log("[API] POST /api/items - 물건 등록 시작", req.body?.reportType);
     try {
       const input = api.items.create.input.parse(req.body);
+      console.log("[API] 물건 데이터 파싱 완료:", input.reportType, input.title);
       const normalizedInput = normalizeItemMetadata(input);
       const item = await storage.createItem({
         ...normalizedInput,
         userId: req.user?.id ?? null,
       });
+      console.log(`[API] 물건 저장 완료 - ID: ${item.id}, type: ${item.reportType}`);
 
       let automaticMatchCount = 0;
 
@@ -1922,18 +2068,24 @@ export async function registerRoutes(
         item.status === "active" &&
         itemEmbedding !== undefined
       ) {
+        console.log(`[AutoMatch] 습득물 ${item.id} - 매칭 알림 큐 추가 및 실행`);
         queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
         try {
           automaticMatchCount = await findAutomaticMatchesForFoundItem(item);
+          console.log(`[AutoMatch] 습득물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`);
         } catch (matchError) {
           console.error("Failed to create automatic matches for found item:", matchError);
         }
       } else if (item.reportType === "lost" && item.status === "active") {
+        console.log(`[AutoMatch] 분실물 ${item.id} - 매칭 실행`);
         try {
           automaticMatchCount = await findAutomaticMatchesForLostItem(item);
+          console.log(`[AutoMatch] 분실물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`);
         } catch (matchError) {
           console.error("Failed to create automatic matches for lost item:", matchError);
         }
+      } else {
+        console.log(`[AutoMatch] ${item.id} - 조건 불충족으로 매칭 스킵 (reportType: ${item.reportType}, status: ${item.status}, hasEmbedding: ${itemEmbedding !== undefined})`);
       }
 
       res.status(201).json({
@@ -2411,6 +2563,7 @@ export async function registerRoutes(
               id: true,
               title: true,
               reportType: true,
+              imageUrl: true,
             },
           },
           sender: {
@@ -2446,8 +2599,16 @@ export async function registerRoutes(
             orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
           });
 
+          const rawOtherUser = room.senderId === userId ? room.receiver : room.sender;
+
+          const otherUser = {
+            ...rawOtherUser,
+            nickname: rawOtherUser?.name ?? rawOtherUser?.username ?? "알 수 없음",
+          };
+
           return {
             ...room,
+            otherUser,
             hasUnread: Boolean(unreadMessage),
             latestMessage: latestMessage
               ? {
@@ -2539,7 +2700,7 @@ export async function registerRoutes(
         updatedAt: new Date(),
       }).where(eq(chatRooms.id, roomId));
 
-      // 수신자에게 FCM 알림 발송 (실패해도 메시지 전송은 성공 처리)
+      // 수신자에게 FCM 알림 발송
       const receiverId = room.senderId === senderId ? room.receiverId : room.senderId;
       const [receiver, sender] = await Promise.all([
         db.query.users.findFirst({ where: eq(users.id, receiverId) }),
@@ -2547,7 +2708,6 @@ export async function registerRoutes(
       ]);
       if (receiver?.fcmToken) {
         const senderName = sender?.name ?? sender?.username ?? "누군가";
-        // sendFcmNotification은 내부적으로 에러를 처리하므로 void로 fire-and-forget
         void sendFcmNotification({
           fcmToken: receiver.fcmToken,
           title: `${senderName}님의 새 메시지`,
@@ -2561,6 +2721,78 @@ export async function registerRoutes(
       res.status(201).json(message);
     } catch (err) {
       console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  // --- Lost112 (경찰청 습득물) API 프록시 ---
+  app.get(api.lost112.items.path, async (req, res) => {
+    try {
+      const apiKey = process.env.LOST112_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          message: "Lost112 API 키가 설정되지 않았습니다. .env에 LOST112_API_KEY를 추가해 주세요.",
+        });
+      }
+
+      const {
+        category = "",
+        region = "",
+        startDate = "",
+        endDate = "",
+        page = 1,
+        numOfRows = 20,
+      } = api.lost112.items.input.parse(req.query);
+
+      const safePageNo = Math.max(1, page);
+      const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
+
+      const params = new URLSearchParams({
+        serviceKey: apiKey,
+        pageNo: String(safePageNo),
+        numOfRows: String(safeNumOfRows),
+        _type: "json",
+      });
+
+      if (category) params.set("PRDT_CL_CD_01", category);
+      if (region) params.set("N_FD_LCT_CD", region);
+      if (startDate) params.set("START_YMD", startDate);
+      if (endDate) params.set("END_YMD", endDate);
+
+      const url = `https://apis.data.go.kr/1320000/LosfundInfoInqireService/getLosfundInfoAccToClAreaPd?${params.toString()}`;
+      const safeUrl = new URL(url);
+      safeUrl.searchParams.set("serviceKey", "***");
+      console.log("[Lost112] 요청:", safeUrl.toString());
+
+      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!response.ok) {
+        throw new Error(`Lost112 API HTTP 오류: ${response.status}`);
+      }
+
+      const data = await response.json() as unknown;
+      const body = (data as { response?: { body?: unknown } })?.response?.body as {
+        items?: { item?: unknown };
+        totalCount?: number;
+        numOfRows?: number;
+        pageNo?: number;
+      } | null | undefined;
+
+      const rawItems = body?.items?.item;
+      // 단건 결과는 배열이 아닌 객체로 오므로 정규화
+      const items = !rawItems
+        ? []
+        : Array.isArray(rawItems)
+        ? rawItems
+        : [rawItems];
+
+      res.json({
+        items,
+        totalCount: body?.totalCount ?? 0,
+        pageNo: body?.pageNo ?? 1,
+        numOfRows: body?.numOfRows ?? 20,
+      });
+    } catch (err) {
+      console.error("[Lost112] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });

@@ -159,6 +159,7 @@ export const matchNotifications = pgTable(
     score: real("score").notNull(),
     reasoning: text("reasoning").notNull(),
     isRead: boolean("is_read").notNull().default(false),
+    notifiedAt: timestamp("notified_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

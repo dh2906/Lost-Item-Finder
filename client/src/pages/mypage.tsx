@@ -13,7 +13,7 @@ import {
   Trash2,
   UserRound,
   Download,
-  Smartphone
+  Smartphone,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -51,24 +51,26 @@ export default function MyPage() {
   const markNotificationAsReadMutation = useMarkMatchNotificationAsRead();
   const updateItemMutation = useUpdateItem();
   const deleteItemMutation = useDeleteItem();
-  
-  // 🚀 PWA 설치 상태 가져오기
-  const { isInstallable, isInstalled, install } = usePWAInstall();
-  
-  // 🚀 현재 기기가 iOS(아이폰/아이패드)인지 판별
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-  
+
+  const { isInstalled } = usePWAInstall();
+
   const [filter, setFilter] = useState<FilterType>("all");
 
   const filteredMyItems = useMemo(
     () =>
-      myItems.filter((item) => (filter === "all" ? true : item.status === filter)),
+      myItems.filter((item) =>
+        filter === "all" ? true : item.status === filter
+      ),
     [filter, myItems]
   );
 
   const activeCount = myItems.filter((item) => item.status === "active").length;
-  const resolvedCount = myItems.filter((item) => item.status === "resolved").length;
-  const foundCount = myItems.filter((item) => item.reportType === "found").length;
+  const resolvedCount = myItems.filter(
+    (item) => item.status === "resolved"
+  ).length;
+  const foundCount = myItems.filter(
+    (item) => item.reportType === "found"
+  ).length;
   const lostCount = myItems.filter((item) => item.reportType === "lost").length;
   const unreadNotificationCount = notifications.filter(
     (notification) => !notification.isRead
@@ -102,7 +104,9 @@ export default function MyPage() {
       toast({
         title: "상태 변경에 실패했어요.",
         description:
-          error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+          error instanceof Error
+            ? error.message
+            : "잠시 후 다시 시도해 주세요.",
         variant: "destructive",
       });
     }
@@ -124,7 +128,9 @@ export default function MyPage() {
       toast({
         title: "삭제에 실패했어요.",
         description:
-          error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+          error instanceof Error
+            ? error.message
+            : "잠시 후 다시 시도해 주세요.",
         variant: "destructive",
       });
     }
@@ -137,7 +143,9 @@ export default function MyPage() {
       toast({
         title: "알림 상태를 바꾸지 못했어요.",
         description:
-          error instanceof Error ? error.message : "잠시 후 다시 시도해 주세요.",
+          error instanceof Error
+            ? error.message
+            : "잠시 후 다시 시도해 주세요.",
         variant: "destructive",
       });
     }
@@ -159,8 +167,8 @@ export default function MyPage() {
                   한곳에서 관리해요
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-                  게시글 상태 변경과 자동 매칭 알림 확인을 한 번에
-                  살펴볼 수 있어요.
+                  게시글 상태 변경과 자동 매칭 알림 확인을 한 번에 살펴볼 수
+                  있어요.
                 </p>
               </div>
             </div>
@@ -170,16 +178,18 @@ export default function MyPage() {
               <Card className="border-border/70 bg-white/92 shadow-sm">
                 <CardHeader className="pb-4">
                   <CardTitle className="flex items-center gap-2 text-lg">
-                  <UserRound className="h-5 w-5 text-primary" />
-                  계정 정보
-                </CardTitle>
-              </CardHeader>
+                    <UserRound className="h-5 w-5 text-primary" />
+                    계정 정보
+                  </CardTitle>
+                </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
                     <p className="text-xl font-semibold text-foreground">
                       {user?.name || user?.username}
                     </p>
-                    <p className="text-sm text-muted-foreground">{user?.username}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {user?.username}
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
@@ -218,53 +228,45 @@ export default function MyPage() {
                 </CardContent>
               </Card>
 
-              {/* 🚀 앱 설정 (PWA 설치) 카드 */}
               <Card className="border-border/70 bg-white/92 shadow-sm">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2 text-lg">
-                    <Smartphone className="h-5 w-5 text-primary" />
-                    앱 설정
+                    <Smartphone className="h-5 w-5 text-primary" />앱 설정
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between rounded-[20px] border border-border/70 bg-secondary/40 p-4">
                     <div>
-                      <p className="font-semibold text-sm text-foreground">Findy 앱 설치</p>
+                      <p className="font-semibold text-sm text-foreground">
+                        Findy 앱 설치
+                      </p>
                       <p className="text-xs text-muted-foreground mt-1">
                         바탕화면에 바로가기 추가
                       </p>
                     </div>
-                    
-                    {/* 🚀 설치 상태에 따른 버튼 분기 처리 (iOS 대응 완벽) */}
+
+                    {/* 🚀 설치 상태에 따른 깔끔한 분기 처리 */}
                     {isInstalled ? (
-                      <Button variant="secondary" size="sm" disabled className="gap-1.5 rounded-full px-4">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled
+                        className="gap-1.5 rounded-full px-4"
+                      >
                         <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                         설치됨
                       </Button>
-                    ) : isInstallable ? (
-                      <Button onClick={install} size="sm" className="gap-1.5 rounded-full px-4">
-                        <Download className="w-4 h-4" />
-                        설치하기
-                      </Button>
-                    ) : isIOS ? (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="gap-1.5 rounded-full px-4 border-primary/50 text-primary hover:bg-primary/5"
-                        onClick={() => {
-                          toast({
-                            title: "🍎 아이폰(iOS) 앱 설치 방법",
-                            description: "사파리 화면 하단의 [공유(↑)] 아이콘을 누른 후, [홈 화면에 추가]를 선택해 주세요!",
-                            duration: 5000,
-                          });
-                        }}
-                      >
-                        <Download className="w-4 h-4" />
-                        iOS 설치 방법
-                      </Button>
                     ) : (
-                      <Button variant="outline" size="sm" disabled className="rounded-full px-4">
-                        지원 안함
+                      <Button
+                        asChild
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 rounded-full px-4 border-primary/50 text-primary hover:bg-primary/5"
+                      >
+                        <Link href="/install">
+                          <Download className="w-4 h-4" />
+                          설치 안내 보기
+                        </Link>
                       </Button>
                     )}
                   </div>
@@ -322,7 +324,11 @@ export default function MyPage() {
                   <Button asChild className="rounded-full px-5">
                     <Link href="/report/lost">분실물 등록하기</Link>
                   </Button>
-                  <Button asChild variant="outline" className="rounded-full px-5">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="rounded-full px-5"
+                  >
                     <Link href="/search">AI 검색해보기</Link>
                   </Button>
                 </div>
@@ -415,7 +421,11 @@ export default function MyPage() {
                         })}
                       </span>
                       <div className="flex flex-wrap gap-2">
-                        <Button asChild variant="outline" className="rounded-full">
+                        <Button
+                          asChild
+                          variant="outline"
+                          className="rounded-full"
+                        >
                           <Link href={`/item/${notification.foundItem.id}`}>
                             습득물 보기
                           </Link>
@@ -448,8 +458,7 @@ export default function MyPage() {
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
               <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-                <PackageSearch className="h-6 w-6 text-primary" />
-                내 게시글 관리
+                <PackageSearch className="h-6 w-6 text-primary" />내 게시글 관리
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 해결된 글은 숨기고, 필요할 때 다시 공개할 수 있어요.
@@ -502,14 +511,18 @@ export default function MyPage() {
                   아직 등록한 게시글이 없어요
                 </h3>
                 <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-                  분실물이나 습득물을 등록하면 여기에서 수정, 삭제, 해결 처리까지
-                  한 번에 관리할 수 있어요.
+                  분실물이나 습득물을 등록하면 여기에서 수정, 삭제, 해결
+                  처리까지 한 번에 관리할 수 있어요.
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <Button asChild className="rounded-full px-5">
                     <Link href="/report/found">습득물 등록하기</Link>
                   </Button>
-                  <Button asChild variant="outline" className="rounded-full px-5">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="rounded-full px-5"
+                  >
                     <Link href="/report/lost">분실물 등록하기</Link>
                   </Button>
                 </div>
@@ -590,23 +603,34 @@ export default function MyPage() {
                             {item.date ? (
                               <span className="inline-flex items-center gap-1.5">
                                 <CheckCircle2 className="h-4 w-4" />
-                                {format(new Date(item.date), "PPP", { locale: ko })}
+                                {format(new Date(item.date), "PPP", {
+                                  locale: ko,
+                                })}
                               </span>
                             ) : null}
                           </div>
                           <p className="line-clamp-3 text-sm leading-6 text-muted-foreground">
-                            {item.description || "설명이 아직 등록되지 않았어요."}
+                            {item.description ||
+                              "설명이 아직 등록되지 않았어요."}
                           </p>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          <Button asChild variant="outline" className="rounded-full">
+                          <Button
+                            asChild
+                            variant="outline"
+                            className="rounded-full"
+                          >
                             <Link href={`/item/${item.id}`}>
                               <Search className="mr-2 h-4 w-4" />
                               상세보기
                             </Link>
                           </Button>
-                          <Button asChild variant="outline" className="rounded-full">
+                          <Button
+                            asChild
+                            variant="outline"
+                            className="rounded-full"
+                          >
                             <Link href={`/item/${item.id}/edit`}>
                               <Pencil className="mr-2 h-4 w-4" />
                               수정

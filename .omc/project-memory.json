@@ -1,0 +1,267 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1775460909827,
+  "projectRoot": "/Users/Donghun/Desktop/Lost-Found-Finder",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "express",
+        "version": "5.0.1",
+        "category": "backend"
+      },
+      {
+        "name": "react",
+        "version": "18.3.1",
+        "category": "frontend"
+      },
+      {
+        "name": "react-dom",
+        "version": "18.3.1",
+        "category": "frontend"
+      },
+      {
+        "name": "esbuild",
+        "version": "0.25.0",
+        "category": "build"
+      },
+      {
+        "name": "playwright",
+        "version": "1.58.2",
+        "category": "testing"
+      },
+      {
+        "name": "vite",
+        "version": "7.3.0",
+        "category": "build"
+      }
+    ],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": "npm run build",
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "dev": "cross-env NODE_ENV=development tsx server/index.ts",
+      "build": "tsx script/build.ts",
+      "start": "NODE_ENV=production node dist/index.cjs",
+      "check": "tsc",
+      "db:push": "drizzle-kit push",
+      "db:up": "docker compose up -d db",
+      "db:prepare": "docker compose exec -T db psql -U postgres -d lost_found_finder -c \"CREATE EXTENSION IF NOT EXISTS vector;\"",
+      "db:down": "docker compose down",
+      "db:logs": "docker compose logs db",
+      "pwa:icons": "tsx script/generate-pwa-icons.ts"
+    }
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "docs"
+    ],
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "client": {
+      "path": "client",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1775460909805,
+      "keyFiles": [
+        "index.html",
+        "requirements.md"
+      ]
+    },
+    "doc": {
+      "path": "doc",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1775460909805,
+      "keyFiles": [
+        "doc-filelist.js",
+        "doc-script.js",
+        "doc-style.css"
+      ]
+    },
+    "docker": {
+      "path": "docker",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1775460909816,
+      "keyFiles": []
+    },
+    "docs": {
+      "path": "docs",
+      "purpose": "Documentation",
+      "fileCount": 2,
+      "lastAccessed": 1775460909817,
+      "keyFiles": [
+        "ai-providers.md",
+        "local-setup.md"
+      ]
+    },
+    "migrations": {
+      "path": "migrations",
+      "purpose": "Database migrations",
+      "fileCount": 6,
+      "lastAccessed": 1775460909818,
+      "keyFiles": [
+        "0002_user_chat.sql",
+        "0003_admin_users.sql",
+        "0004_admin_item_ownership.sql",
+        "0005_item_status.sql",
+        "0006_match_notifications.sql"
+      ]
+    },
+    "script": {
+      "path": "script",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1775460909818,
+      "keyFiles": [
+        "build.ts",
+        "generate-pwa-icons.ts"
+      ]
+    },
+    "server": {
+      "path": "server",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1775460909818,
+      "keyFiles": [
+        "auth.ts",
+        "db.ts",
+        "fcm.ts",
+        "index.ts",
+        "routes.ts"
+      ]
+    },
+    "shared": {
+      "path": "shared",
+      "purpose": null,
+      "fileCount": 3,
+      "lastAccessed": 1775460909818,
+      "keyFiles": [
+        "item-images.ts",
+        "routes.ts",
+        "schema.ts"
+      ]
+    },
+    "client/public": {
+      "path": "client/public",
+      "purpose": "Public files",
+      "fileCount": 4,
+      "lastAccessed": 1775460909819,
+      "keyFiles": [
+        "favicon.png",
+        "firebase-messaging-sw.js",
+        "manifest.json"
+      ]
+    },
+    "client/src": {
+      "path": "client/src",
+      "purpose": "Source code",
+      "fileCount": 4,
+      "lastAccessed": 1775460909819,
+      "keyFiles": [
+        "App.tsx",
+        "index.css",
+        "main.tsx"
+      ]
+    },
+    "server/lib": {
+      "path": "server/lib",
+      "purpose": "Library code",
+      "fileCount": 1,
+      "lastAccessed": 1775460909820,
+      "keyFiles": [
+        "masking.ts"
+      ]
+    },
+    "shared/models": {
+      "path": "shared/models",
+      "purpose": "Data models",
+      "fileCount": 1,
+      "lastAccessed": 1775460909820,
+      "keyFiles": [
+        "chat.ts"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "server/routes.ts",
+      "accessCount": 41,
+      "lastAccessed": 1775463673966,
+      "type": "directory"
+    },
+    {
+      "path": "shared/schema.ts",
+      "accessCount": 4,
+      "lastAccessed": 1775463620602,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 2,
+      "lastAccessed": 1775460967191,
+      "type": "directory"
+    },
+    {
+      "path": "server/fcm.ts",
+      "accessCount": 2,
+      "lastAccessed": 1775462103606,
+      "type": "file"
+    },
+    {
+      "path": "server/storage.ts",
+      "accessCount": 1,
+      "lastAccessed": 1775461016475,
+      "type": "file"
+    },
+    {
+      "path": "server",
+      "accessCount": 1,
+      "lastAccessed": 1775461045818,
+      "type": "directory"
+    },
+    {
+      "path": "client/src",
+      "accessCount": 1,
+      "lastAccessed": 1775462870708,
+      "type": "directory"
+    }
+  ],
+  "userDirectives": []
+}
