@@ -34,6 +34,8 @@ import {
 } from "drizzle-orm";
 import { randomBytes, scrypt, timingSafeEqual } from "crypto";
 import { promisify } from "util";
+import type { LocationFilterScope } from "@shared/routes";
+import { matchesLocationFilter } from "./lib/location-filter";
 
 const scryptAsync = promisify(scrypt);
 
@@ -166,6 +168,12 @@ export interface IStorage {
     color?: string;
     dateRange?: "all" | "7d" | "30d" | "90d";
     sort?: "latest" | "oldest";
+    useLocationFilter?: boolean;
+    locationScope?: LocationFilterScope;
+    locationText?: string;
+    latitude?: string;
+    longitude?: string;
+    radiusKm?: number;
   }): Promise<Item[]>;
   getMyItems(
     userId: number,
@@ -289,6 +297,12 @@ export class DatabaseStorage implements IStorage {
     color?: string;
     dateRange?: "all" | "7d" | "30d" | "90d";
     sort?: "latest" | "oldest";
+    useLocationFilter?: boolean;
+    locationScope?: LocationFilterScope;
+    locationText?: string;
+    latitude?: string;
+    longitude?: string;
+    radiusKm?: number;
   }): Promise<Item[]> {
     const conditions = [eq(items.status, "active" as const)];
     const search = filters?.search?.trim();
@@ -323,7 +337,7 @@ export class DatabaseStorage implements IStorage {
       conditions.push(gte(items.date, startDate));
     }
 
-    return await db
+    const results = await db
       .select()
       .from(items)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -331,6 +345,8 @@ export class DatabaseStorage implements IStorage {
         sort === "oldest" ? asc(items.date) : desc(items.date),
         sort === "oldest" ? asc(items.id) : desc(items.id)
       );
+
+    return results.filter((item) => matchesLocationFilter(item, filters));
   }
 
   async getMyItems(

@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Filter,
+  MapPin,
   PackageOpen,
   PlusCircle,
   RotateCcw,
@@ -13,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ItemCard } from "@/components/item-card";
 import { useItems } from "@/hooks/use-items";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -20,6 +22,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { LocationPicker } from "@/components/location-picker";
+import {
+  locationFilterScopes,
+  locationRadiusOptions,
+  type LocationFilterScope,
+} from "@shared/routes";
 
 type ItemTab = "found" | "lost";
 type ItemDateRange = "all" | "7d" | "30d" | "90d";
@@ -31,6 +39,12 @@ type ItemsPageFilters = {
   color: string;
   dateRange: ItemDateRange;
   sort: ItemSortOrder;
+  useLocationFilter: boolean;
+  locationScope: LocationFilterScope;
+  locationText: string;
+  latitude: string;
+  longitude: string;
+  radiusKm: number;
 };
 
 const DEFAULT_FILTERS = {
@@ -38,6 +52,12 @@ const DEFAULT_FILTERS = {
   color: "",
   dateRange: "all" as const,
   sort: "latest" as const,
+  useLocationFilter: false,
+  locationScope: "radius" as const,
+  locationText: "",
+  latitude: "",
+  longitude: "",
+  radiusKm: 3,
 };
 
 const dateRangeOptions: Array<{ value: ItemDateRange; label: string }> = [
@@ -52,6 +72,13 @@ const sortOptions: Array<{ value: ItemSortOrder; label: string }> = [
   { value: "oldest", label: "오래된순" },
 ];
 
+const locationScopeOptions: Array<{ value: LocationFilterScope; label: string }> = [
+  { value: "radius", label: "반경 기준" },
+  { value: "dong", label: "동 단위" },
+  { value: "sigungu", label: "시/구 단위" },
+  { value: "sido", label: "시/도 단위" },
+];
+
 function getValidDateRange(value: string | null): ItemDateRange {
   return dateRangeOptions.some((option) => option.value === value)
     ? (value as ItemDateRange)
@@ -64,6 +91,19 @@ function getValidSortOrder(value: string | null): ItemSortOrder {
     : "latest";
 }
 
+function getValidLocationScope(value: string | null): LocationFilterScope {
+  return locationScopeOptions.some((option) => option.value === value)
+    ? (value as LocationFilterScope)
+    : "radius";
+}
+
+function getValidRadius(value: string | null): number {
+  const radius = Number(value);
+  return locationRadiusOptions.includes(radius as (typeof locationRadiusOptions)[number])
+    ? radius
+    : 3;
+}
+
 function getFiltersFromSearch(search: string): ItemsPageFilters {
   const params = new URLSearchParams(search);
 
@@ -73,6 +113,12 @@ function getFiltersFromSearch(search: string): ItemsPageFilters {
     color: params.get("color")?.trim() ?? "",
     dateRange: getValidDateRange(params.get("dateRange")),
     sort: getValidSortOrder(params.get("sort")),
+    useLocationFilter: params.get("useLocationFilter") === "true",
+    locationScope: getValidLocationScope(params.get("locationScope")),
+    locationText: params.get("locationText")?.trim() ?? "",
+    latitude: params.get("latitude")?.trim() ?? "",
+    longitude: params.get("longitude")?.trim() ?? "",
+    radiusKm: getValidRadius(params.get("radiusKm")),
   };
 }
 
@@ -96,6 +142,21 @@ function buildItemsUrl(filters: ItemsPageFilters): string {
     params.set("sort", filters.sort);
   }
 
+  if (filters.useLocationFilter) {
+    params.set("useLocationFilter", "true");
+    params.set("locationScope", filters.locationScope);
+    if (filters.locationText) {
+      params.set("locationText", filters.locationText);
+    }
+    if (filters.latitude) {
+      params.set("latitude", filters.latitude);
+    }
+    if (filters.longitude) {
+      params.set("longitude", filters.longitude);
+    }
+    params.set("radiusKm", String(filters.radiusKm));
+  }
+
   return `/items?${params.toString()}`;
 }
 
@@ -105,6 +166,7 @@ function getActiveFilterCount(filters: ItemsPageFilters): number {
     Boolean(filters.color),
     filters.dateRange !== "all",
     filters.sort !== "latest",
+    filters.useLocationFilter,
   ].filter(Boolean).length;
 }
 
@@ -123,6 +185,12 @@ export default function ItemsPage() {
     color: filters.color || undefined,
     dateRange: filters.dateRange === "all" ? undefined : filters.dateRange,
     sort: filters.sort === "latest" ? undefined : filters.sort,
+    useLocationFilter: filters.useLocationFilter || undefined,
+    locationScope: filters.useLocationFilter ? filters.locationScope : undefined,
+    locationText: filters.useLocationFilter ? filters.locationText || undefined : undefined,
+    latitude: filters.useLocationFilter ? filters.latitude || undefined : undefined,
+    longitude: filters.useLocationFilter ? filters.longitude || undefined : undefined,
+    radiusKm: filters.useLocationFilter ? filters.radiusKm : undefined,
   });
 
   useEffect(() => {
@@ -145,7 +213,7 @@ export default function ItemsPage() {
   const description =
     filters.type === "found"
       ? "카테고리, 색상, 날짜 조건으로 습득물 게시물을 빠르게 좁혀서 비슷한 물건을 찾아보세요."
-      : "카테고리, 색상, 날짜 조건으로 분실물 게시물을 좁혀서 필요한 제보를 더 빨리 확인해보세요.";
+      : "카테고리, 색상, 날짜 조건과 선택적 지역 필터로 필요한 제보를 더 빨리 확인해보세요.";
   const emptyLabel = filters.type === "found" ? "습득물" : "분실물";
   const activeFilterCount = getActiveFilterCount(filters);
   const hasActiveFilters = activeFilterCount > 0;
@@ -155,6 +223,7 @@ export default function ItemsPage() {
       ...nextFilters,
       category: nextFilters.category.trim(),
       color: nextFilters.color.trim(),
+      locationText: nextFilters.locationText.trim(),
     };
 
     setFilters(normalizedFilters);
@@ -183,6 +252,19 @@ export default function ItemsPage() {
       type: filters.type,
       ...DEFAULT_FILTERS,
     });
+  };
+
+  const handleLocationChange = (location: {
+    latitude: string;
+    longitude: string;
+    address?: string;
+  }) => {
+    setDraftFilters((current) => ({
+      ...current,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      locationText: location.address?.trim() || current.locationText,
+    }));
   };
 
   return (
@@ -359,6 +441,118 @@ export default function ItemsPage() {
                       초기화
                     </Button>
                   </div>
+                </div>
+
+                <div className="rounded-[24px] border border-border/70 bg-secondary/35 p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <MapPin className="h-4 w-4 text-primary" />
+                        지역 기반 검색
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        필요할 때만 켜서 내 주변이나 같은 동네 게시물 중심으로 볼 수 있어요.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 rounded-full border border-border/70 bg-white px-4 py-2 shadow-sm">
+                      <span className="text-sm font-medium text-foreground">
+                        {draftFilters.useLocationFilter ? "사용 중" : "사용 안 함"}
+                      </span>
+                      <Switch
+                        checked={draftFilters.useLocationFilter}
+                        onCheckedChange={(checked) =>
+                          setDraftFilters((current) => ({
+                            ...current,
+                            useLocationFilter: checked,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  {draftFilters.useLocationFilter ? (
+                    <div className="mt-4 space-y-4">
+                      <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-foreground">범위 기준</label>
+                          <Select
+                            value={draftFilters.locationScope}
+                            onValueChange={(value) =>
+                              setDraftFilters((current) => ({
+                                ...current,
+                                locationScope: value as LocationFilterScope,
+                              }))
+                            }
+                          >
+                            <SelectTrigger className="h-11 rounded-2xl bg-white">
+                              <SelectValue placeholder="범위 선택" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {locationScopeOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {draftFilters.locationScope === "radius" ? (
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">반경</label>
+                            <Select
+                              value={String(draftFilters.radiusKm)}
+                              onValueChange={(value) =>
+                                setDraftFilters((current) => ({
+                                  ...current,
+                                  radiusKm: Number(value),
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="h-11 rounded-2xl bg-white">
+                                <SelectValue placeholder="반경 선택" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {locationRadiusOptions.map((radius) => (
+                                  <SelectItem key={radius} value={String(radius)}>
+                                    {radius}km
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium text-foreground">행정구역 범위</label>
+                            <div className="flex h-11 items-center rounded-2xl border border-border/70 bg-white px-4 text-sm text-muted-foreground">
+                              선택한 위치의 {draftFilters.locationScope === "dong" ? "동" : draftFilters.locationScope === "sigungu" ? "시/구" : "시/도"}를 기준으로 필터링합니다.
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="overflow-hidden rounded-[20px] border border-border/70 bg-white shadow-card">
+                        <LocationPicker
+                          value={
+                            draftFilters.latitude && draftFilters.longitude
+                              ? {
+                                  latitude: draftFilters.latitude,
+                                  longitude: draftFilters.longitude,
+                                }
+                              : undefined
+                          }
+                          onChange={handleLocationChange}
+                          height="240px"
+                        />
+                      </div>
+
+                      {draftFilters.locationText ? (
+                        <div className="rounded-[16px] border border-primary/12 bg-white/92 px-4 py-3 text-sm text-foreground/80">
+                          선택한 위치: {draftFilters.locationText}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </form>

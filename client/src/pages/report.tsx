@@ -144,6 +144,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastAutoLocationRef = useRef("");
 
   const { data: existingItem, isLoading: isItemLoading } = useItem(itemId ?? 0);
   const analyzeMutation = useAnalyzeImage();
@@ -198,6 +199,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     setReportType(nextType);
     setImagePreviews(nextImageUrls);
     setActiveImageIndex(0);
+    lastAutoLocationRef.current = existingItem.location ?? "";
     form.reset({
       reportType: nextType,
       title: existingItem.title,
@@ -229,9 +231,25 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const handleLocationChange = (nextLocation: {
     latitude: string;
     longitude: string;
+    address?: string;
   }) => {
     form.setValue("latitude", nextLocation.latitude);
     form.setValue("longitude", nextLocation.longitude);
+
+    const nextAddress = nextLocation.address?.trim();
+    if (!nextAddress) {
+      return;
+    }
+
+    const currentLocation = form.getValues("location")?.trim() ?? "";
+    if (!currentLocation || currentLocation === lastAutoLocationRef.current) {
+      form.setValue("location", nextAddress, {
+        shouldDirty: true,
+        shouldTouch: true,
+      });
+    }
+
+    lastAutoLocationRef.current = nextAddress;
   };
 
   const syncImagePreviews = (nextImages: string[], preferredIndex?: number) => {

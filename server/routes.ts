@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import passport from "passport";
 import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
+import { matchesLocationFilter } from "./lib/location-filter";
 import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { normalizeItemImageUrls } from "@shared/item-images";
@@ -1850,6 +1851,24 @@ export async function registerRoutes(
         dateRange:
           typeof req.query.dateRange === "string" ? req.query.dateRange : undefined,
         sort: typeof req.query.sort === "string" ? req.query.sort : undefined,
+        useLocationFilter:
+          typeof req.query.useLocationFilter === "string"
+            ? req.query.useLocationFilter
+            : undefined,
+        locationScope:
+          typeof req.query.locationScope === "string"
+            ? req.query.locationScope
+            : undefined,
+        locationText:
+          typeof req.query.locationText === "string"
+            ? req.query.locationText
+            : undefined,
+        latitude:
+          typeof req.query.latitude === "string" ? req.query.latitude : undefined,
+        longitude:
+          typeof req.query.longitude === "string" ? req.query.longitude : undefined,
+        radiusKm:
+          typeof req.query.radiusKm === "string" ? req.query.radiusKm : undefined,
       });
       const itemsList = await storage.getItems(filters);
       res.json(itemsList);
@@ -2259,7 +2278,10 @@ export async function registerRoutes(
             ...result,
             distanceKm,
           };
-        });
+        })
+        .filter((result) =>
+          matchesLocationFilter(result.item, input, result.distanceKm)
+        );
 
       if (filteredVectorMatches.length === 0) {
         return res.json([]);

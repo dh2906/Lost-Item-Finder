@@ -13,6 +13,8 @@ import {
 
 export const itemDateRanges = ["all", "7d", "30d", "90d"] as const;
 export const itemSortOrders = ["latest", "oldest"] as const;
+export const locationFilterScopes = ["radius", "dong", "sigungu", "sido"] as const;
+export const locationRadiusOptions = [1, 3, 5, 10] as const;
 
 const itemResponseSchema = z.custom<typeof items.$inferSelect>();
 
@@ -93,6 +95,42 @@ const adminDashboardResponseSchema = z.object({
   recentItems: z.array(adminItemResponseSchema),
 });
 
+function getFirstQueryValue(value: unknown) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+const optionalQueryStringSchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return typeof normalizedValue === "string" ? normalizedValue : undefined;
+}, z.string().optional());
+
+const optionalPositiveIntegerQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return normalizedValue === undefined ? undefined : normalizedValue;
+}, z.coerce.number().int().positive().optional());
+
+const optionalBooleanQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  if (normalizedValue === undefined) {
+    return undefined;
+  }
+
+  if (typeof normalizedValue === "boolean") {
+    return normalizedValue;
+  }
+
+  if (typeof normalizedValue === "string") {
+    const normalizedText = normalizedValue.trim().toLowerCase();
+    if (normalizedText === "true") {
+      return true;
+    }
+    if (normalizedText === "false") {
+      return false;
+    }
+  }
+
+  return undefined;
+}, z.boolean().optional());
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -161,6 +199,12 @@ export const api = {
           color: z.string().trim().min(1).optional(),
           dateRange: z.enum(itemDateRanges).optional(),
           sort: z.enum(itemSortOrders).optional(),
+          useLocationFilter: optionalBooleanQuerySchema,
+          locationScope: z.enum(locationFilterScopes).optional(),
+          locationText: z.string().trim().min(1).optional(),
+          latitude: optionalQueryStringSchema,
+          longitude: optionalQueryStringSchema,
+          radiusKm: optionalPositiveIntegerQuerySchema,
         })
         .optional(),
       responses: {
@@ -286,8 +330,12 @@ export const api = {
       input: z.object({
         prompt: z.string().optional(),
         imageUrl: z.string().optional(),
+        useLocationFilter: z.boolean().optional(),
+        locationScope: z.enum(locationFilterScopes).optional(),
+        locationText: z.string().trim().min(1).optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),
+        radiusKm: z.number().int().positive().optional(),
       }),
       responses: {
         200: z.array(
@@ -398,6 +446,7 @@ export type SearchSimilarInput = z.infer<typeof api.ai.searchSimilar.input>;
 export type SearchSimilarResponse = z.infer<
   (typeof api.ai.searchSimilar.responses)[200]
 >;
+export type LocationFilterScope = (typeof locationFilterScopes)[number];
 export type MatchNotificationsResponse = z.infer<
   (typeof api.notifications.list.responses)[200]
 >;

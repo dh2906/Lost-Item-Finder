@@ -29,6 +29,14 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
   if (filters?.color) queryParams.set("color", filters.color);
   if (filters?.dateRange) queryParams.set("dateRange", filters.dateRange);
   if (filters?.sort) queryParams.set("sort", filters.sort);
+  if (filters?.useLocationFilter) {
+    queryParams.set("useLocationFilter", "true");
+    if (filters.locationScope) queryParams.set("locationScope", filters.locationScope);
+    if (filters.locationText) queryParams.set("locationText", filters.locationText);
+    if (filters.latitude) queryParams.set("latitude", filters.latitude);
+    if (filters.longitude) queryParams.set("longitude", filters.longitude);
+    if (filters.radiusKm) queryParams.set("radiusKm", String(filters.radiusKm));
+  }
   
   const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
   const url = `${api.items.list.path}${queryString}`;

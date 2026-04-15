@@ -31,17 +31,25 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const mapRef = useRef<kakao.maps.Map | null>(null);
 
-  const syncCoordinates = useCallback(
-    (nextPosition: MarkerPosition) => {
+  const emitLocationChange = useCallback(
+    (nextPosition: MarkerPosition, nextAddress?: string) => {
       onChange({
         latitude: nextPosition.lat.toFixed(6),
         longitude: nextPosition.lng.toFixed(6),
+        address: nextAddress,
       });
     },
     [onChange],
   );
 
-  const getAddressFromCoords = useCallback((lat: number, lng: number) => {
+  const getAddressFromCoords = useCallback((
+    lat: number,
+    lng: number,
+    options?: {
+      emitChange?: boolean;
+      position?: MarkerPosition;
+    },
+  ) => {
     if (!window.kakao?.maps?.services) return;
 
     const geocoder = new window.kakao.maps.services.Geocoder();
@@ -49,9 +57,12 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
       if (status === window.kakao.maps.services.Status.OK && result[0]) {
         const addr = result[0].road_address?.address_name || result[0].address?.address_name;
         setAddress(addr || "");
+        if (options?.emitChange && options.position) {
+          emitLocationChange(options.position, addr || undefined);
+        }
       }
     });
-  }, []);
+  }, [emitLocationChange]);
 
   // 초기 위치 설정 (GPS 또는 기본값)
   useEffect(() => {
@@ -74,8 +85,11 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
             lng: pos.coords.longitude,
           };
           setPosition(nextPosition);
-          getAddressFromCoords(nextPosition.lat, nextPosition.lng);
-          syncCoordinates(nextPosition);
+          emitLocationChange(nextPosition);
+          getAddressFromCoords(nextPosition.lat, nextPosition.lng, {
+            emitChange: true,
+            position: nextPosition,
+          });
           setIsLocating(false);
         },
         () => {
@@ -84,8 +98,11 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
             lng: 126.978,
           };
           setPosition(nextPosition);
-          getAddressFromCoords(nextPosition.lat, nextPosition.lng);
-          syncCoordinates(nextPosition);
+          emitLocationChange(nextPosition);
+          getAddressFromCoords(nextPosition.lat, nextPosition.lng, {
+            emitChange: true,
+            position: nextPosition,
+          });
           setIsLocating(false);
         },
         { enableHighAccuracy: true, timeout: 10000 }
@@ -93,26 +110,34 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
     } else {
       const nextPosition = { lat: 37.5665, lng: 126.978 };
       setPosition(nextPosition);
-      getAddressFromCoords(nextPosition.lat, nextPosition.lng);
-      syncCoordinates(nextPosition);
+      emitLocationChange(nextPosition);
+      getAddressFromCoords(nextPosition.lat, nextPosition.lng, {
+        emitChange: true,
+        position: nextPosition,
+      });
       setIsLocating(false);
     }
-  }, [getAddressFromCoords, syncCoordinates, value]);
+  }, [emitLocationChange, getAddressFromCoords, value]);
+
+  const commitPosition = useCallback((nextPosition: MarkerPosition) => {
+    setPosition(nextPosition);
+    emitLocationChange(nextPosition);
+    getAddressFromCoords(nextPosition.lat, nextPosition.lng, {
+      emitChange: true,
+      position: nextPosition,
+    });
+  }, [emitLocationChange, getAddressFromCoords]);
 
   const handlePositionChange = (marker: any) => {
     const pos = marker.getPosition();
     const newPosition = { lat: pos.getLat(), lng: pos.getLng() };
-    setPosition(newPosition);
-    getAddressFromCoords(newPosition.lat, newPosition.lng);
-    syncCoordinates(newPosition);
+    commitPosition(newPosition);
   };
 
   const handleMapClick = (_: any, mouseEvent: any) => {
     const latlng = mouseEvent.latLng;
     const newPosition = { lat: latlng.getLat(), lng: latlng.getLng() };
-    setPosition(newPosition);
-    getAddressFromCoords(newPosition.lat, newPosition.lng);
-    syncCoordinates(newPosition);
+    commitPosition(newPosition);
   };
 
   const handleDragEnd = (marker: any) => {
@@ -132,9 +157,7 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         };
-        setPosition(newPosition);
-        getAddressFromCoords(newPosition.lat, newPosition.lng);
-        syncCoordinates(newPosition);
+        commitPosition(newPosition);
         setIsGettingLocation(false);
       },
       (err) => {
