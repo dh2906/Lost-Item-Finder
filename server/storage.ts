@@ -98,6 +98,24 @@ export interface MatchNotificationRecord {
   foundItem: Item;
 }
 
+export interface ExternalFoundItemInput {
+  externalSource: string;
+  externalId: string;
+  externalUrl?: string | null;
+  externalPayload?: Record<string, unknown> | null;
+  title: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
+  itemCategory?: string | null;
+  color?: string | null;
+  size?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+  date?: Date | null;
+  contactInfo?: string | null;
+}
+
 function getConfiguredAdminUsernames(): string[] {
   return (process.env.ADMIN_USERNAMES ?? "")
     .split(",")
@@ -178,6 +196,10 @@ export interface IStorage {
   ): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem & { userId?: number | null }): Promise<Item>;
+  upsertExternalFoundItem(item: ExternalFoundItemInput): Promise<{
+    item: Item;
+    created: boolean;
+  }>;
   updateItem(itemId: number, item: Partial<InsertItem>): Promise<Item | undefined>;
   updateOwnedItem(
     userId: number,
@@ -417,6 +439,58 @@ export class DatabaseStorage implements IStorage {
   async createItem(insertItem: InsertItem & { userId?: number | null }): Promise<Item> {
     const [item] = await db.insert(items).values(insertItem).returning();
     return item;
+  }
+
+  async upsertExternalFoundItem(input: ExternalFoundItemInput): Promise<{
+    item: Item;
+    created: boolean;
+  }> {
+    const now = new Date();
+    const values = {
+      userId: null,
+      reportType: "found",
+      status: "active",
+      title: input.title,
+      description: input.description ?? null,
+      imageUrl: input.imageUrl ?? null,
+      imageUrls: input.imageUrls ?? [],
+      itemCategory: input.itemCategory ?? null,
+      color: input.color ?? null,
+      size: input.size ?? null,
+      tags: input.tags ?? [],
+      location: input.location ?? null,
+      latitude: null,
+      longitude: null,
+      date: input.date ?? now,
+      contactInfo: input.contactInfo ?? null,
+      externalSource: input.externalSource,
+      externalId: input.externalId,
+      externalUrl: input.externalUrl ?? null,
+      externalPayload: input.externalPayload ?? null,
+    } satisfies typeof items.$inferInsert;
+
+    const [existingItem] = await db
+      .select()
+      .from(items)
+      .where(
+        and(
+          eq(items.externalSource, input.externalSource),
+          eq(items.externalId, input.externalId)
+        )
+      );
+
+    if (!existingItem) {
+      const [createdItem] = await db.insert(items).values(values).returning();
+      return { item: createdItem, created: true };
+    }
+
+    const [updatedItem] = await db
+      .update(items)
+      .set(values)
+      .where(eq(items.id, existingItem.id))
+      .returning();
+
+    return { item: updatedItem ?? existingItem, created: false };
   }
 
   async updateItem(
