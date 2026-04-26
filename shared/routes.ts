@@ -418,8 +418,10 @@ export const api = {
       input: z.object({
         prompt: z.string().optional(),
         imageUrl: z.string().optional(),
+        location: z.string().optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),
+        radiusKm: z.number().positive().optional(),
       }),
       responses: {
         200: z.array(

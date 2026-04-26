@@ -63,7 +63,21 @@ const sortOptions: Array<{ value: ItemSortOrder; label: string }> = [
   { value: "oldest", label: "오래된순" },
 ];
 
-const radiusOptions = [1, 3, 5, 10, 20, 50] as const;
+const radiusOptions = [0.1, 0.3, 0.5, 1, 3, 5, 10, 20, 50] as const;
+const regionPresetOptions = [
+  "서울특별시",
+  "서울특별시 강남구",
+  "서울특별시 동대문구",
+  "경기도",
+  "충청남도",
+  "충청남도 아산시",
+  "충청남도 천안시 동남구",
+  "경상북도",
+] as const;
+
+function formatRadiusLabel(radiusKm: number): string {
+  return radiusKm < 1 ? `${Math.round(radiusKm * 1000)}m` : `${radiusKm}km`;
+}
 
 function getValidDateRange(value: string | null): ItemDateRange {
   return dateRangeOptions.some((option) => option.value === value)
@@ -424,6 +438,30 @@ export default function ItemsPage() {
                       placeholder="예: 강남역, 서대문구"
                       className="rounded-2xl"
                     />
+                    <Select
+                      value={
+                        regionPresetOptions.some((option) => option === draftFilters.location)
+                          ? draftFilters.location
+                          : undefined
+                      }
+                      onValueChange={(value) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          location: value,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-10 rounded-2xl">
+                        <SelectValue placeholder="빠른 지역 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {regionPresetOptions.map((region) => (
+                          <SelectItem key={region} value={region}>
+                            {region}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div className="space-y-2">
@@ -444,7 +482,7 @@ export default function ItemsPage() {
                       <SelectContent>
                         {radiusOptions.map((radiusKm) => (
                           <SelectItem key={radiusKm} value={String(radiusKm)}>
-                            {radiusKm}km
+                            {formatRadiusLabel(radiusKm)}
                           </SelectItem>
                         ))}
                       </SelectContent>
