@@ -2161,6 +2161,14 @@ export async function registerRoutes(
         category:
           typeof req.query.category === "string" ? req.query.category : undefined,
         color: typeof req.query.color === "string" ? req.query.color : undefined,
+        location:
+          typeof req.query.location === "string" ? req.query.location : undefined,
+        latitude:
+          typeof req.query.latitude === "string" ? req.query.latitude : undefined,
+        longitude:
+          typeof req.query.longitude === "string" ? req.query.longitude : undefined,
+        radiusKm:
+          typeof req.query.radiusKm === "string" ? req.query.radiusKm : undefined,
         dateRange:
           typeof req.query.dateRange === "string" ? req.query.dateRange : undefined,
         sort: typeof req.query.sort === "string" ? req.query.sort : undefined,
