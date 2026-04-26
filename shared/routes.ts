@@ -152,6 +152,16 @@ const lost112ItemsResponseSchema = z.object({
   numOfRows: z.number(),
 });
 
+const lost112SyncResponseSchema = z.object({
+  fetchedCount: z.number(),
+  createdCount: z.number(),
+  updatedCount: z.number(),
+  embeddedCount: z.number(),
+  embeddingFailedCount: z.number(),
+  automaticMatchCount: z.number(),
+  items: z.array(itemResponseSchema),
+});
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -314,6 +324,25 @@ export const api = {
       responses: {
         200: lost112ItemsResponseSchema,
         400: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
+    sync: {
+      method: "POST" as const,
+      path: "/api/lost112/sync" as const,
+      input: z.object({
+        category: z.string().optional(),
+        region: z.string().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+        page: z.coerce.number().int().positive().optional(),
+        numOfRows: z.coerce.number().int().positive().max(100).optional(),
+        maxPages: z.coerce.number().int().positive().max(10).optional(),
+      }).optional(),
+      responses: {
+        200: lost112SyncResponseSchema,
+        400: errorSchemas.validation,
+        403: errorSchemas.validation,
         500: errorSchemas.internal,
       },
     },
@@ -493,6 +522,10 @@ export type Lost112ItemsResponse = z.infer<
   (typeof api.lost112.items.responses)[200]
 >;
 export type Lost112ItemResponse = Lost112ItemsResponse["items"][number];
+export type Lost112SyncInput = z.infer<typeof api.lost112.sync.input>;
+export type Lost112SyncResponse = z.infer<
+  (typeof api.lost112.sync.responses)[200]
+>;
 export type UpdateItemInput = z.infer<typeof api.items.update.input>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<
