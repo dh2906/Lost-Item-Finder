@@ -75,8 +75,17 @@ const AUTO_MATCH_MIN_VECTOR_SCORE = Number(process.env.AUTO_MATCH_MIN_VECTOR_SCO
 const AUTO_MATCH_MIN_KEYWORD_SCORE = Number(process.env.AUTO_MATCH_MIN_KEYWORD_SCORE ?? 0.12);
 const AUTO_MATCH_MIN_CATEGORY_SCORE = Number(process.env.AUTO_MATCH_MIN_CATEGORY_SCORE ?? 0.2);
 const AUTO_MATCH_MAX_RESULTS = Number(process.env.AUTO_MATCH_MAX_RESULTS ?? 12);
-const LOST112_SEARCH_SYNC_ROWS = Number(process.env.LOST112_SEARCH_SYNC_ROWS ?? 30);
-const LOST112_SEARCH_TERM_LIMIT = Number(process.env.LOST112_SEARCH_TERM_LIMIT ?? 3);
+const LOST112_SEARCH_SYNC_ROWS = Number(process.env.LOST112_SEARCH_SYNC_ROWS ?? 10);
+const LOST112_SEARCH_TERM_LIMIT = Number(process.env.LOST112_SEARCH_TERM_LIMIT ?? 2);
+const LOST112_SEARCH_SYNC_TIMEOUT_MS = Number(
+  process.env.LOST112_SEARCH_SYNC_TIMEOUT_MS ?? 4500
+);
+const LOST112_SEARCH_FETCH_TIMEOUT_MS = Number(
+  process.env.LOST112_SEARCH_FETCH_TIMEOUT_MS ?? 2500
+);
+const LOST112_SEARCH_EMBEDDING_LIMIT = Number(
+  process.env.LOST112_SEARCH_EMBEDDING_LIMIT ?? 6
+);
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -280,6 +289,7 @@ type Lost112FetchOptions = {
   endDate?: string;
   page?: number;
   numOfRows?: number;
+  timeoutMs?: number;
 };
 
 type Lost112FetchedPage = {
@@ -322,6 +332,7 @@ async function fetchLost112ItemsPage({
   endDate = "",
   page = 1,
   numOfRows = 20,
+  timeoutMs = 10000,
 }: Lost112FetchOptions): Promise<Lost112FetchedPage> {
   const safePageNo = Math.max(1, page);
   const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
@@ -346,7 +357,7 @@ async function fetchLost112ItemsPage({
   safeUrl.searchParams.set("serviceKey", "***");
   console.log("[Lost112] request:", safeUrl.toString());
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
   const rawText = await response.text();
 
   if (!response.ok) {
@@ -565,6 +576,43 @@ function itemMatchesLocationText(item: Item, locationText?: string): boolean {
     .every((token) => haystack.includes(token));
 }
 
+function getRemainingTimeMs(deadlineAt: number): number {
+  return Math.max(0, deadlineAt - Date.now());
+}
+
+function hasLost112SearchSyncBudget(deadlineAt: number): boolean {
+  return getRemainingTimeMs(deadlineAt) > 250;
+}
+
+async function ensureLost112SearchItemEmbedding(
+  item: Item,
+  created: boolean,
+  deadlineAt: number
+): Promise<{ embedding: number[]; generated: boolean } | undefined> {
+  if (!hasLost112SearchSyncBudget(deadlineAt)) {
+    return undefined;
+  }
+
+  const normalizedItem = normalizeItemMetadata(item);
+  const content = buildItemSearchText(normalizedItem);
+  const existingEmbedding = created ? undefined : await storage.getItemEmbedding(item.id);
+
+  if (existingEmbedding?.content === content) {
+    return { embedding: existingEmbedding.embedding, generated: false };
+  }
+
+  const remainingMs = getRemainingTimeMs(deadlineAt);
+  if (remainingMs <= 500) {
+    return undefined;
+  }
+
+  const embedding = await ensureItemEmbedding(
+    item,
+    AbortSignal.timeout(Math.min(remainingMs, LOST112_SEARCH_FETCH_TIMEOUT_MS))
+  );
+  return { embedding, generated: true };
+}
+
 async function syncLost112ItemsForSearch(params: {
   queryText: string;
   region?: string;
@@ -581,30 +629,54 @@ async function syncLost112ItemsForSearch(params: {
 
   const syncedItems: Item[] = [];
   const seenExternalIds = new Set<string>();
+  const deadlineAt = Date.now() + LOST112_SEARCH_SYNC_TIMEOUT_MS;
+  let embeddedCount = 0;
 
   for (const term of terms) {
+    if (!hasLost112SearchSyncBudget(deadlineAt)) {
+      console.warn("Lost112 search sync stopped after reaching time budget");
+      break;
+    }
+
     try {
       const pageData = await fetchLost112ItemsPage({
         apiKey,
         category: term,
         region: params.region,
         numOfRows: LOST112_SEARCH_SYNC_ROWS,
+        timeoutMs: Math.min(
+          LOST112_SEARCH_FETCH_TIMEOUT_MS,
+          Math.max(500, getRemainingTimeMs(deadlineAt))
+        ),
       });
 
       for (const lost112Item of pageData.items) {
+        if (!hasLost112SearchSyncBudget(deadlineAt)) {
+          break;
+        }
+
         const externalItem = normalizeLost112ToExternalFoundItem(lost112Item);
         if (!externalItem || seenExternalIds.has(externalItem.externalId)) {
           continue;
         }
 
         seenExternalIds.add(externalItem.externalId);
-        const { item } = await storage.upsertExternalFoundItem(externalItem);
+        const { item, created } = await storage.upsertExternalFoundItem(externalItem);
         syncedItems.push(item);
 
-        try {
-          await ensureItemEmbedding(item);
-        } catch (embeddingError) {
-          console.error("Failed to embed Lost112 search item:", embeddingError);
+        if (embeddedCount < LOST112_SEARCH_EMBEDDING_LIMIT) {
+          try {
+            const embedding = await ensureLost112SearchItemEmbedding(
+              item,
+              created,
+              deadlineAt
+            );
+            if (embedding?.generated) {
+              embeddedCount += 1;
+            }
+          } catch (embeddingError) {
+            console.error("Failed to embed Lost112 search item:", embeddingError);
+          }
         }
       }
     } catch (error) {
@@ -2916,10 +2988,12 @@ export async function registerRoutes(
       }
 
       const queryText = queryParts.join("\n\n").trim();
-      await syncLost112ItemsForSearch({
-        queryText,
-        region: searchLocation,
-      });
+      if (req.isAuthenticated()) {
+        await syncLost112ItemsForSearch({
+          queryText,
+          region: searchLocation,
+        });
+      }
 
       const queryEmbedding = await createEmbedding(queryText);
       const vectorMatches = await storage.searchItemsByEmbedding(
