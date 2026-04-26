@@ -445,7 +445,6 @@ export class DatabaseStorage implements IStorage {
     item: Item;
     created: boolean;
   }> {
-    const now = new Date();
     const values = {
       userId: null,
       reportType: "found",
@@ -461,7 +460,8 @@ export class DatabaseStorage implements IStorage {
       location: input.location ?? null,
       latitude: null,
       longitude: null,
-      date: input.date ?? now,
+      // date가 없으면 null로 저장 — 현재 시각으로 대체하면 실제 습득일을 왜곡함
+      date: input.date ?? null,
       contactInfo: input.contactInfo ?? null,
       externalSource: input.externalSource,
       externalId: input.externalId,
