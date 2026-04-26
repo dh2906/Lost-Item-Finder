@@ -75,6 +75,8 @@ const AUTO_MATCH_MIN_VECTOR_SCORE = Number(process.env.AUTO_MATCH_MIN_VECTOR_SCO
 const AUTO_MATCH_MIN_KEYWORD_SCORE = Number(process.env.AUTO_MATCH_MIN_KEYWORD_SCORE ?? 0.12);
 const AUTO_MATCH_MIN_CATEGORY_SCORE = Number(process.env.AUTO_MATCH_MIN_CATEGORY_SCORE ?? 0.2);
 const AUTO_MATCH_MAX_RESULTS = Number(process.env.AUTO_MATCH_MAX_RESULTS ?? 12);
+const LOST112_SEARCH_SYNC_ROWS = Number(process.env.LOST112_SEARCH_SYNC_ROWS ?? 30);
+const LOST112_SEARCH_TERM_LIMIT = Number(process.env.LOST112_SEARCH_TERM_LIMIT ?? 3);
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -452,7 +454,7 @@ function normalizeLost112ToExternalFoundItem(
   const imageUrl = item.fdFilePathImg?.trim() || null;
   const tags = Array.from(
     new Set(
-      [LOST112_SOURCE, "police", item.prdtClNm, item.fdPrdtNm, item.orgNm]
+      ["경찰청", LOST112_SOURCE, "police", item.prdtClNm, item.fdPrdtNm, item.orgNm]
         .map((value) => value?.trim())
         .filter((value): value is string => Boolean(value))
     )
@@ -485,6 +487,132 @@ function normalizeLost112ToExternalFoundItem(
     date: parseLost112Date(item.fdYmd),
     contactInfo: contactInfo || null,
   };
+}
+
+const LOST112_ITEM_KEYWORDS = [
+  "지갑",
+  "차 키",
+  "자동차 키",
+  "키",
+  "열쇠",
+  "카드",
+  "신분증",
+  "학생증",
+  "주민등록증",
+  "운전면허증",
+  "휴대폰",
+  "핸드폰",
+  "스마트폰",
+  "이어폰",
+  "에어팟",
+  "가방",
+  "백팩",
+  "노트북",
+  "태블릿",
+  "아이패드",
+  "시계",
+  "반지",
+  "목걸이",
+  "우산",
+  "모자",
+  "옷",
+] as const;
+
+function normalizePlainSearchText(value?: string | null): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^0-9a-zA-Z가-힣\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractLost112SearchTerms(queryText: string): string[] {
+  const normalized = normalizePlainSearchText(queryText);
+  if (!normalized) {
+    return [];
+  }
+
+  const terms = new Set<string>();
+  for (const keyword of LOST112_ITEM_KEYWORDS) {
+    if (normalized.includes(keyword)) {
+      terms.add(keyword);
+    }
+  }
+
+  normalized
+    .split(" ")
+    .filter((token) => token.length >= 2 && token.length <= 12)
+    .filter((token) => !/^\d+$/.test(token))
+    .slice(0, LOST112_SEARCH_TERM_LIMIT)
+    .forEach((token) => terms.add(token));
+
+  return Array.from(terms).slice(0, LOST112_SEARCH_TERM_LIMIT);
+}
+
+function itemMatchesLocationText(item: Item, locationText?: string): boolean {
+  const normalizedLocation = normalizePlainSearchText(locationText);
+  if (!normalizedLocation) {
+    return true;
+  }
+
+  const haystack = normalizePlainSearchText(
+    [item.location, item.description, item.itemCategory, item.title].filter(Boolean).join(" ")
+  );
+
+  return normalizedLocation
+    .split(" ")
+    .filter((token) => token.length >= 2)
+    .every((token) => haystack.includes(token));
+}
+
+async function syncLost112ItemsForSearch(params: {
+  queryText: string;
+  region?: string;
+}): Promise<Item[]> {
+  const apiKey = process.env.LOST112_API_KEY;
+  if (!apiKey) {
+    return [];
+  }
+
+  const terms = extractLost112SearchTerms(params.queryText);
+  if (terms.length === 0) {
+    return [];
+  }
+
+  const syncedItems: Item[] = [];
+  const seenExternalIds = new Set<string>();
+
+  for (const term of terms) {
+    try {
+      const pageData = await fetchLost112ItemsPage({
+        apiKey,
+        category: term,
+        region: params.region,
+        numOfRows: LOST112_SEARCH_SYNC_ROWS,
+      });
+
+      for (const lost112Item of pageData.items) {
+        const externalItem = normalizeLost112ToExternalFoundItem(lost112Item);
+        if (!externalItem || seenExternalIds.has(externalItem.externalId)) {
+          continue;
+        }
+
+        seenExternalIds.add(externalItem.externalId);
+        const { item } = await storage.upsertExternalFoundItem(externalItem);
+        syncedItems.push(item);
+
+        try {
+          await ensureItemEmbedding(item);
+        } catch (embeddingError) {
+          console.error("Failed to embed Lost112 search item:", embeddingError);
+        }
+      }
+    } catch (error) {
+      console.warn(`Lost112 search sync skipped for term "${term}":`, error);
+    }
+  }
+
+  return syncedItems;
 }
 
 function extractCompletionMessageContent(content: unknown): string | null {
@@ -2758,6 +2886,11 @@ export async function registerRoutes(
       }
 
       const searchCoordinates = getSearchCoordinates(input);
+      const searchLocation = input.location?.trim();
+      const radiusKm =
+        typeof input.radiusKm === "number" && Number.isFinite(input.radiusKm)
+          ? input.radiusKm
+          : undefined;
       await backfillItemEmbeddings("found");
 
       const queryParts: string[] = [];
@@ -2783,6 +2916,11 @@ export async function registerRoutes(
       }
 
       const queryText = queryParts.join("\n\n").trim();
+      await syncLost112ItemsForSearch({
+        queryText,
+        region: searchLocation,
+      });
+
       const queryEmbedding = await createEmbedding(queryText);
       const vectorMatches = await storage.searchItemsByEmbedding(
         "found",
@@ -2807,6 +2945,17 @@ export async function registerRoutes(
             ...result,
             distanceKm,
           };
+        })
+        .filter((result) => {
+          if (searchLocation && !itemMatchesLocationText(result.item, searchLocation)) {
+            return false;
+          }
+
+          if (searchCoordinates && radiusKm !== undefined) {
+            return result.distanceKm !== null && result.distanceKm <= radiusKm;
+          }
+
+          return true;
         });
 
       if (filteredVectorMatches.length === 0) {
