@@ -1,6 +1,10 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { copyFile, readFile, rm } from "fs/promises";
+import { createRequire } from "module";
+import { dirname, join } from "path";
+
+const require = createRequire(import.meta.url);
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -59,6 +63,14 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  const connectPgSimpleDir = dirname(
+    require.resolve("connect-pg-simple/package.json")
+  );
+  await copyFile(
+    join(connectPgSimpleDir, "table.sql"),
+    join("dist", "table.sql")
+  );
 }
 
 buildAll().catch((err) => {
