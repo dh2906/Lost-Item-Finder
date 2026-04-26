@@ -36,6 +36,7 @@ import { randomBytes, scrypt, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 
 const scryptAsync = promisify(scrypt);
+const DEFAULT_LOCATION_RADIUS_KM = 5;
 
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
@@ -164,6 +165,10 @@ export interface IStorage {
     search?: string;
     category?: string;
     color?: string;
+    location?: string;
+    latitude?: number;
+    longitude?: number;
+    radiusKm?: number;
     dateRange?: "all" | "7d" | "30d" | "90d";
     sort?: "latest" | "oldest";
   }): Promise<Item[]>;
@@ -287,6 +292,10 @@ export class DatabaseStorage implements IStorage {
     search?: string;
     category?: string;
     color?: string;
+    location?: string;
+    latitude?: number;
+    longitude?: number;
+    radiusKm?: number;
     dateRange?: "all" | "7d" | "30d" | "90d";
     sort?: "latest" | "oldest";
   }): Promise<Item[]> {
@@ -294,7 +303,42 @@ export class DatabaseStorage implements IStorage {
     const search = filters?.search?.trim();
     const category = filters?.category?.trim();
     const color = filters?.color?.trim();
+    const location = filters?.location?.trim();
     const sort = filters?.sort ?? "latest";
+    const hasCoordinates =
+      typeof filters?.latitude === "number" && typeof filters?.longitude === "number";
+    const radiusKm = filters?.radiusKm ?? DEFAULT_LOCATION_RADIUS_KM;
+    const latitudeValue = sql<number | null>`
+      case
+        when ${items.latitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+          then ${items.latitude}::double precision
+        else null
+      end
+    `;
+    const longitudeValue = sql<number | null>`
+      case
+        when ${items.longitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+          then ${items.longitude}::double precision
+        else null
+      end
+    `;
+    const distanceKm = hasCoordinates
+      ? sql<number>`
+          6371 * acos(
+            least(
+              1,
+              greatest(
+                -1,
+                cos(radians(${filters.latitude})) *
+                cos(radians(${latitudeValue})) *
+                cos(radians(${longitudeValue}) - radians(${filters.longitude})) +
+                sin(radians(${filters.latitude})) *
+                sin(radians(${latitudeValue}))
+              )
+            )
+          )
+        `
+      : null;
 
     if (filters?.type) {
       conditions.push(eq(items.reportType, filters.type));
@@ -310,6 +354,16 @@ export class DatabaseStorage implements IStorage {
 
     if (color) {
       conditions.push(ilike(items.color, `%${color}%`));
+    }
+
+    if (location) {
+      conditions.push(ilike(items.location, `%${location}%`));
+    }
+
+    if (distanceKm) {
+      conditions.push(sql<boolean>`${latitudeValue} is not null`);
+      conditions.push(sql<boolean>`${longitudeValue} is not null`);
+      conditions.push(sql<boolean>`${distanceKm} <= ${radiusKm}`);
     }
 
     if (filters?.dateRange && filters.dateRange !== "all") {
@@ -328,6 +382,7 @@ export class DatabaseStorage implements IStorage {
       .from(items)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(
+        ...(distanceKm ? [asc(distanceKm)] : []),
         sort === "oldest" ? asc(items.date) : desc(items.date),
         sort === "oldest" ? asc(items.id) : desc(items.id)
       );

@@ -2,6 +2,8 @@ import { type FormEvent, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Filter,
+  LocateFixed,
+  MapPin,
   PackageOpen,
   PlusCircle,
   RotateCcw,
@@ -13,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ItemCard } from "@/components/item-card";
 import { useItems } from "@/hooks/use-items";
+import { useToast } from "@/hooks/use-toast";
 import {
   Select,
   SelectContent,
@@ -29,6 +32,10 @@ type ItemsPageFilters = {
   type: ItemTab;
   category: string;
   color: string;
+  location: string;
+  latitude?: number;
+  longitude?: number;
+  radiusKm: number;
   dateRange: ItemDateRange;
   sort: ItemSortOrder;
 };
@@ -36,6 +43,10 @@ type ItemsPageFilters = {
 const DEFAULT_FILTERS = {
   category: "",
   color: "",
+  location: "",
+  latitude: undefined,
+  longitude: undefined,
+  radiusKm: 5,
   dateRange: "all" as const,
   sort: "latest" as const,
 };
@@ -52,6 +63,8 @@ const sortOptions: Array<{ value: ItemSortOrder; label: string }> = [
   { value: "oldest", label: "오래된순" },
 ];
 
+const radiusOptions = [1, 3, 5, 10, 20, 50] as const;
+
 function getValidDateRange(value: string | null): ItemDateRange {
   return dateRangeOptions.some((option) => option.value === value)
     ? (value as ItemDateRange)
@@ -64,13 +77,42 @@ function getValidSortOrder(value: string | null): ItemSortOrder {
     : "latest";
 }
 
+function getValidCoordinate(value: string | null, min: number, max: number): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const coordinate = Number(value);
+  return Number.isFinite(coordinate) && coordinate >= min && coordinate <= max
+    ? coordinate
+    : undefined;
+}
+
+function getValidRadiusKm(value: string | null): number {
+  if (!value) {
+    return DEFAULT_FILTERS.radiusKm;
+  }
+
+  const radiusKm = Number(value);
+  return radiusOptions.some((option) => option === radiusKm)
+    ? radiusKm
+    : DEFAULT_FILTERS.radiusKm;
+}
+
 function getFiltersFromSearch(search: string): ItemsPageFilters {
   const params = new URLSearchParams(search);
+  const latitude = getValidCoordinate(params.get("latitude"), -90, 90);
+  const longitude = getValidCoordinate(params.get("longitude"), -180, 180);
+  const hasCoordinates = latitude !== undefined && longitude !== undefined;
 
   return {
     type: params.get("type") === "lost" ? "lost" : "found",
     category: params.get("category")?.trim() ?? "",
     color: params.get("color")?.trim() ?? "",
+    location: params.get("location")?.trim() ?? "",
+    latitude: hasCoordinates ? latitude : undefined,
+    longitude: hasCoordinates ? longitude : undefined,
+    radiusKm: getValidRadiusKm(params.get("radiusKm")),
     dateRange: getValidDateRange(params.get("dateRange")),
     sort: getValidSortOrder(params.get("sort")),
   };
@@ -88,6 +130,19 @@ function buildItemsUrl(filters: ItemsPageFilters): string {
     params.set("color", filters.color);
   }
 
+  if (filters.location) {
+    params.set("location", filters.location);
+  }
+
+  if (filters.latitude !== undefined && filters.longitude !== undefined) {
+    params.set("latitude", String(filters.latitude));
+    params.set("longitude", String(filters.longitude));
+
+    if (filters.radiusKm !== DEFAULT_FILTERS.radiusKm) {
+      params.set("radiusKm", String(filters.radiusKm));
+    }
+  }
+
   if (filters.dateRange !== "all") {
     params.set("dateRange", filters.dateRange);
   }
@@ -103,6 +158,8 @@ function getActiveFilterCount(filters: ItemsPageFilters): number {
   return [
     Boolean(filters.category),
     Boolean(filters.color),
+    Boolean(filters.location) ||
+      (filters.latitude !== undefined && filters.longitude !== undefined),
     filters.dateRange !== "all",
     filters.sort !== "latest",
   ].filter(Boolean).length;
@@ -110,17 +167,28 @@ function getActiveFilterCount(filters: ItemsPageFilters): number {
 
 export default function ItemsPage() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [filters, setFilters] = useState<ItemsPageFilters>(() =>
     getFiltersFromSearch(window.location.search)
   );
   const [draftFilters, setDraftFilters] = useState<ItemsPageFilters>(() =>
     getFiltersFromSearch(window.location.search)
   );
+  const [isLocating, setIsLocating] = useState(false);
+  const hasDraftCoordinates =
+    draftFilters.latitude !== undefined && draftFilters.longitude !== undefined;
 
   const { data: items, isLoading } = useItems({
     type: filters.type,
     category: filters.category || undefined,
     color: filters.color || undefined,
+    location: filters.location || undefined,
+    latitude: filters.latitude,
+    longitude: filters.longitude,
+    radiusKm:
+      filters.latitude !== undefined && filters.longitude !== undefined
+        ? filters.radiusKm
+        : undefined,
     dateRange: filters.dateRange === "all" ? undefined : filters.dateRange,
     sort: filters.sort === "latest" ? undefined : filters.sort,
   });
@@ -155,6 +223,7 @@ export default function ItemsPage() {
       ...nextFilters,
       category: nextFilters.category.trim(),
       color: nextFilters.color.trim(),
+      location: nextFilters.location.trim(),
     };
 
     setFilters(normalizedFilters);
@@ -183,6 +252,48 @@ export default function ItemsPage() {
       type: filters.type,
       ...DEFAULT_FILTERS,
     });
+  };
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      toast({
+        variant: "destructive",
+        title: "현재 위치를 사용할 수 없습니다",
+        description: "브라우저에서 위치 기능을 지원하지 않습니다.",
+      });
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setDraftFilters((current) => ({
+          ...current,
+          latitude: Number(position.coords.latitude.toFixed(6)),
+          longitude: Number(position.coords.longitude.toFixed(6)),
+          radiusKm: current.radiusKm || DEFAULT_FILTERS.radiusKm,
+        }));
+        setIsLocating(false);
+      },
+      () => {
+        setIsLocating(false);
+        toast({
+          variant: "destructive",
+          title: "위치 확인 실패",
+          description: "브라우저 위치 권한을 확인한 뒤 다시 시도해 주세요.",
+        });
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const handleClearCoordinates = () => {
+    setDraftFilters((current) => ({
+      ...current,
+      latitude: undefined,
+      longitude: undefined,
+      radiusKm: DEFAULT_FILTERS.radiusKm,
+    }));
   };
 
   return (
@@ -260,7 +371,7 @@ export default function ItemsPage() {
                   ) : null}
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_160px_auto]">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                   <div className="space-y-2">
                     <label htmlFor="category-filter" className="text-sm font-medium text-foreground">
                       카테고리
@@ -295,6 +406,79 @@ export default function ItemsPage() {
                       placeholder="예: 검정"
                       className="rounded-2xl"
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="location-filter" className="text-sm font-medium text-foreground">
+                      지역
+                    </label>
+                    <Input
+                      id="location-filter"
+                      value={draftFilters.location}
+                      onChange={(event) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          location: event.target.value,
+                        }))
+                      }
+                      placeholder="예: 강남역, 서대문구"
+                      className="rounded-2xl"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">반경</label>
+                    <Select
+                      value={String(draftFilters.radiusKm)}
+                      onValueChange={(value) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          radiusKm: Number(value),
+                        }))
+                      }
+                      disabled={!hasDraftCoordinates}
+                    >
+                      <SelectTrigger className="h-11 rounded-2xl">
+                        <SelectValue placeholder="반경 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {radiusOptions.map((radiusKm) => (
+                          <SelectItem key={radiusKm} value={String(radiusKm)}>
+                            {radiusKm}km
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">현재 위치</label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleUseCurrentLocation}
+                        disabled={isLocating}
+                        className="h-11 flex-1 rounded-2xl px-4"
+                      >
+                        <LocateFixed
+                          className={`mr-2 h-4 w-4 ${isLocating ? "animate-pulse" : ""}`}
+                        />
+                        {hasDraftCoordinates ? "위치 변경" : "위치 사용"}
+                      </Button>
+                      {hasDraftCoordinates ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={handleClearCoordinates}
+                          className="h-11 w-11 rounded-2xl border border-border/70"
+                          aria-label="현재 위치 기준 해제"
+                        >
+                          <MapPin className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="space-y-2">
