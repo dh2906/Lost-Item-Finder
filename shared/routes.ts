@@ -344,6 +344,7 @@ export const api = {
         400: errorSchemas.validation,
         403: errorSchemas.validation,
         500: errorSchemas.internal,
+        503: errorSchemas.internal,
       },
     },
   },
