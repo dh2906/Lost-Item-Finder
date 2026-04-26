@@ -27,6 +27,10 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
   if (filters?.search) queryParams.set("search", filters.search);
   if (filters?.category) queryParams.set("category", filters.category);
   if (filters?.color) queryParams.set("color", filters.color);
+  if (filters?.location) queryParams.set("location", filters.location);
+  if (filters?.latitude !== undefined) queryParams.set("latitude", String(filters.latitude));
+  if (filters?.longitude !== undefined) queryParams.set("longitude", String(filters.longitude));
+  if (filters?.radiusKm !== undefined) queryParams.set("radiusKm", String(filters.radiusKm));
   if (filters?.dateRange) queryParams.set("dateRange", filters.dateRange);
   if (filters?.sort) queryParams.set("sort", filters.sort);
   

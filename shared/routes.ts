@@ -107,6 +107,21 @@ const optionalPositiveIntegerQuerySchema = z.preprocess((value) => {
   return normalizedValue === undefined ? undefined : normalizedValue;
 }, z.coerce.number().int().positive().optional());
 
+const optionalLatitudeQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return normalizedValue === undefined || normalizedValue === "" ? undefined : normalizedValue;
+}, z.coerce.number().min(-90).max(90).optional());
+
+const optionalLongitudeQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return normalizedValue === undefined || normalizedValue === "" ? undefined : normalizedValue;
+}, z.coerce.number().min(-180).max(180).optional());
+
+const optionalRadiusKmQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return normalizedValue === undefined || normalizedValue === "" ? undefined : normalizedValue;
+}, z.coerce.number().min(0.1).max(50).optional());
+
 const lost112ItemResponseSchema = z.object({
   atcId: z.string(),
   fdYmd: z.string(),
@@ -193,8 +208,32 @@ export const api = {
           search: z.string().optional(),
           category: z.string().trim().min(1).optional(),
           color: z.string().trim().min(1).optional(),
+          location: z.string().trim().min(1).max(80).optional(),
+          latitude: optionalLatitudeQuerySchema,
+          longitude: optionalLongitudeQuerySchema,
+          radiusKm: optionalRadiusKmQuerySchema,
           dateRange: z.enum(itemDateRanges).optional(),
           sort: z.enum(itemSortOrders).optional(),
+        })
+        .superRefine((value, ctx) => {
+          const hasLatitude = value.latitude !== undefined;
+          const hasLongitude = value.longitude !== undefined;
+
+          if (hasLatitude !== hasLongitude) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "latitude and longitude must be provided together",
+              path: hasLatitude ? ["longitude"] : ["latitude"],
+            });
+          }
+
+          if (value.radiusKm !== undefined && (!hasLatitude || !hasLongitude)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "radiusKm requires latitude and longitude",
+              path: ["radiusKm"],
+            });
+          }
         })
         .optional(),
       responses: {
