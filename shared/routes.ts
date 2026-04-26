@@ -107,19 +107,26 @@ const optionalPositiveIntegerQuerySchema = z.preprocess((value) => {
   return normalizedValue === undefined ? undefined : normalizedValue;
 }, z.coerce.number().int().positive().optional());
 
-const optionalLatitudeQuerySchema = z.preprocess((value) => {
+function getOptionalTrimmedQueryValue(value: unknown) {
   const normalizedValue = getFirstQueryValue(value);
-  return normalizedValue === undefined || normalizedValue === "" ? undefined : normalizedValue;
+  if (typeof normalizedValue !== "string") {
+    return normalizedValue === undefined ? undefined : normalizedValue;
+  }
+
+  const trimmedValue = normalizedValue.trim();
+  return trimmedValue.length === 0 ? undefined : trimmedValue;
+}
+
+const optionalLatitudeQuerySchema = z.preprocess((value) => {
+  return getOptionalTrimmedQueryValue(value);
 }, z.coerce.number().min(-90).max(90).optional());
 
 const optionalLongitudeQuerySchema = z.preprocess((value) => {
-  const normalizedValue = getFirstQueryValue(value);
-  return normalizedValue === undefined || normalizedValue === "" ? undefined : normalizedValue;
+  return getOptionalTrimmedQueryValue(value);
 }, z.coerce.number().min(-180).max(180).optional());
 
 const optionalRadiusKmQuerySchema = z.preprocess((value) => {
-  const normalizedValue = getFirstQueryValue(value);
-  return normalizedValue === undefined || normalizedValue === "" ? undefined : normalizedValue;
+  return getOptionalTrimmedQueryValue(value);
 }, z.coerce.number().min(0.1).max(50).optional());
 
 const lost112ItemResponseSchema = z.object({
@@ -222,7 +229,7 @@ export const api = {
           if (hasLatitude !== hasLongitude) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "latitude and longitude must be provided together",
+              message: "위도와 경도는 함께 입력해야 합니다.",
               path: hasLatitude ? ["longitude"] : ["latitude"],
             });
           }
@@ -230,7 +237,7 @@ export const api = {
           if (value.radiusKm !== undefined && (!hasLatitude || !hasLongitude)) {
             ctx.addIssue({
               code: z.ZodIssueCode.custom,
-              message: "radiusKm requires latitude and longitude",
+              message: "반경 검색을 사용하려면 위도와 경도가 필요합니다.",
               path: ["radiusKm"],
             });
           }
