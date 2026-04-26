@@ -22,25 +22,38 @@ export type ReportType = (typeof reportTypes)[number];
 export const itemStatuses = ["active", "resolved"] as const;
 export type ItemStatus = (typeof itemStatuses)[number];
 
-export const items = pgTable("items", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
-  reportType: text("report_type").notNull(),
-  status: text("status").notNull().default("active"),
-  title: text("title").notNull(),
-  description: text("description"),
-  imageUrl: text("image_url"),
-  imageUrls: jsonb("image_urls").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  itemCategory: text("item_category"),
-  color: text("color"),
-  size: text("size"),
-  tags: jsonb("tags").$type<string[]>(),
-  location: text("location"),
-  latitude: text("latitude"),
-  longitude: text("longitude"),
-  date: timestamp("date").defaultNow(),
-  contactInfo: text("contact_info"),
-});
+export const items = pgTable(
+  "items",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    reportType: text("report_type").notNull(),
+    status: text("status").notNull().default("active"),
+    title: text("title").notNull(),
+    description: text("description"),
+    imageUrl: text("image_url"),
+    imageUrls: jsonb("image_urls").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    itemCategory: text("item_category"),
+    color: text("color"),
+    size: text("size"),
+    tags: jsonb("tags").$type<string[]>(),
+    location: text("location"),
+    latitude: text("latitude"),
+    longitude: text("longitude"),
+    date: timestamp("date").defaultNow(),
+    contactInfo: text("contact_info"),
+    externalSource: text("external_source"),
+    externalId: text("external_id"),
+    externalUrl: text("external_url"),
+    externalPayload: jsonb("external_payload").$type<Record<string, unknown>>(),
+  },
+  (table) => ({
+    externalSourceIdUnique: uniqueIndex("items_external_source_id_unique").on(
+      table.externalSource,
+      table.externalId
+    ),
+  })
+);
 
 export const itemEmbeddings = pgTable("item_embeddings", {
   itemId: integer("item_id")
@@ -88,6 +101,10 @@ const itemBaseSchema = createInsertSchema(items, {
   id: true,
   userId: true,
   date: true,
+  externalSource: true,
+  externalId: true,
+  externalUrl: true,
+  externalPayload: true,
 });
 
 export const insertItemSchema = itemBaseSchema.omit({

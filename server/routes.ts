@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import passport from "passport";
 import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
-import { storage } from "./storage";
+import { storage, type ExternalFoundItemInput } from "./storage";
 import { api } from "@shared/routes";
 import { normalizeItemImageUrls } from "@shared/item-images";
 import { z } from "zod";
@@ -268,6 +268,223 @@ function parseLost112ApiResponse(rawText: string): Lost112NormalizedResponse {
       `Lost112 API가 JSON/XML이 아닌 응답을 반환했습니다: ${rawText.slice(0, 160)}`
     );
   }
+}
+
+type Lost112FetchOptions = {
+  apiKey: string;
+  category?: string;
+  region?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  numOfRows?: number;
+};
+
+type Lost112FetchedPage = {
+  items: Lost112NormalizedItem[];
+  totalCount: number;
+  pageNo: number;
+  numOfRows: number;
+};
+
+const LOST112_SOURCE = "lost112";
+
+function normalizeLost112ItemList(rawItems: unknown): Lost112NormalizedItem[] {
+  if (!rawItems) {
+    return [];
+  }
+
+  return (Array.isArray(rawItems) ? rawItems : [rawItems]) as Lost112NormalizedItem[];
+}
+
+function matchesLost112TextFilter(
+  item: Lost112NormalizedItem,
+  filter: string,
+  fields: Array<keyof Lost112NormalizedItem>
+): boolean {
+  if (!filter) {
+    return true;
+  }
+
+  return fields
+    .map((field) => item[field])
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.includes(filter));
+}
+
+async function fetchLost112ItemsPage({
+  apiKey,
+  category = "",
+  region = "",
+  startDate = "",
+  endDate = "",
+  page = 1,
+  numOfRows = 20,
+}: Lost112FetchOptions): Promise<Lost112FetchedPage> {
+  const safePageNo = Math.max(1, page);
+  const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
+  const normalizedCategory = category.trim();
+  const normalizedRegion = region.trim();
+  const externalNumOfRows = normalizedCategory || normalizedRegion
+    ? Math.min(100, Math.max(safeNumOfRows * 3, safeNumOfRows))
+    : safeNumOfRows;
+
+  const params = new URLSearchParams({
+    serviceKey: apiKey,
+    pageNo: String(safePageNo),
+    numOfRows: String(externalNumOfRows),
+    _type: "json",
+  });
+
+  if (startDate) params.set("START_YMD", startDate);
+  if (endDate) params.set("END_YMD", endDate);
+
+  const url = `https://apis.data.go.kr/1320000/LosPtfundInfoInqireService/getPtLosfundInfoAccToClAreaPd?${params.toString()}`;
+  const safeUrl = new URL(url);
+  safeUrl.searchParams.set("serviceKey", "***");
+  console.log("[Lost112] request:", safeUrl.toString());
+
+  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
+  const rawText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Lost112 API HTTP error: ${response.status} ${rawText.slice(0, 160)}`
+    );
+  }
+
+  const data = parseLost112ApiResponse(rawText);
+  const body = data.response?.body;
+
+  if (!body) {
+    throw new Error(`Lost112 API response body is empty: ${rawText.slice(0, 160)}`);
+  }
+
+  const rawItems = normalizeLost112ItemList(body.items?.item);
+  const filteredItems = rawItems.filter((item) => {
+    const categoryMatched = matchesLost112TextFilter(item, normalizedCategory, [
+      "prdtClNm",
+      "fdSbjt",
+      "fdPrdtNm",
+    ]);
+    const regionMatched = matchesLost112TextFilter(item, normalizedRegion, [
+      "depPlace",
+      "fdPlace",
+      "orgNm",
+    ]);
+
+    return categoryMatched && regionMatched;
+  });
+
+  return {
+    items: filteredItems.slice(0, safeNumOfRows),
+    totalCount:
+      normalizedCategory || normalizedRegion
+        ? filteredItems.length
+        : body.totalCount ?? filteredItems.length,
+    pageNo: body.pageNo ?? safePageNo,
+    numOfRows: safeNumOfRows,
+  };
+}
+
+function getLost112DetailUrl(item: Lost112NormalizedItem): string | null {
+  if (!item.atcId) {
+    return null;
+  }
+
+  const params = new URLSearchParams({ ATC_ID: item.atcId });
+  if (item.fdSn) {
+    params.set("FD_SN", item.fdSn);
+  }
+
+  return `https://www.lost112.go.kr/find/findDetail.do?${params.toString()}`;
+}
+
+function parseLost112Date(value?: string): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const digits = value.replace(/\D/g, "");
+  if (digits.length !== 8) {
+    return null;
+  }
+
+  const year = Number(digits.slice(0, 4));
+  const month = Number(digits.slice(4, 6)) - 1;
+  const day = Number(digits.slice(6, 8));
+  const parsed = new Date(year, month, day);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function normalizeLost112ToExternalFoundItem(
+  item: Lost112NormalizedItem
+): ExternalFoundItemInput | null {
+  const atcId = item.atcId?.trim();
+  if (!atcId) {
+    return null;
+  }
+
+  const fdSn = item.fdSn?.trim() || "1";
+  const title =
+    item.fdSbjt?.trim() ||
+    item.fdPrdtNm?.trim() ||
+    item.prdtClNm?.trim() ||
+    "Lost112 found item";
+  const location = item.fdPlace?.trim() || item.depPlace?.trim() || item.orgNm?.trim() || null;
+  const contactInfo = [item.orgNm, item.tel]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join(" / ");
+  const imageUrl = item.fdFilePathImg?.trim() || null;
+  const tags = Array.from(
+    new Set(
+      [LOST112_SOURCE, "police", item.prdtClNm, item.fdPrdtNm, item.orgNm]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const descriptionParts = [
+    item.fdPrdtNm ? `item: ${item.fdPrdtNm}` : null,
+    item.prdtClNm ? `category: ${item.prdtClNm}` : null,
+    item.clrNm ? `color: ${item.clrNm}` : null,
+    item.fdPlace ? `found place: ${item.fdPlace}` : null,
+    item.depPlace ? `storage place: ${item.depPlace}` : null,
+    item.orgNm ? `agency: ${item.orgNm}` : null,
+    item.fdYmd ? `found date: ${item.fdYmd}` : null,
+    item.fdHor ? `found time: ${item.fdHor}` : null,
+    `Lost112 receipt: ${atcId}-${fdSn}`,
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    externalSource: LOST112_SOURCE,
+    externalId: `${atcId}:${fdSn}`,
+    externalUrl: getLost112DetailUrl(item),
+    externalPayload: { ...item },
+    title,
+    description: descriptionParts.join("\n"),
+    imageUrl,
+    imageUrls: imageUrl ? [imageUrl] : [],
+    itemCategory: item.prdtClNm?.trim() || null,
+    color: item.clrNm?.trim() || null,
+    tags,
+    location,
+    date: parseLost112Date(item.fdYmd),
+    contactInfo: contactInfo || null,
+  };
 }
 
 function extractCompletionMessageContent(content: unknown): string | null {
@@ -2923,107 +3140,115 @@ export async function registerRoutes(
         numOfRows = 20,
       } = api.lost112.items.input.parse(req.query);
 
-      const safePageNo = Math.max(1, page);
-      const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
-      const normalizedCategory = category.trim();
-      const normalizedRegion = region.trim();
-      const externalNumOfRows = normalizedCategory || normalizedRegion
-        ? Math.min(100, Math.max(safeNumOfRows * 3, safeNumOfRows))
-        : safeNumOfRows;
-
-      const params = new URLSearchParams({
-        serviceKey: apiKey,
-        pageNo: String(safePageNo),
-        numOfRows: String(externalNumOfRows),
-        _type: "json",
+      const pageData = await fetchLost112ItemsPage({
+        apiKey,
+        category,
+        region,
+        startDate,
+        endDate,
+        page,
+        numOfRows,
       });
 
-      if (startDate) params.set("START_YMD", startDate);
-      if (endDate) params.set("END_YMD", endDate);
-
-      const url = `https://apis.data.go.kr/1320000/LosPtfundInfoInqireService/getPtLosfundInfoAccToClAreaPd?${params.toString()}`;
-      const safeUrl = new URL(url);
-      safeUrl.searchParams.set("serviceKey", "***");
-      console.log("[Lost112] 요청:", safeUrl.toString());
-
-      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      const rawText = await response.text();
-
-      if (!response.ok) {
-        throw new Error(
-          `Lost112 API HTTP 오류: ${response.status} ${rawText.slice(0, 160)}`
-        );
-      }
-
-      const normalizedResponseText = rawText.trim().startsWith("<")
-        ? JSON.stringify(parseLost112ApiResponse(rawText))
-        : rawText;
-
-      let data: unknown;
-      try {
-        data = JSON.parse(normalizedResponseText) as unknown;
-      } catch {
-        throw new Error(
-          `Lost112 API가 JSON이 아닌 응답을 반환했습니다: ${rawText.slice(0, 160)}`
-        );
-      }
-
-      const body = (data as { response?: { body?: unknown } })?.response?.body as {
-        items?: { item?: unknown };
-        totalCount?: number;
-        numOfRows?: number;
-        pageNo?: number;
-      } | null | undefined;
-
-      if (!body) {
-        throw new Error(
-          `Lost112 API 응답 본문이 비어 있습니다: ${rawText.slice(0, 160)}`
-        );
-      }
-
-      const rawItems = body?.items?.item;
-      // 단건 결과는 배열이 아닌 객체로 오므로 정규화
-      const items = (!rawItems
-        ? []
-        : Array.isArray(rawItems)
-        ? rawItems
-        : [rawItems]) as Array<{
-          prdtClNm?: string;
-          fdSbjt?: string;
-          fdPrdtNm?: string;
-          fdSn?: string;
-          atcId?: string;
-          depPlace?: string;
-          fdPlace?: string;
-          orgNm?: string;
-        }>;
-
-      const filteredItems = items.filter((item) => {
-        const categoryMatched = normalizedCategory
-          ? [item.prdtClNm, item.fdSbjt, item.fdPrdtNm]
-              .filter((value): value is string => Boolean(value))
-              .some((value) => value.includes(normalizedCategory))
-          : true;
-        const regionMatched = normalizedRegion
-          ? [item.depPlace, item.fdPlace, item.orgNm]
-              .filter((value): value is string => Boolean(value))
-              .some((value) => value.includes(normalizedRegion))
-          : true;
-
-        return categoryMatched && regionMatched;
-      });
-
-      res.json({
-        items: filteredItems.slice(0, safeNumOfRows),
-        totalCount:
-          normalizedCategory || normalizedRegion
-            ? filteredItems.length
-            : body?.totalCount ?? filteredItems.length,
-        pageNo: body?.pageNo ?? safePageNo,
-        numOfRows: safeNumOfRows,
-      });
+      return res.json(pageData);
     } catch (err) {
       console.error("[Lost112] 오류:", err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.post(api.lost112.sync.path, isAdmin, async (req, res) => {
+    try {
+      const apiKey = process.env.LOST112_API_KEY;
+      if (!apiKey) {
+        return res.status(503).json({
+          message: "Lost112 API 키가 설정되지 않았습니다. .env에 LOST112_API_KEY를 추가해 주세요.",
+        });
+      }
+
+      const input = api.lost112.sync.input.parse(req.body ?? {}) ?? {};
+      const page = input.page ?? 1;
+      const maxPages = input.maxPages ?? 1;
+      const numOfRows = input.numOfRows ?? 50;
+      const fetchedItems: Lost112NormalizedItem[] = [];
+
+      for (let pageOffset = 0; pageOffset < maxPages; pageOffset += 1) {
+        const pageData = await fetchLost112ItemsPage({
+          apiKey,
+          category: input.category,
+          region: input.region,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          page: page + pageOffset,
+          numOfRows,
+        });
+
+        fetchedItems.push(...pageData.items);
+
+        if (pageData.items.length < pageData.numOfRows) {
+          break;
+        }
+      }
+
+      let createdCount = 0;
+      let updatedCount = 0;
+      let embeddedCount = 0;
+      let embeddingFailedCount = 0;
+      let automaticMatchCount = 0;
+      const syncedItems: Item[] = [];
+
+      for (const lost112Item of fetchedItems) {
+        const externalItem = normalizeLost112ToExternalFoundItem(lost112Item);
+        if (!externalItem) {
+          continue;
+        }
+
+        const { item, created } = await storage.upsertExternalFoundItem(externalItem);
+        syncedItems.push(item);
+
+        if (created) {
+          createdCount += 1;
+        } else {
+          updatedCount += 1;
+        }
+
+        let itemEmbedding: number[] | undefined;
+        try {
+          itemEmbedding = await ensureItemEmbedding(item);
+          embeddedCount += 1;
+        } catch (embeddingError) {
+          embeddingFailedCount += 1;
+          console.error("Failed to store Lost112 item embedding:", embeddingError);
+        }
+
+        if (item.status === "active" && itemEmbedding !== undefined) {
+          queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
+          try {
+            automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
+          } catch (matchError) {
+            console.error("Failed to match Lost112 item:", matchError);
+          }
+        }
+      }
+
+      res.json({
+        fetchedCount: fetchedItems.length,
+        createdCount,
+        updatedCount,
+        embeddedCount,
+        embeddingFailedCount,
+        automaticMatchCount,
+        items: syncedItems,
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+
+      console.error("[Lost112 Sync] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });

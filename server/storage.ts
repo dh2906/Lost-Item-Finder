@@ -98,6 +98,24 @@ export interface MatchNotificationRecord {
   foundItem: Item;
 }
 
+export interface ExternalFoundItemInput {
+  externalSource: string;
+  externalId: string;
+  externalUrl?: string | null;
+  externalPayload?: Record<string, unknown> | null;
+  title: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
+  itemCategory?: string | null;
+  color?: string | null;
+  size?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+  date?: Date | null;
+  contactInfo?: string | null;
+}
+
 function getConfiguredAdminUsernames(): string[] {
   return (process.env.ADMIN_USERNAMES ?? "")
     .split(",")
@@ -178,6 +196,10 @@ export interface IStorage {
   ): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem & { userId?: number | null }): Promise<Item>;
+  upsertExternalFoundItem(item: ExternalFoundItemInput): Promise<{
+    item: Item;
+    created: boolean;
+  }>;
   updateItem(itemId: number, item: Partial<InsertItem>): Promise<Item | undefined>;
   updateOwnedItem(
     userId: number,
@@ -417,6 +439,74 @@ export class DatabaseStorage implements IStorage {
   async createItem(insertItem: InsertItem & { userId?: number | null }): Promise<Item> {
     const [item] = await db.insert(items).values(insertItem).returning();
     return item;
+  }
+
+  async upsertExternalFoundItem(input: ExternalFoundItemInput): Promise<{
+    item: Item;
+    created: boolean;
+  }> {
+    const values = {
+      userId: null,
+      reportType: "found",
+      status: "active",
+      title: input.title,
+      description: input.description ?? null,
+      imageUrl: input.imageUrl ?? null,
+      imageUrls: input.imageUrls ?? [],
+      itemCategory: input.itemCategory ?? null,
+      color: input.color ?? null,
+      size: input.size ?? null,
+      tags: input.tags ?? [],
+      location: input.location ?? null,
+      latitude: null,
+      longitude: null,
+      // date가 없으면 null로 저장 — 현재 시각으로 대체하면 실제 습득일을 왜곡함
+      date: input.date ?? null,
+      contactInfo: input.contactInfo ?? null,
+      externalSource: input.externalSource,
+      externalId: input.externalId,
+      externalUrl: input.externalUrl ?? null,
+      externalPayload: input.externalPayload ?? null,
+    } satisfies typeof items.$inferInsert;
+
+    const [savedItem] = await db
+      .insert(items)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [items.externalSource, items.externalId],
+        set: values,
+      })
+      .returning({
+        id: items.id,
+        userId: items.userId,
+        reportType: items.reportType,
+        status: items.status,
+        title: items.title,
+        description: items.description,
+        imageUrl: items.imageUrl,
+        imageUrls: items.imageUrls,
+        itemCategory: items.itemCategory,
+        color: items.color,
+        size: items.size,
+        tags: items.tags,
+        location: items.location,
+        latitude: items.latitude,
+        longitude: items.longitude,
+        date: items.date,
+        contactInfo: items.contactInfo,
+        externalSource: items.externalSource,
+        externalId: items.externalId,
+        externalUrl: items.externalUrl,
+        externalPayload: items.externalPayload,
+        created: sql<boolean>`xmax = 0`,
+      });
+
+    const { created, ...item } = savedItem;
+
+    return {
+      item,
+      created: Boolean(created),
+    };
   }
 
   async updateItem(
