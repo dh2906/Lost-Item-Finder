@@ -415,7 +415,19 @@ function parseLost112Date(value?: string): Date | null {
   const day = Number(digits.slice(6, 8));
   const parsed = new Date(year, month, day);
 
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
 }
 
 function normalizeLost112ToExternalFoundItem(
@@ -3128,104 +3140,17 @@ export async function registerRoutes(
         numOfRows = 20,
       } = api.lost112.items.input.parse(req.query);
 
-      const safePageNo = Math.max(1, page);
-      const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
-      const normalizedCategory = category.trim();
-      const normalizedRegion = region.trim();
-      const externalNumOfRows = normalizedCategory || normalizedRegion
-        ? Math.min(100, Math.max(safeNumOfRows * 3, safeNumOfRows))
-        : safeNumOfRows;
-
-      const params = new URLSearchParams({
-        serviceKey: apiKey,
-        pageNo: String(safePageNo),
-        numOfRows: String(externalNumOfRows),
-        _type: "json",
+      const pageData = await fetchLost112ItemsPage({
+        apiKey,
+        category,
+        region,
+        startDate,
+        endDate,
+        page,
+        numOfRows,
       });
 
-      if (startDate) params.set("START_YMD", startDate);
-      if (endDate) params.set("END_YMD", endDate);
-
-      const url = `https://apis.data.go.kr/1320000/LosPtfundInfoInqireService/getPtLosfundInfoAccToClAreaPd?${params.toString()}`;
-      const safeUrl = new URL(url);
-      safeUrl.searchParams.set("serviceKey", "***");
-      console.log("[Lost112] 요청:", safeUrl.toString());
-
-      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      const rawText = await response.text();
-
-      if (!response.ok) {
-        throw new Error(
-          `Lost112 API HTTP 오류: ${response.status} ${rawText.slice(0, 160)}`
-        );
-      }
-
-      const normalizedResponseText = rawText.trim().startsWith("<")
-        ? JSON.stringify(parseLost112ApiResponse(rawText))
-        : rawText;
-
-      let data: unknown;
-      try {
-        data = JSON.parse(normalizedResponseText) as unknown;
-      } catch {
-        throw new Error(
-          `Lost112 API가 JSON이 아닌 응답을 반환했습니다: ${rawText.slice(0, 160)}`
-        );
-      }
-
-      const body = (data as { response?: { body?: unknown } })?.response?.body as {
-        items?: { item?: unknown };
-        totalCount?: number;
-        numOfRows?: number;
-        pageNo?: number;
-      } | null | undefined;
-
-      if (!body) {
-        throw new Error(
-          `Lost112 API 응답 본문이 비어 있습니다: ${rawText.slice(0, 160)}`
-        );
-      }
-
-      const rawItems = body?.items?.item;
-      const items = (!rawItems
-        ? []
-        : Array.isArray(rawItems)
-        ? rawItems
-        : [rawItems]) as Array<{
-          prdtClNm?: string;
-          fdSbjt?: string;
-          fdPrdtNm?: string;
-          fdSn?: string;
-          atcId?: string;
-          depPlace?: string;
-          fdPlace?: string;
-          orgNm?: string;
-        }>;
-
-      const filteredItems = items.filter((item) => {
-        const categoryMatched = normalizedCategory
-          ? [item.prdtClNm, item.fdSbjt, item.fdPrdtNm]
-              .filter((value): value is string => Boolean(value))
-              .some((value) => value.includes(normalizedCategory))
-          : true;
-        const regionMatched = normalizedRegion
-          ? [item.depPlace, item.fdPlace, item.orgNm]
-              .filter((value): value is string => Boolean(value))
-              .some((value) => value.includes(normalizedRegion))
-          : true;
-
-        return categoryMatched && regionMatched;
-      });
-
-      res.json({
-        items: filteredItems.slice(0, safeNumOfRows),
-        totalCount:
-          normalizedCategory || normalizedRegion
-            ? filteredItems.length
-            : body?.totalCount ?? filteredItems.length,
-        pageNo: body?.pageNo ?? safePageNo,
-        numOfRows: safeNumOfRows,
-      });
+      return res.json(pageData);
     } catch (err) {
       console.error("[Lost112] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
@@ -3237,7 +3162,7 @@ export async function registerRoutes(
       const apiKey = process.env.LOST112_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          message: "Lost112 API ?ㅺ? ?ㅼ젙?섏? ?딆븯?듬땲?? .env??LOST112_API_KEY瑜?異붽???二쇱꽭??",
+          message: "Lost112 API 키가 설정되지 않았습니다. .env에 LOST112_API_KEY를 추가해 주세요.",
         });
       }
 
@@ -3323,7 +3248,7 @@ export async function registerRoutes(
         });
       }
 
-      console.error("[Lost112 Sync] ?ㅻ쪟:", err);
+      console.error("[Lost112 Sync] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });

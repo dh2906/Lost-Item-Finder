@@ -469,28 +469,44 @@ export class DatabaseStorage implements IStorage {
       externalPayload: input.externalPayload ?? null,
     } satisfies typeof items.$inferInsert;
 
-    const [existingItem] = await db
-      .select()
-      .from(items)
-      .where(
-        and(
-          eq(items.externalSource, input.externalSource),
-          eq(items.externalId, input.externalId)
-        )
-      );
+    const [savedItem] = await db
+      .insert(items)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [items.externalSource, items.externalId],
+        set: values,
+      })
+      .returning({
+        id: items.id,
+        userId: items.userId,
+        reportType: items.reportType,
+        status: items.status,
+        title: items.title,
+        description: items.description,
+        imageUrl: items.imageUrl,
+        imageUrls: items.imageUrls,
+        itemCategory: items.itemCategory,
+        color: items.color,
+        size: items.size,
+        tags: items.tags,
+        location: items.location,
+        latitude: items.latitude,
+        longitude: items.longitude,
+        date: items.date,
+        contactInfo: items.contactInfo,
+        externalSource: items.externalSource,
+        externalId: items.externalId,
+        externalUrl: items.externalUrl,
+        externalPayload: items.externalPayload,
+        created: sql<boolean>`xmax = 0`,
+      });
 
-    if (!existingItem) {
-      const [createdItem] = await db.insert(items).values(values).returning();
-      return { item: createdItem, created: true };
-    }
+    const { created, ...item } = savedItem;
 
-    const [updatedItem] = await db
-      .update(items)
-      .set(values)
-      .where(eq(items.id, existingItem.id))
-      .returning();
-
-    return { item: updatedItem ?? existingItem, created: false };
+    return {
+      item,
+      created: Boolean(created),
+    };
   }
 
   async updateItem(
