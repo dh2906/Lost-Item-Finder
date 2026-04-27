@@ -30,7 +30,8 @@ const CATEGORIES = [
   { code: "기타", label: "기타" },
 ] as const;
 
-// 시도 코드 — Lost112 API의 ccdSidoNm 파라미터 값으로 전체 공식 명칭 사용
+// 시도 코드 — 서버의 includes() 텍스트 필터에 사용되는 값.
+// 전체 공식 명칭을 사용해야 "서울특별시 강남구" 같은 주소 문자열과 정확히 매칭된다.
 const REGIONS = [
   { code: ALL_REGIONS,        label: "전국" },
   { code: "서울특별시",        label: "서울" },
@@ -106,7 +107,7 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
       href={detailUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="block bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all overflow-hidden cursor-pointer"
+      className="block bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all overflow-hidden cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
     >
       {/* 이미지 */}
       <div className="relative h-44 bg-gray-50 flex items-center justify-center overflow-hidden">
