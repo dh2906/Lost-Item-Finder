@@ -30,26 +30,27 @@ const CATEGORIES = [
   { code: "기타", label: "기타" },
 ] as const;
 
-// 시도 코드
+// includes() 기반이라 "서울" 같은 약칭도 "서울특별시 강남구"에 매칭될 수 있다.
+// 여기서는 더 구체적이고 일관된 필터링을 위해 공식 행정구역명을 code 값으로 사용한다.
 const REGIONS = [
-  { code: ALL_REGIONS, label: "전국" },
-  { code: "서울", label: "서울" },
-  { code: "부산", label: "부산" },
-  { code: "대구", label: "대구" },
-  { code: "인천", label: "인천" },
-  { code: "광주", label: "광주" },
-  { code: "대전", label: "대전" },
-  { code: "울산", label: "울산" },
-  { code: "세종", label: "세종" },
-  { code: "경기", label: "경기" },
-  { code: "강원", label: "강원" },
-  { code: "충북", label: "충북" },
-  { code: "충남", label: "충남" },
-  { code: "전북", label: "전북" },
-  { code: "전남", label: "전남" },
-  { code: "경북", label: "경북" },
-  { code: "경남", label: "경남" },
-  { code: "제주", label: "제주" },
+  { code: ALL_REGIONS,        label: "전국" },
+  { code: "서울특별시",        label: "서울" },
+  { code: "부산광역시",        label: "부산" },
+  { code: "대구광역시",        label: "대구" },
+  { code: "인천광역시",        label: "인천" },
+  { code: "광주광역시",        label: "광주" },
+  { code: "대전광역시",        label: "대전" },
+  { code: "울산광역시",        label: "울산" },
+  { code: "세종특별자치시",    label: "세종" },
+  { code: "경기도",            label: "경기" },
+  { code: "강원특별자치도",    label: "강원" },
+  { code: "충청북도",          label: "충북" },
+  { code: "충청남도",          label: "충남" },
+  { code: "전북특별자치도",    label: "전북" },
+  { code: "전라남도",          label: "전남" },
+  { code: "경상북도",          label: "경북" },
+  { code: "경상남도",          label: "경남" },
+  { code: "제주특별자치도",    label: "제주" },
 ] as const;
 
 // 기간 옵션
@@ -70,8 +71,25 @@ function getDateString(daysAgo: number): string {
   return `${year}${month}${day}`;
 }
 
+/**
+ * API에서 오는 날짜를 'YYYY.MM.DD' 형식으로 변환한다.
+ * - YYYYMMDD (하이픈 없음) : 경찰청 API 일부 필드
+ * - YYYY-MM-DD (ISO 형식)  : 경찰청 API fdYmd 실제 반환 형식
+ */
 function formatDate(ymd: string): string {
-  if (!ymd || ymd.length < 8) return ymd;
+  if (!ymd) return ymd;
+
+  // YYYY-MM-DD 형식 처리
+  if (ymd.includes("-")) {
+    const parts = ymd.split("-");
+    if (parts.length >= 3) {
+      return `${parts[0]}.${parts[1]}.${parts[2].slice(0, 2)}`;
+    }
+    return ymd;
+  }
+
+  // YYYYMMDD 형식 처리
+  if (ymd.length < 8) return ymd;
   return `${ymd.slice(0, 4)}.${ymd.slice(4, 6)}.${ymd.slice(6, 8)}`;
 }
 
@@ -85,7 +103,12 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
   const storagePlace = item.depPlace || item.fdHor;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+    <a
+      href={detailUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="block bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all overflow-hidden cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+    >
       {/* 이미지 */}
       <div className="relative h-44 bg-gray-50 flex items-center justify-center overflow-hidden">
         {hasImage ? (
@@ -146,17 +169,14 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
           )}
         </div>
 
-        <a
-          href={detailUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <div
           className="flex items-center justify-center gap-1.5 w-full py-2 mt-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-medium transition-colors"
         >
           <ExternalLink className="w-3.5 h-3.5" />
           경찰청에서 상세보기
-        </a>
+        </div>
       </div>
-    </div>
+    </a>
   );
 }
 
