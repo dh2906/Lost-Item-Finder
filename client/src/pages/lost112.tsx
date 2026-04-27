@@ -30,8 +30,8 @@ const CATEGORIES = [
   { code: "기타", label: "기타" },
 ] as const;
 
-// 시도 코드 — 서버의 includes() 텍스트 필터에 사용되는 값.
-// 전체 공식 명칭을 사용해야 "서울특별시 강남구" 같은 주소 문자열과 정확히 매칭된다.
+// includes() 기반이라 "서울" 같은 약칭도 "서울특별시 강남구"에 매칭될 수 있다.
+// 여기서는 더 구체적이고 일관된 필터링을 위해 공식 행정구역명을 code 값으로 사용한다.
 const REGIONS = [
   { code: ALL_REGIONS,        label: "전국" },
   { code: "서울특별시",        label: "서울" },
