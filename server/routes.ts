@@ -639,8 +639,10 @@ function extractLost112SearchTerms(queryText: string): string[] {
 
 function itemMatchesLocationText(item: Item, locationText?: string): boolean {
   const locationHaystack = [
+    item.title,
     item.location,
     item.description,
+    item.itemCategory,
     item.contactInfo,
     item.externalPayload && typeof item.externalPayload === "object"
       ? Object.values(item.externalPayload).join(" ")
