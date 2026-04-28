@@ -1,19 +1,38 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Layout } from "@/components/layout";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MapPin, Calendar, Building2, Phone, ExternalLink, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  MapPin,
+  Calendar,
+  Building2,
+  Phone,
+  ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  Filter,
+  RotateCcw,
+  PackageOpen,
+  SearchIcon,
+  ShieldCheck,
+} from "lucide-react";
 import { api, type Lost112ItemsResponse } from "@shared/routes";
+import { cn } from "@/lib/utils";
 
 const ALL_CATEGORIES = "all-categories";
 const ALL_REGIONS = "all-regions";
 
-// 경찰청 습득물 API 카테고리 코드
 const CATEGORIES = [
-  { code: ALL_CATEGORIES, label: "전체" },
+  { code: ALL_CATEGORIES, label: "전체 카테고리" },
   { code: "지갑", label: "지갑" },
   { code: "가방", label: "가방" },
   { code: "도서용품", label: "도서용품" },
@@ -30,36 +49,33 @@ const CATEGORIES = [
   { code: "기타", label: "기타" },
 ] as const;
 
-// includes() 기반이라 "서울" 같은 약칭도 "서울특별시 강남구"에 매칭될 수 있다.
-// 여기서는 더 구체적이고 일관된 필터링을 위해 공식 행정구역명을 code 값으로 사용한다.
 const REGIONS = [
-  { code: ALL_REGIONS,        label: "전국" },
-  { code: "서울특별시",        label: "서울" },
-  { code: "부산광역시",        label: "부산" },
-  { code: "대구광역시",        label: "대구" },
-  { code: "인천광역시",        label: "인천" },
-  { code: "광주광역시",        label: "광주" },
-  { code: "대전광역시",        label: "대전" },
-  { code: "울산광역시",        label: "울산" },
-  { code: "세종특별자치시",    label: "세종" },
-  { code: "경기도",            label: "경기" },
-  { code: "강원특별자치도",    label: "강원" },
-  { code: "충청북도",          label: "충북" },
-  { code: "충청남도",          label: "충남" },
-  { code: "전북특별자치도",    label: "전북" },
-  { code: "전라남도",          label: "전남" },
-  { code: "경상북도",          label: "경북" },
-  { code: "경상남도",          label: "경남" },
-  { code: "제주특별자치도",    label: "제주" },
+  { code: ALL_REGIONS, label: "전국" },
+  { code: "서울특별시", label: "서울" },
+  { code: "부산광역시", label: "부산" },
+  { code: "대구광역시", label: "대구" },
+  { code: "인천광역시", label: "인천" },
+  { code: "광주광역시", label: "광주" },
+  { code: "대전광역시", label: "대전" },
+  { code: "울산광역시", label: "울산" },
+  { code: "세종특별자치시", label: "세종" },
+  { code: "경기도", label: "경기" },
+  { code: "강원특별자치도", label: "강원" },
+  { code: "충청북도", label: "충북" },
+  { code: "충청남도", label: "충남" },
+  { code: "전북특별자치도", label: "전북" },
+  { code: "전라남도", label: "전남" },
+  { code: "경상북도", label: "경북" },
+  { code: "경상남도", label: "경남" },
+  { code: "제주특별자치도", label: "제주" },
 ] as const;
 
-// 기간 옵션
 const DATE_RANGES = [
-  { value: "7", label: "1주일" },
-  { value: "30", label: "1개월" },
-  { value: "90", label: "3개월" },
-  { value: "180", label: "6개월" },
-  { value: "365", label: "1년" },
+  { value: "7", label: "최근 1주일" },
+  { value: "30", label: "최근 1개월" },
+  { value: "90", label: "최근 3개월" },
+  { value: "180", label: "최근 6개월" },
+  { value: "365", label: "최근 1년" },
 ] as const;
 
 function getDateString(daysAgo: number): string {
@@ -71,15 +87,8 @@ function getDateString(daysAgo: number): string {
   return `${year}${month}${day}`;
 }
 
-/**
- * API에서 오는 날짜를 'YYYY.MM.DD' 형식으로 변환한다.
- * - YYYYMMDD (하이픈 없음) : 경찰청 API 일부 필드
- * - YYYY-MM-DD (ISO 형식)  : 경찰청 API fdYmd 실제 반환 형식
- */
 function formatDate(ymd: string): string {
   if (!ymd) return ymd;
-
-  // YYYY-MM-DD 형식 처리
   if (ymd.includes("-")) {
     const parts = ymd.split("-");
     if (parts.length >= 3) {
@@ -87,13 +96,15 @@ function formatDate(ymd: string): string {
     }
     return ymd;
   }
-
-  // YYYYMMDD 형식 처리
   if (ymd.length < 8) return ymd;
   return `${ymd.slice(0, 4)}.${ymd.slice(4, 6)}.${ymd.slice(6, 8)}`;
 }
 
-function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number] }) {
+function Lost112ItemCard({
+  item,
+}: {
+  item: Lost112ItemsResponse["items"][number];
+}) {
   const detailUrl = `https://www.lost112.go.kr/find/findDetail.do?ATC_ID=${encodeURIComponent(
     item.atcId
   )}&FD_SN=${encodeURIComponent(item.fdSn || "1")}&pageIndex=1`;
@@ -107,74 +118,75 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
       href={detailUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="block bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all overflow-hidden cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+      className="group relative flex flex-col overflow-hidden rounded-[26px] border border-border/70 bg-white/92 shadow-sm transition-all hover:border-primary/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
     >
-      {/* 이미지 */}
-      <div className="relative h-44 bg-gray-50 flex items-center justify-center overflow-hidden">
+      {/* 썸네일 이미지 영역 */}
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
         {hasImage ? (
           <img
             src={item.fdFilePathImg}
             alt={title}
-            className="w-full h-full object-cover"
-            onError={() => {
-              setImageFailed(true);
-            }}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            onError={() => setImageFailed(true)}
           />
         ) : (
-          <div className="flex flex-col items-center gap-2 text-gray-300">
-            <Building2 className="w-12 h-12" />
-            <span className="text-xs">이미지 없음</span>
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground">
+            <Building2 className="h-10 w-10 opacity-40" />
+            <span className="text-xs font-medium">이미지 없음</span>
           </div>
         )}
-        <div className="absolute top-2 left-2">
-          <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
-            포털기관 습득물
-          </Badge>
+        <div className="absolute left-3 top-3 inline-flex items-center rounded-full border border-primary/10 bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm backdrop-blur-sm">
+          포털기관 데이터
         </div>
       </div>
 
-      {/* 내용 */}
-      <div className="p-3 space-y-2">
+      {/* 정보 영역 */}
+      <div className="flex flex-1 flex-col gap-4 p-5">
         <div>
-          <h3 className="font-semibold text-gray-900 text-sm line-clamp-1">{title}</h3>
+          <h3 className="line-clamp-1 text-lg font-semibold text-foreground transition-colors group-hover:text-primary">
+            {title}
+          </h3>
           {item.prdtClNm && (
-            <p className="text-xs text-gray-500 mt-0.5">{item.prdtClNm}{item.clrNm ? ` · ${item.clrNm}` : ""}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {item.prdtClNm}
+              {item.clrNm ? ` · ${item.clrNm}` : ""}
+            </p>
           )}
         </div>
 
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {item.fdPlace && (
-            <div className="flex items-start gap-1.5 text-xs text-gray-600">
-              <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
-              <span className="line-clamp-1">습득: {item.fdPlace}</span>
-            </div>
-          )}
-          {storagePlace && (
-            <div className="flex items-start gap-1.5 text-xs text-gray-600">
-              <Building2 className="w-3 h-3 mt-0.5 flex-shrink-0 text-gray-400" />
-              <span className="line-clamp-1">보관: {storagePlace}</span>
+            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+              <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="line-clamp-1">{item.fdPlace}</span>
             </div>
           )}
           {item.fdYmd && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Calendar className="w-3 h-3 flex-shrink-0 text-gray-400" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Calendar className="h-4 w-4 shrink-0" />
               <span>{formatDate(item.fdYmd)}</span>
             </div>
           )}
+          {storagePlace && (
+            <div className="flex items-start gap-2 text-sm text-muted-foreground">
+              <Building2 className="mt-0.5 h-4 w-4 shrink-0" />
+              <span className="line-clamp-1">보관: {storagePlace}</span>
+            </div>
+          )}
           {item.tel && (
-            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Phone className="w-3 h-3 flex-shrink-0 text-gray-400" />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Phone className="h-4 w-4 shrink-0" />
               <span>{item.tel}</span>
             </div>
           )}
         </div>
 
-        <div
-          className="flex items-center justify-center gap-1.5 w-full py-2 mt-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-medium transition-colors"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          경찰청에서 상세보기
-        </div>
+        {/* <div className="mt-auto pt-2">
+          <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-[hsl(var(--primary-light))] py-2.5 text-xs font-semibold text-primary transition-colors group-hover:bg-primary/15">
+            <ExternalLink className="h-4 w-4" />
+            경찰청에서 상세 확인
+          </div>
+        </div> */}
       </div>
     </a>
   );
@@ -182,13 +194,21 @@ function Lost112ItemCard({ item }: { item: Lost112ItemsResponse["items"][number]
 
 function Lost112SkeletonCard() {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      <Skeleton className="h-44 w-full" />
-      <div className="p-3 space-y-2">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-3 w-1/2" />
-        <Skeleton className="h-3 w-2/3" />
-        <Skeleton className="h-8 w-full" />
+    <div className="flex flex-col overflow-hidden rounded-[26px] border border-border/70 bg-white/92 shadow-sm">
+      <Skeleton className="aspect-[4/3] w-full rounded-none" />
+      <div className="flex flex-1 flex-col gap-4 p-5">
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-3/4" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-2/3" />
+          <Skeleton className="h-4 w-4/5" />
+        </div>
+        <div className="mt-auto pt-2">
+          <Skeleton className="h-9 w-full rounded-xl" />
+        </div>
       </div>
     </div>
   );
@@ -204,7 +224,10 @@ export default function Lost112Page() {
   const startDate = getDateString(Number(dateRange));
   const endDate = getDateString(0);
 
-  const queryKey = ["lost112", { category, region, startDate, endDate, page, numOfRows }];
+  const queryKey = [
+    "lost112",
+    { category, region, startDate, endDate, page, numOfRows },
+  ];
 
   const { data, error, isLoading, isError } = useQuery<Lost112ItemsResponse>({
     queryKey,
@@ -220,16 +243,16 @@ export default function Lost112Page() {
 
       const res = await fetch(`${api.lost112.items.path}?${params.toString()}`);
       if (!res.ok) {
-        const errorPayload = (await res.json().catch(() => null)) as
-          | { message?: string }
-          | null;
+        const errorPayload = (await res.json().catch(() => null)) as {
+          message?: string;
+        } | null;
         throw new Error(
           errorPayload?.message ?? "Lost112 데이터를 불러오지 못했습니다."
         );
       }
       return res.json() as Promise<Lost112ItemsResponse>;
     },
-    staleTime: 1000 * 60 * 5, // 5분 캐시
+    staleTime: 1000 * 60 * 5,
   });
 
   const totalPages = data ? Math.ceil(data.totalCount / numOfRows) : 0;
@@ -238,179 +261,299 @@ export default function Lost112Page() {
     setPage(1);
   };
 
+  const handleResetFilters = () => {
+    setCategory(ALL_CATEGORIES);
+    setRegion(ALL_REGIONS);
+    setDateRange("30");
+    setPage(1);
+  };
+
+  const activeFilterCount = [
+    category !== ALL_CATEGORIES,
+    region !== ALL_REGIONS,
+    dateRange !== "30",
+  ].filter(Boolean).length;
+  const hasActiveFilters = activeFilterCount > 0;
+
   return (
     <Layout>
-      <div className="max-w-2xl mx-auto px-4 pb-24">
-        {/* 헤더 */}
-        <div className="pt-6 pb-4">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-2xl">🚔</span>
-            <h1 className="text-xl font-bold text-gray-900">포털기관 습득물 조회</h1>
-          </div>
-          <p className="text-sm text-gray-500">
-            전국 포털기관에서 보관 중인 습득물을 조회합니다
-          </p>
-        </div>
-
-        {/* 필터 */}
-        <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">카테고리</label>
-              <Select
-                value={category}
-                onValueChange={(v) => { setCategory(v); handleFilterChange(); }}
-              >
-                <SelectTrigger className="h-9 text-sm bg-white">
-                  <SelectValue placeholder="전체" />
-                </SelectTrigger>
-                <SelectContent>
-                  {CATEGORIES.map((cat) => (
-                    <SelectItem key={cat.code} value={cat.code}>
-                      {cat.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      {/* 헤더 섹션 (ItemsPage와 동일) */}
+      <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-10 pt-14">
+        <div className="container mx-auto max-w-6xl px-5">
+          <div className="space-y-5">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/12 bg-white/88 px-3 py-1 text-sm font-semibold text-primary shadow-sm">
+              <ShieldCheck className="h-4 w-4" />
+              경찰청 연동 데이터
             </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">지역</label>
-              <Select
-                value={region}
-                onValueChange={(v) => { setRegion(v); handleFilterChange(); }}
-              >
-                <SelectTrigger className="h-9 text-sm bg-white">
-                  <SelectValue placeholder="전국" />
-                </SelectTrigger>
-                <SelectContent>
-                  {REGIONS.map((r) => (
-                    <SelectItem key={r.code} value={r.code}>
-                      {r.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-medium text-gray-600">기간</label>
-            <div className="flex gap-2 flex-wrap">
-              {DATE_RANGES.map((dr) => (
-                <button
-                  key={dr.value}
-                  type="button"
-                  onClick={() => { setDateRange(dr.value); handleFilterChange(); }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    dateRange === dr.value
-                      ? "bg-blue-600 text-white"
-                      : "bg-white text-gray-600 border border-gray-200 hover:border-blue-300"
-                  }`}
-                >
-                  {dr.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* 결과 수 */}
-        {!isLoading && data && (
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-sm text-gray-500">
-              총 <span className="font-semibold text-gray-800">{data.totalCount.toLocaleString()}</span>건
-            </p>
-            <p className="text-xs text-gray-400">{page} / {totalPages || 1} 페이지</p>
-          </div>
-        )}
-
-        {/* 오류 */}
-        {isError && (
-          <div className="text-center py-16 text-gray-500">
-            <p className="text-4xl mb-3">⚠️</p>
-            <p className="font-medium">데이터를 불러오지 못했습니다</p>
-            <p className="text-sm mt-1">
-              {error instanceof Error
-                ? error.message
-                : "잠시 후 다시 시도해 주세요"}
-            </p>
-          </div>
-        )}
-
-        {/* 로딩 스켈레톤 */}
-        {isLoading && (
-          <div className="grid grid-cols-2 gap-3">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <Lost112SkeletonCard key={i} />
-            ))}
-          </div>
-        )}
-
-        {/* 빈 결과 */}
-        {!isLoading && !isError && data?.items.length === 0 && (
-          <div className="text-center py-16 text-gray-500">
-            <p className="text-4xl mb-3">🔍</p>
-            <p className="font-medium">조건에 맞는 습득물이 없습니다</p>
-            <p className="text-sm mt-1">필터를 변경해 다시 검색해 보세요</p>
-          </div>
-        )}
-
-        {/* 아이템 그리드 */}
-        {!isLoading && !isError && data && data.items.length > 0 && (
-          <div className="grid grid-cols-2 gap-3">
-            {data.items.map((item) => (
-              <Lost112ItemCard key={item.atcId} item={item} />
-            ))}
-          </div>
-        )}
-
-        {/* 페이지네이션 */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 mt-6">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1 || isLoading}
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-
-            {/* 페이지 번호 (최대 5개) */}
-            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-              const startPage = Math.max(1, Math.min(page - 2, totalPages - 4));
-              const pageNum = startPage + i;
-              return (
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-3">
+                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                  포털기관 습득물 조회
+                </h1>
+                <p className="max-w-2xl text-base leading-7 text-muted-foreground">
+                  전국 경찰서 및 유실물 센터에 보관 중인 습득물 데이터를
+                  실시간으로 조회합니다.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
                 <Button
-                  key={pageNum}
-                  variant={pageNum === page ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setPage(pageNum)}
-                  disabled={isLoading}
-                  className="w-9 h-9 p-0 text-sm"
+                  asChild
+                  variant="outline"
+                  className="rounded-full border-border/70 bg-white/92 px-5 shadow-sm"
                 >
-                  {pageNum}
+                  <Link href="/items?type=found">Findy 습득물 보기</Link>
                 </Button>
-              );
-            })}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages || isLoading}
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+              </div>
+            </div>
           </div>
-        )}
-
-        {/* 출처 안내 */}
-        <div className="mt-6 p-3 bg-blue-50 rounded-lg text-xs text-blue-600 text-center">
-          데이터 출처: 경찰청 유실물 통합포털 (lost112.go.kr) · 공공데이터포털
         </div>
-      </div>
+      </section>
+
+      {/* 메인 컨텐츠 섹션 */}
+      <section className="pb-16 pt-10">
+        <div className="container mx-auto max-w-6xl px-5">
+          <div className="space-y-6">
+            {/* 필터 섹션 */}
+            <div className="rounded-[28px] border border-border/70 bg-white/92 p-5 shadow-[0_20px_40px_-32px_rgba(27,31,59,0.2)]">
+              <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Filter className="h-4 w-4 text-primary" />
+                      게시글 필터
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      카테고리, 지역, 기간 기준으로 포털기관 데이터를
+                      좁혀보세요.
+                    </p>
+                  </div>
+                  {hasActiveFilters ? (
+                    <div className="inline-flex items-center self-start rounded-full bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary lg:self-auto">
+                      적용된 필터 {activeFilterCount}개
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      카테고리
+                    </label>
+                    <Select
+                      value={category}
+                      onValueChange={(v) => {
+                        setCategory(v);
+                        handleFilterChange();
+                      }}
+                    >
+                      <SelectTrigger className="h-11 rounded-2xl bg-white">
+                        <SelectValue placeholder="전체 카테고리" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CATEGORIES.map((cat) => (
+                          <SelectItem key={cat.code} value={cat.code}>
+                            {cat.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      지역
+                    </label>
+                    <Select
+                      value={region}
+                      onValueChange={(v) => {
+                        setRegion(v);
+                        handleFilterChange();
+                      }}
+                    >
+                      <SelectTrigger className="h-11 rounded-2xl bg-white">
+                        <SelectValue placeholder="전국" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REGIONS.map((r) => (
+                          <SelectItem key={r.code} value={r.code}>
+                            {r.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      기간
+                    </label>
+                    <Select
+                      value={dateRange}
+                      onValueChange={(v) => {
+                        setDateRange(v);
+                        handleFilterChange();
+                      }}
+                    >
+                      <SelectTrigger className="h-11 rounded-2xl bg-white">
+                        <SelectValue placeholder="기간 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DATE_RANGES.map((dr) => (
+                          <SelectItem key={dr.value} value={dr.value}>
+                            {dr.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex items-end md:col-span-3 xl:col-span-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleResetFilters}
+                      className="h-11 w-full rounded-2xl bg-white"
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      초기화
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 에러 상태 */}
+            {isError && (
+              <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
+                <div className="mb-4 rounded-full border border-border/70 bg-white p-4 shadow-sm">
+                  <PackageOpen className="h-8 w-8 text-muted-foreground/55" />
+                </div>
+                <h3 className="mb-2 text-lg font-bold text-foreground">
+                  데이터를 불러오지 못했습니다
+                </h3>
+                <p className="text-muted-foreground">
+                  {error instanceof Error
+                    ? error.message
+                    : "잠시 후 다시 시도해 주세요"}
+                </p>
+              </div>
+            )}
+
+            {/* 정상 리스트 렌더링 영역 */}
+            {!isError && (
+              <div className="space-y-6">
+                <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="flex items-center gap-3 text-2xl font-bold text-foreground">
+                    전체 게시물
+                    {!isLoading && data && (
+                      <span className="inline-flex items-center justify-center rounded-full bg-accent px-3 py-0.5 text-sm font-bold text-primary">
+                        {data.totalCount.toLocaleString()}건
+                      </span>
+                    )}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      데이터 출처: 경찰청 유실물 통합포털 (lost112.go.kr)
+                    </span>
+                  </div>
+                </div>
+
+                {/* 로딩 스켈레톤 */}
+                {isLoading ? (
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {Array.from({ length: 8 }).map((_, i) => (
+                      <Lost112SkeletonCard key={i} />
+                    ))}
+                  </div>
+                ) : data?.items.length === 0 ? (
+                  /* 빈 결과 상태 */
+                  <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
+                    <div className="mb-4 rounded-full border border-border/70 bg-white p-4 shadow-sm">
+                      <SearchIcon className="h-8 w-8 text-muted-foreground/55" />
+                    </div>
+                    <h3 className="mb-2 text-lg font-bold text-foreground">
+                      조건에 맞는 습득물이 없어요
+                    </h3>
+                    <p className="max-w-sm text-center leading-relaxed text-muted-foreground">
+                      카테고리, 지역, 날짜 조건을 바꿔서 다시 확인해보세요.
+                    </p>
+                    <div className="mt-6 flex justify-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleResetFilters}
+                        className="h-11 rounded-full px-6 font-medium"
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        필터 초기화
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* 카드 그리드 */
+                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {data?.items.map((item) => (
+                      <Lost112ItemCard key={item.atcId} item={item} />
+                    ))}
+                  </div>
+                )}
+
+                {/* 페이지네이션 */}
+                {!isLoading && totalPages > 1 && (
+                  <div className="mt-10 flex items-center justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1 || isLoading}
+                      className="h-10 w-10 rounded-xl p-0"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      const startPage = Math.max(
+                        1,
+                        Math.min(page - 2, totalPages - 4)
+                      );
+                      const pageNum = startPage + i;
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={pageNum === page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPage(pageNum)}
+                          disabled={isLoading}
+                          className={cn(
+                            "h-10 w-10 rounded-xl p-0 text-sm font-semibold",
+                            pageNum === page
+                              ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {pageNum}
+                        </Button>
+                      );
+                    })}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      disabled={page === totalPages || isLoading}
+                      className="h-10 w-10 rounded-xl p-0"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
     </Layout>
   );
 }
