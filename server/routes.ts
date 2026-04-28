@@ -55,6 +55,7 @@ const MIN_FINAL_MATCH_SCORE = Number(process.env.MIN_FINAL_MATCH_SCORE ?? 0.42);
 const MIN_FALLBACK_MATCH_SCORE = Number(
   process.env.MIN_FALLBACK_MATCH_SCORE ?? 0.3
 );
+const DEFAULT_AI_SEARCH_RADIUS_KM = 1;
 const positiveIdSchema = z.coerce.number().int().positive();
 const embeddingRelevantFields = new Set([
   "title",
@@ -324,6 +325,86 @@ function matchesLost112TextFilter(
     .some((value) => value.includes(filter));
 }
 
+const ADMINISTRATIVE_LOCATION_SUFFIXES = [
+  "특별자치도",
+  "특별자치시",
+  "특별시",
+  "광역시",
+  "자치도",
+  "시",
+  "군",
+  "구",
+  "읍",
+  "면",
+  "동",
+  "리",
+] as const;
+
+function getAdministrativeLocationTokenVariants(token: string): string[] {
+  const variants = new Set([token]);
+
+  for (const suffix of ADMINISTRATIVE_LOCATION_SUFFIXES) {
+    if (!token.endsWith(suffix)) {
+      continue;
+    }
+
+    const withoutSuffix = token.slice(0, -suffix.length);
+    if (withoutSuffix.length >= 2) {
+      variants.add(withoutSuffix);
+    }
+  }
+
+  return Array.from(variants);
+}
+
+function getLocationFilterTokenGroups(locationText?: string | null): string[][] {
+  return normalizePlainSearchText(locationText)
+    .split(" ")
+    .filter((token) => token.length >= 2)
+    .map(getAdministrativeLocationTokenVariants);
+}
+
+function locationTextMatchesFilter(
+  candidateText: string,
+  locationText?: string | null
+): boolean {
+  const tokenGroups = getLocationFilterTokenGroups(locationText);
+  if (tokenGroups.length === 0) {
+    return true;
+  }
+
+  const normalizedCandidate = normalizePlainSearchText(candidateText);
+  const compactCandidate = normalizedCandidate.replace(/\s+/g, "");
+  if (!normalizedCandidate) {
+    return false;
+  }
+
+  return tokenGroups.every((variants) =>
+    variants.some((variant) => {
+      const compactVariant = variant.replace(/\s+/g, "");
+      return (
+        normalizedCandidate.includes(variant) ||
+        compactCandidate.includes(compactVariant)
+      );
+    })
+  );
+}
+
+function matchesLost112RegionFilter(
+  item: Lost112NormalizedItem,
+  region: string
+): boolean {
+  if (!region) {
+    return true;
+  }
+
+  const locationText = [item.depPlace, item.fdPlace, item.orgNm]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+
+  return locationTextMatchesFilter(locationText, region);
+}
+
 async function fetchLost112ItemsPage({
   apiKey,
   category = "",
@@ -380,11 +461,7 @@ async function fetchLost112ItemsPage({
       "fdSbjt",
       "fdPrdtNm",
     ]);
-    const regionMatched = matchesLost112TextFilter(item, normalizedRegion, [
-      "depPlace",
-      "fdPlace",
-      "orgNm",
-    ]);
+    const regionMatched = matchesLost112RegionFilter(item, normalizedRegion);
 
     return categoryMatched && regionMatched;
   });
@@ -471,15 +548,15 @@ function normalizeLost112ToExternalFoundItem(
     )
   );
   const descriptionParts = [
-    item.fdPrdtNm ? `item: ${item.fdPrdtNm}` : null,
-    item.prdtClNm ? `category: ${item.prdtClNm}` : null,
-    item.clrNm ? `color: ${item.clrNm}` : null,
-    item.fdPlace ? `found place: ${item.fdPlace}` : null,
-    item.depPlace ? `storage place: ${item.depPlace}` : null,
-    item.orgNm ? `agency: ${item.orgNm}` : null,
-    item.fdYmd ? `found date: ${item.fdYmd}` : null,
-    item.fdHor ? `found time: ${item.fdHor}` : null,
-    `Lost112 receipt: ${atcId}-${fdSn}`,
+    item.fdPrdtNm ? `물품명: ${item.fdPrdtNm}` : null,
+    item.prdtClNm ? `분류: ${item.prdtClNm}` : null,
+    item.clrNm ? `색상: ${item.clrNm}` : null,
+    item.fdPlace ? `습득 장소: ${item.fdPlace}` : null,
+    item.depPlace ? `보관 장소: ${item.depPlace}` : null,
+    item.orgNm ? `담당 기관: ${item.orgNm}` : null,
+    item.fdYmd ? `습득일: ${item.fdYmd}` : null,
+    item.fdHor ? `습득 시간: ${item.fdHor}` : null,
+    `Lost112 접수번호: ${atcId}-${fdSn}`,
   ].filter((value): value is string => Boolean(value));
 
   return {
@@ -561,19 +638,18 @@ function extractLost112SearchTerms(queryText: string): string[] {
 }
 
 function itemMatchesLocationText(item: Item, locationText?: string): boolean {
-  const normalizedLocation = normalizePlainSearchText(locationText);
-  if (!normalizedLocation) {
-    return true;
-  }
+  const locationHaystack = [
+    item.location,
+    item.description,
+    item.contactInfo,
+    item.externalPayload && typeof item.externalPayload === "object"
+      ? Object.values(item.externalPayload).join(" ")
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
 
-  const haystack = normalizePlainSearchText(
-    [item.location, item.description, item.itemCategory, item.title].filter(Boolean).join(" ")
-  );
-
-  return normalizedLocation
-    .split(" ")
-    .filter((token) => token.length >= 2)
-    .every((token) => haystack.includes(token));
+  return locationTextMatchesFilter(locationHaystack, locationText);
 }
 
 function getRemainingTimeMs(deadlineAt: number): number {
@@ -2963,6 +3039,9 @@ export async function registerRoutes(
         typeof input.radiusKm === "number" && Number.isFinite(input.radiusKm)
           ? input.radiusKm
           : undefined;
+      const effectiveRadiusKm = searchCoordinates
+        ? radiusKm ?? DEFAULT_AI_SEARCH_RADIUS_KM
+        : undefined;
       await backfillItemEmbeddings("found");
 
       const queryParts: string[] = [];
@@ -2988,7 +3067,7 @@ export async function registerRoutes(
       }
 
       const queryText = queryParts.join("\n\n").trim();
-      if (req.isAuthenticated()) {
+      if (req.isAuthenticated() && (!searchCoordinates || searchLocation)) {
         await syncLost112ItemsForSearch({
           queryText,
           region: searchLocation,
@@ -3025,8 +3104,10 @@ export async function registerRoutes(
             return false;
           }
 
-          if (searchCoordinates && radiusKm !== undefined) {
-            return result.distanceKm !== null && result.distanceKm <= radiusKm;
+          if (searchCoordinates && effectiveRadiusKm !== undefined) {
+            return (
+              result.distanceKm !== null && result.distanceKm <= effectiveRadiusKm
+            );
           }
 
           return true;
