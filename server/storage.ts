@@ -113,6 +113,11 @@ export interface ExternalFoundItemInput {
   size?: string | null;
   tags?: string[] | null;
   location?: string | null;
+  region1?: string | null;
+  region2?: string | null;
+  region3?: string | null;
+  address?: string | null;
+  placeName?: string | null;
   latitude?: string | null;
   longitude?: string | null;
   date?: Date | null;
@@ -187,6 +192,7 @@ export interface IStorage {
     category?: string;
     color?: string;
     location?: string;
+    source?: "all" | "user" | "lost112";
     latitude?: number;
     longitude?: number;
     radiusKm?: number;
@@ -326,6 +332,7 @@ export class DatabaseStorage implements IStorage {
     category?: string;
     color?: string;
     location?: string;
+    source?: "all" | "user" | "lost112";
     latitude?: number;
     longitude?: number;
     radiusKm?: number;
@@ -345,6 +352,7 @@ export class DatabaseStorage implements IStorage {
     const category = filters?.category?.trim();
     const color = filters?.color?.trim();
     const location = filters?.location?.trim();
+    const source = filters?.source ?? "all";
     const sort = filters?.sort ?? "latest";
     const page = Math.max(1, filters?.page ?? 1);
     const limit = Math.min(Math.max(1, filters?.limit ?? 24), 60);
@@ -400,7 +408,25 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (location) {
-      conditions.push(ilike(items.location, `%${location}%`));
+      const locationPattern = `%${location}%`;
+      conditions.push(
+        or(
+          ilike(items.location, locationPattern),
+          ilike(items.region1, locationPattern),
+          ilike(items.region2, locationPattern),
+          ilike(items.region3, locationPattern),
+          ilike(items.address, locationPattern),
+          ilike(items.placeName, locationPattern)
+        )!
+      );
+    }
+
+    if (source === "lost112") {
+      conditions.push(eq(items.externalSource, "lost112"));
+    }
+
+    if (source === "user") {
+      conditions.push(isNull(items.externalSource));
     }
 
     if (distanceKm) {
@@ -497,6 +523,11 @@ export class DatabaseStorage implements IStorage {
       size: input.size ?? null,
       tags: input.tags ?? [],
       location: input.location ?? null,
+      region1: input.region1 ?? null,
+      region2: input.region2 ?? null,
+      region3: input.region3 ?? null,
+      address: input.address ?? null,
+      placeName: input.placeName ?? null,
       latitude: input.latitude ?? null,
       longitude: input.longitude ?? null,
       // date가 없으면 null로 저장 — 현재 시각으로 대체하면 실제 습득일을 왜곡함
@@ -530,6 +561,11 @@ export class DatabaseStorage implements IStorage {
         size: items.size,
         tags: items.tags,
         location: items.location,
+        region1: items.region1,
+        region2: items.region2,
+        region3: items.region3,
+        address: items.address,
+        placeName: items.placeName,
         latitude: items.latitude,
         longitude: items.longitude,
         date: items.date,

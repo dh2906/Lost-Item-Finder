@@ -6,7 +6,7 @@ import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useItem } from "@/hooks/use-items";
 import { ChatButton } from "@/components/chat-button";
-import { ItemCard } from "@/components/item-card";
+import { getDisplayTitle, ItemCard } from "@/components/item-card";
 import { useItemMatches, useUpdateMatchStatus } from "@/hooks/use-matches";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -122,6 +122,7 @@ export default function ItemDetail() {
   }
 
   const isOwner = item.userId !== null && item.userId === user?.id;
+  const displayTitle = getDisplayTitle(item);
   const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
   const listHref = `/items?type=${item.reportType}`;
 
@@ -151,9 +152,10 @@ export default function ItemDetail() {
             목록으로
           </Link>
         </Button>
+        <h1 className="sr-only">{displayTitle}</h1>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px] xl:gap-8">
-          <div className="space-y-5">
+          <div className="order-2 space-y-5 xl:order-1">
             <div className="relative mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-muted/70 shadow-card">
               {itemImageUrls.length > 0 ? (
                 <>
@@ -169,6 +171,8 @@ export default function ItemDetail() {
                             <img
                               src={imageUrl}
                               alt={`${item.title} 이미지 ${index + 1}`}
+                              loading={index === 0 ? "eager" : "lazy"}
+                              decoding="async"
                               className="h-full w-full object-cover"
                             />
                           </div>
@@ -251,6 +255,8 @@ export default function ItemDetail() {
                     <img
                       src={imageUrl}
                       alt={`${item.title} 썸네일 ${index + 1}`}
+                      loading="lazy"
+                      decoding="async"
                       className="h-full w-full object-cover"
                     />
                   </button>
@@ -261,7 +267,9 @@ export default function ItemDetail() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                <div className="rounded-[24px] border border-border/70 bg-white/88 p-4 shadow-sm">
                 <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">장소</p>
-                <p className="truncate text-sm font-medium">{item.location || "-"}</p>
+                <p className="text-sm font-medium leading-6 break-words">
+                  {item.location || "-"}
+                </p>
               </div>
                <div className="rounded-[24px] border border-border/70 bg-white/88 p-4 shadow-sm">
                 <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">날짜</p>
@@ -421,14 +429,14 @@ export default function ItemDetail() {
             )}
           </div>
 
-          <div className="space-y-5 xl:sticky xl:top-24">
+          <div className="order-1 space-y-5 xl:sticky xl:top-24 xl:order-2">
              <Card className="border-border/70 bg-white/90">
               <CardHeader className="space-y-3 pb-4">
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
                     요약 정보
                   </p>
-                  <CardTitle className="text-2xl leading-tight">{item.title}</CardTitle>
+                  <CardTitle className="text-2xl leading-tight">{displayTitle}</CardTitle>
                   <div className="flex flex-wrap gap-2">
                     <Badge
                       variant="outline"
@@ -445,13 +453,22 @@ export default function ItemDetail() {
                         내 게시글
                       </Badge>
                     )}
+                    {isLost112Item ? (
+                      <Badge
+                        variant="outline"
+                        className="border-sky-200 bg-sky-50 text-sky-700"
+                      >
+                        <ShieldCheck className="mr-1 h-3.5 w-3.5" />
+                        경찰청 등록
+                      </Badge>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
                   {item.location && (
-                     <div className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5">
+                     <div className="inline-flex max-w-full items-start gap-1.5 rounded-2xl bg-secondary px-3 py-1.5">
                       <MapPin className="h-3.5 w-3.5" />
-                      {item.location}
+                      <span className="min-w-0 break-words">{item.location}</span>
                     </div>
                   )}
                   {item.date && (

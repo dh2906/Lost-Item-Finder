@@ -13,6 +13,7 @@ import {
 
 export const itemDateRanges = ["all", "7d", "30d", "90d"] as const;
 export const itemSortOrders = ["latest", "oldest"] as const;
+export const itemSourceFilters = ["all", "user", "lost112"] as const;
 
 const itemResponseSchema = z.custom<typeof items.$inferSelect>();
 
@@ -303,6 +304,7 @@ export const api = {
           category: z.string().trim().min(1).optional(),
           color: z.string().trim().min(1).optional(),
           location: z.string().trim().min(1).max(80).optional(),
+          source: z.enum(itemSourceFilters).optional(),
           latitude: optionalLatitudeQuerySchema,
           longitude: optionalLongitudeQuerySchema,
           radiusKm: optionalRadiusKmQuerySchema,

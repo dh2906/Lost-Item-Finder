@@ -28,6 +28,7 @@ interface ItemCardProps {
   className?: string;
   variant?: "default" | "compact" | "list";
   showDateTime?: boolean;
+  imageLoading?: "eager" | "lazy";
 }
 
 export function getDisplayTitle(item: Item) {
@@ -83,6 +84,7 @@ export function ItemCard({
   className,
   variant = "default",
   showDateTime = false,
+  imageLoading = "lazy",
 }: ItemCardProps) {
   const [isReasonExpanded, setIsExpanded] = useState(false);
   const reportLabel = item.reportType === "found" ? "습득" : "분실";
@@ -154,6 +156,8 @@ export function ItemCard({
               <img
                 src={primaryImageUrl}
                 alt={displayTitle}
+                loading={imageLoading}
+                decoding="async"
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
               />
             ) : (

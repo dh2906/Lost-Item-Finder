@@ -706,6 +706,75 @@ type Lost112GeocodingResult = {
   location: string;
 };
 
+type ParsedLocationParts = {
+  region1?: string | null;
+  region2?: string | null;
+  region3?: string | null;
+  address?: string | null;
+  placeName?: string | null;
+};
+
+const REGION1_ALIASES = new Map<string, string>([
+  ["서울", "서울특별시"],
+  ["서울특별시", "서울특별시"],
+  ["부산", "부산광역시"],
+  ["부산광역시", "부산광역시"],
+  ["대구", "대구광역시"],
+  ["대구광역시", "대구광역시"],
+  ["인천", "인천광역시"],
+  ["인천광역시", "인천광역시"],
+  ["광주", "광주광역시"],
+  ["광주광역시", "광주광역시"],
+  ["대전", "대전광역시"],
+  ["대전광역시", "대전광역시"],
+  ["울산", "울산광역시"],
+  ["울산광역시", "울산광역시"],
+  ["세종", "세종특별자치시"],
+  ["세종특별자치시", "세종특별자치시"],
+  ["경기", "경기도"],
+  ["경기도", "경기도"],
+  ["강원", "강원특별자치도"],
+  ["강원도", "강원특별자치도"],
+  ["강원특별자치도", "강원특별자치도"],
+  ["충북", "충청북도"],
+  ["충청북도", "충청북도"],
+  ["충남", "충청남도"],
+  ["충청남도", "충청남도"],
+  ["전북", "전북특별자치도"],
+  ["전라북도", "전북특별자치도"],
+  ["전북특별자치도", "전북특별자치도"],
+  ["전남", "전라남도"],
+  ["전라남도", "전라남도"],
+  ["경북", "경상북도"],
+  ["경상북도", "경상북도"],
+  ["경남", "경상남도"],
+  ["경상남도", "경상남도"],
+  ["제주", "제주특별자치도"],
+  ["제주도", "제주특별자치도"],
+  ["제주특별자치도", "제주특별자치도"],
+]);
+
+function parseLocationParts(
+  location?: string | null,
+  geocoding?: Lost112GeocodingResult | null
+): ParsedLocationParts {
+  const address = geocoding?.address?.trim() || location?.split(" - ")[0]?.trim() || null;
+  const placeName =
+    geocoding?.placeName?.trim() ||
+    (location?.includes(" - ") ? location.split(" - ").slice(1).join(" - ").trim() : "") ||
+    null;
+  const tokens = (address ?? location ?? "").split(/\s+/).filter(Boolean);
+  const canonicalRegion1 = tokens[0] ? REGION1_ALIASES.get(tokens[0]) ?? tokens[0] : null;
+
+  return {
+    region1: canonicalRegion1,
+    region2: tokens[1] ?? null,
+    region3: tokens[2] ?? null,
+    address,
+    placeName,
+  };
+}
+
 function getLost112LocationSearchQueries(
   item: Lost112NormalizedItem,
   fallbackLocation?: string | null
@@ -920,6 +989,7 @@ async function normalizeLost112ExternalFoundItemWithAi(
     return {
       ...externalItem,
       location: geocoding.location,
+      ...parseLocationParts(geocoding.location, geocoding),
       latitude: geocoding.latitude,
       longitude: geocoding.longitude,
       externalPayload: {
@@ -968,6 +1038,11 @@ async function normalizeLost112ExternalFoundItemWithAi(
       .parse(JSON.parse(content));
     const normalizedMetadata = normalizeItemMetadata(normalized);
 
+    const locationParts = parseLocationParts(
+      normalizedMetadata.location ?? fallbackItem.location,
+      null
+    );
+
     return applyGeocoding({
       ...fallbackItem,
       title: normalizedMetadata.title,
@@ -982,10 +1057,14 @@ async function normalizeLost112ExternalFoundItemWithAi(
         ])
       ),
       location: normalizedMetadata.location ?? fallbackItem.location,
+      ...locationParts,
     });
   } catch (error) {
     console.error("Failed to normalize Lost112 item with AI:", error);
-    return applyGeocoding(fallbackItem);
+    return applyGeocoding({
+      ...fallbackItem,
+      ...parseLocationParts(fallbackItem.location, null),
+    });
   }
 }
 
@@ -3383,6 +3462,10 @@ export async function registerRoutes(
         location:
           typeof req.query.location === "string"
             ? req.query.location
+            : undefined,
+        source:
+          typeof req.query.source === "string"
+            ? req.query.source
             : undefined,
         latitude:
           typeof req.query.latitude === "string"

@@ -31,6 +31,7 @@ import {
 type ItemTab = "found" | "lost";
 type ItemDateRange = "all" | "7d" | "30d" | "90d";
 type ItemSortOrder = "latest" | "oldest";
+type ItemSourceFilter = "all" | "user" | "lost112";
 const ITEMS_PAGE_SIZE = 24;
 
 type ItemsPageFilters = {
@@ -38,6 +39,7 @@ type ItemsPageFilters = {
   category: string;
   color: string;
   location: string;
+  source: ItemSourceFilter;
   latitude?: number;
   longitude?: number;
   radiusKm: number;
@@ -50,6 +52,7 @@ const DEFAULT_FILTERS = {
   category: "",
   color: "",
   location: "",
+  source: "all" as const,
   latitude: undefined,
   longitude: undefined,
   radiusKm: 5,
@@ -70,16 +73,31 @@ const sortOptions: Array<{ value: ItemSortOrder; label: string }> = [
   { value: "oldest", label: "오래된순" },
 ];
 
+const sourceOptions: Array<{ value: ItemSourceFilter; label: string }> = [
+  { value: "all", label: "전체 출처" },
+  { value: "user", label: "사용자 등록" },
+  { value: "lost112", label: "경찰청 등록" },
+];
+
 const radiusOptions = [0.1, 0.3, 0.5, 1, 3, 5, 10, 20, 50] as const;
-const regionPresetOptions = [
-  "서울특별시",
-  "서울특별시 강남구",
-  "서울특별시 동대문구",
-  "경기도",
-  "충청남도",
-  "충청남도 아산시",
-  "충청남도 천안시 동남구",
-  "경상북도",
+const regionOptions = [
+  { label: "서울특별시", value: "서울" },
+  { label: "부산광역시", value: "부산" },
+  { label: "대구광역시", value: "대구" },
+  { label: "인천광역시", value: "인천" },
+  { label: "광주광역시", value: "광주" },
+  { label: "대전광역시", value: "대전" },
+  { label: "울산광역시", value: "울산" },
+  { label: "세종특별자치시", value: "세종" },
+  { label: "경기도", value: "경기" },
+  { label: "강원특별자치도", value: "강원" },
+  { label: "충청북도", value: "충북" },
+  { label: "충청남도", value: "충남" },
+  { label: "전북특별자치도", value: "전북" },
+  { label: "전라남도", value: "전남" },
+  { label: "경상북도", value: "경북" },
+  { label: "경상남도", value: "경남" },
+  { label: "제주특별자치도", value: "제주" },
 ] as const;
 
 function formatRadiusLabel(radiusKm: number): string {
@@ -96,6 +114,12 @@ function getValidSortOrder(value: string | null): ItemSortOrder {
   return sortOptions.some((option) => option.value === value)
     ? (value as ItemSortOrder)
     : "latest";
+}
+
+function getValidSourceFilter(value: string | null): ItemSourceFilter {
+  return sourceOptions.some((option) => option.value === value)
+    ? (value as ItemSourceFilter)
+    : "all";
 }
 
 function getValidCoordinate(value: string | null, min: number, max: number): number | undefined {
@@ -136,6 +160,7 @@ function getFiltersFromSearch(search: string): ItemsPageFilters {
     category: params.get("category")?.trim() ?? "",
     color: params.get("color")?.trim() ?? "",
     location: params.get("location")?.trim() ?? "",
+    source: getValidSourceFilter(params.get("source")),
     latitude: hasCoordinates ? latitude : undefined,
     longitude: hasCoordinates ? longitude : undefined,
     radiusKm: getValidRadiusKm(params.get("radiusKm")),
@@ -159,6 +184,10 @@ function buildItemsUrl(filters: ItemsPageFilters): string {
 
   if (filters.location) {
     params.set("location", filters.location);
+  }
+
+  if (filters.source !== "all") {
+    params.set("source", filters.source);
   }
 
   if (filters.latitude !== undefined && filters.longitude !== undefined) {
@@ -191,9 +220,36 @@ function getActiveFilterCount(filters: ItemsPageFilters): number {
     Boolean(filters.color),
     Boolean(filters.location) ||
       (filters.latitude !== undefined && filters.longitude !== undefined),
+    filters.source !== "all",
     filters.dateRange !== "all",
     filters.sort !== "latest",
   ].filter(Boolean).length;
+}
+
+function getSourceFilterLabel(source: ItemSourceFilter): string | null {
+  if (source === "all") {
+    return null;
+  }
+
+  return sourceOptions.find((option) => option.value === source)?.label ?? null;
+}
+
+function getActiveFilterLabels(filters: ItemsPageFilters): string[] {
+  return [
+    getSourceFilterLabel(filters.source),
+    filters.category ? `카테고리: ${filters.category}` : null,
+    filters.color ? `색상: ${filters.color}` : null,
+    filters.location ? `지역: ${filters.location}` : null,
+    filters.latitude !== undefined && filters.longitude !== undefined
+      ? `현재 위치 ${formatRadiusLabel(filters.radiusKm)} 이내`
+      : null,
+    filters.dateRange !== "all"
+      ? dateRangeOptions.find((option) => option.value === filters.dateRange)?.label
+      : null,
+    filters.sort !== "latest"
+      ? sortOptions.find((option) => option.value === filters.sort)?.label
+      : null,
+  ].filter((label): label is string => Boolean(label));
 }
 
 export default function ItemsPage() {
@@ -205,6 +261,8 @@ export default function ItemsPage() {
   const [draftFilters, setDraftFilters] = useState<ItemsPageFilters>(() =>
     getFiltersFromSearch(window.location.search)
   );
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [pageInputValue, setPageInputValue] = useState(String(filters.page));
   const [isLocating, setIsLocating] = useState(false);
   const hasDraftCoordinates =
     draftFilters.latitude !== undefined && draftFilters.longitude !== undefined;
@@ -214,6 +272,7 @@ export default function ItemsPage() {
     category: filters.category || undefined,
     color: filters.color || undefined,
     location: filters.location || undefined,
+    source: filters.source === "all" ? undefined : filters.source,
     latitude: filters.latitude,
     longitude: filters.longitude,
     radiusKm:
@@ -229,6 +288,10 @@ export default function ItemsPage() {
   const totalCount = itemsResult?.totalCount ?? 0;
   const totalPages = itemsResult?.totalPages ?? 1;
   const currentPage = itemsResult?.page ?? filters.page;
+
+  useEffect(() => {
+    setPageInputValue(String(currentPage));
+  }, [currentPage]);
 
   useEffect(() => {
     const syncFiltersFromUrl = () => {
@@ -249,11 +312,12 @@ export default function ItemsPage() {
     filters.type === "found" ? "등록된 습득물 전체보기" : "등록된 분실물 전체보기";
   const description =
     filters.type === "found"
-      ? "카테고리, 색상, 날짜 조건으로 습득물 게시물을 빠르게 좁혀서 비슷한 물건을 찾아보세요."
-      : "카테고리, 색상, 날짜 조건으로 분실물 게시물을 좁혀서 필요한 제보를 더 빨리 확인해보세요.";
+      ? "경찰청 수집 데이터와 사용자 등록글을 출처, 지역, 기간으로 좁혀서 내 물건과 가까운 후보를 확인하세요."
+      : "사용자가 등록한 분실물을 지역과 특징으로 좁혀 필요한 제보를 더 빨리 확인하세요.";
   const emptyLabel = filters.type === "found" ? "습득물" : "분실물";
   const activeFilterCount = getActiveFilterCount(filters);
   const hasActiveFilters = activeFilterCount > 0;
+  const activeFilterLabels = getActiveFilterLabels(filters);
 
   const applyFilters = (nextFilters: ItemsPageFilters) => {
     const normalizedFilters = {
@@ -295,11 +359,28 @@ export default function ItemsPage() {
 
   const handlePageChange = (page: number) => {
     const nextPage = Math.min(Math.max(1, page), totalPages);
+    if (nextPage === currentPage) {
+      setPageInputValue(String(currentPage));
+      return;
+    }
+
     applyFilters({
       ...filters,
       page: nextPage,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handlePageJumpSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const page = Number(pageInputValue);
+
+    if (!Number.isInteger(page)) {
+      setPageInputValue(String(currentPage));
+      return;
+    }
+
+    handlePageChange(page);
   };
 
   const handleUseCurrentLocation = () => {
@@ -402,7 +483,6 @@ export default function ItemsPage() {
               className="rounded-[22px] border border-border/70 bg-white/92 p-4 shadow-[0_16px_34px_-30px_rgba(27,31,59,0.18)] md:p-5"
             >
               <div className="flex flex-col gap-4">
-                <input id="items-filter-toggle" type="checkbox" className="peer sr-only" />
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -410,7 +490,7 @@ export default function ItemsPage() {
                       게시글 필터
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      필요한 조건만 빠르게 적용하세요.
+                      출처, 지역, 물건 특징을 기준으로 후보를 좁혀보세요.
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-start lg:self-auto">
@@ -419,21 +499,55 @@ export default function ItemsPage() {
                         적용된 필터 {activeFilterCount}개
                       </div>
                     ) : null}
-                    <label
-                      htmlFor="items-filter-toggle"
+                    <button
+                      type="button"
+                      aria-expanded={isFilterOpen}
+                      aria-controls="items-filter-fields"
+                      onClick={() => setIsFilterOpen((current) => !current)}
                       className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-full border border-input bg-white/92 px-3.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/20 hover:bg-accent md:hidden"
                     >
                       필터
-                      <ChevronDown className="h-4 w-4" />
-                    </label>
+                      <ChevronDown
+                        className={cn(
+                          "h-4 w-4 transition-transform",
+                          isFilterOpen ? "rotate-180" : ""
+                        )}
+                      />
+                    </button>
                   </div>
                 </div>
 
                 <div
+                  id="items-filter-fields"
                   className={cn(
-                    "filter-fields hidden gap-3 peer-checked:grid md:grid md:grid-cols-2 xl:grid-cols-4"
+                    "filter-fields gap-3 md:grid-cols-2 xl:grid-cols-4",
+                    isFilterOpen ? "grid" : "hidden md:grid"
                   )}
                 >
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-foreground">출처</label>
+                    <Select
+                      value={draftFilters.source}
+                      onValueChange={(value) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          source: value as ItemSourceFilter,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="h-10 rounded-xl">
+                        <SelectValue placeholder="출처 선택" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sourceOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <div className="space-y-2">
                     <label htmlFor="category-filter" className="text-xs font-semibold text-foreground">
                       카테고리
@@ -483,12 +597,12 @@ export default function ItemsPage() {
                           location: event.target.value,
                         }))
                       }
-                      placeholder="예: 강남역, 서대문구"
+                      placeholder="예: 강남구, 마곡나루역, 정부청사"
                       className="h-10 rounded-xl"
                     />
                     <Select
                       value={
-                        regionPresetOptions.some((option) => option === draftFilters.location)
+                        regionOptions.some((option) => option.value === draftFilters.location)
                           ? draftFilters.location
                           : undefined
                       }
@@ -500,12 +614,12 @@ export default function ItemsPage() {
                       }
                     >
                       <SelectTrigger className="h-10 rounded-xl">
-                        <SelectValue placeholder="빠른 지역 선택" />
+                        <SelectValue placeholder="시/도 선택" />
                       </SelectTrigger>
                       <SelectContent>
-                        {regionPresetOptions.map((region) => (
-                          <SelectItem key={region} value={region}>
-                            {region}
+                        {regionOptions.map((region) => (
+                          <SelectItem key={region.value} value={region.value}>
+                            {region.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -676,6 +790,28 @@ export default function ItemsPage() {
               </div>
             ) : (
               <div className="space-y-6">
+                {activeFilterLabels.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-[20px] border border-primary/10 bg-[hsl(var(--primary-light))]/55 px-4 py-3">
+                    <span className="text-xs font-semibold text-primary">적용 조건</span>
+                    {activeFilterLabels.map((label) => (
+                      <span
+                        key={label}
+                        className="inline-flex items-center rounded-full border border-primary/15 bg-white/90 px-3 py-1 text-xs font-semibold text-foreground shadow-sm"
+                      >
+                        {label}
+                      </span>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={handleResetFilters}
+                      className="h-8 rounded-full px-3 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                    >
+                      초기화
+                    </Button>
+                  </div>
+                ) : null}
+
                 <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
                   <h2 className="flex items-center gap-3 text-2xl font-bold text-foreground">
                     전체 게시물
@@ -709,8 +845,12 @@ export default function ItemsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {items.map((item) => (
-                    <ItemCard key={item.id} item={item} />
+                  {items.map((item, index) => (
+                    <ItemCard
+                      key={item.id}
+                      item={item}
+                      imageLoading={index < 4 ? "eager" : "lazy"}
+                    />
                   ))}
                 </div>
 
@@ -719,7 +859,16 @@ export default function ItemsPage() {
                     <p className="text-sm font-medium text-muted-foreground">
                       한 페이지에 {ITEMS_PAGE_SIZE}개씩 표시합니다.
                     </p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handlePageChange(1)}
+                        disabled={currentPage <= 1 || isFetching}
+                        className="h-10 rounded-full px-4"
+                      >
+                        처음
+                      </Button>
                       <Button
                         type="button"
                         variant="outline"
@@ -743,6 +892,37 @@ export default function ItemsPage() {
                         다음
                         <ChevronRight className="ml-1 h-4 w-4" />
                       </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handlePageChange(totalPages)}
+                        disabled={currentPage >= totalPages || isFetching}
+                        className="h-10 rounded-full px-4"
+                      >
+                        끝
+                      </Button>
+                      <form
+                        onSubmit={handlePageJumpSubmit}
+                        className="flex items-center gap-2 rounded-full border border-border/70 bg-white p-1 shadow-sm"
+                      >
+                        <Input
+                          type="number"
+                          min={1}
+                          max={totalPages}
+                          value={pageInputValue}
+                          onChange={(event) => setPageInputValue(event.target.value)}
+                          className="h-8 w-16 rounded-full border-0 px-3 text-center text-sm font-semibold shadow-none [appearance:textfield] focus-visible:ring-1 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          aria-label="이동할 페이지"
+                        />
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={isFetching}
+                          className="h-8 rounded-full px-3"
+                        >
+                          이동
+                        </Button>
+                      </form>
                     </div>
                   </div>
                 ) : null}

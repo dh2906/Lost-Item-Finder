@@ -28,6 +28,7 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
   if (filters?.category) queryParams.set("category", filters.category);
   if (filters?.color) queryParams.set("color", filters.color);
   if (filters?.location) queryParams.set("location", filters.location);
+  if (filters?.source) queryParams.set("source", filters.source);
   if (filters?.latitude !== undefined) queryParams.set("latitude", String(filters.latitude));
   if (filters?.longitude !== undefined) queryParams.set("longitude", String(filters.longitude));
   if (filters?.radiusKm !== undefined) queryParams.set("radiusKm", String(filters.radiusKm));
@@ -41,6 +42,7 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
 
   return useQuery({
     queryKey: [api.items.list.path, filters],
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch items");

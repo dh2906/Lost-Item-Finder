@@ -108,9 +108,99 @@ export async function ensureExternalItemSchema(): Promise<void> {
     ADD COLUMN IF NOT EXISTS external_payload_hash text;
   `);
   await pool.query(`
+    ALTER TABLE items
+    ADD COLUMN IF NOT EXISTS region1 text,
+    ADD COLUMN IF NOT EXISTS region2 text,
+    ADD COLUMN IF NOT EXISTS region3 text,
+    ADD COLUMN IF NOT EXISTS address text,
+    ADD COLUMN IF NOT EXISTS place_name text;
+  `);
+  await pool.query(`
+    UPDATE items
+    SET
+      address = COALESCE(address, NULLIF(external_payload #>> '{geocoding,address}', '')),
+      place_name = COALESCE(place_name, NULLIF(external_payload #>> '{geocoding,placeName}', ''))
+    WHERE external_payload ? 'geocoding';
+  `);
+  await pool.query(`
+    UPDATE items
+    SET
+      address = COALESCE(address, NULLIF(split_part(location, ' - ', 1), '')),
+      place_name = COALESCE(
+        place_name,
+        NULLIF(
+          CASE
+            WHEN position(' - ' in location) > 0 THEN split_part(location, ' - ', 2)
+            ELSE NULL
+          END,
+          ''
+        )
+      )
+    WHERE location IS NOT NULL;
+  `);
+  await pool.query(`
+    UPDATE items
+    SET
+      region1 = COALESCE(
+        region1,
+        CASE split_part(COALESCE(address, location), ' ', 1)
+          WHEN '서울' THEN '서울특별시'
+          WHEN '서울특별시' THEN '서울특별시'
+          WHEN '부산' THEN '부산광역시'
+          WHEN '부산광역시' THEN '부산광역시'
+          WHEN '대구' THEN '대구광역시'
+          WHEN '대구광역시' THEN '대구광역시'
+          WHEN '인천' THEN '인천광역시'
+          WHEN '인천광역시' THEN '인천광역시'
+          WHEN '광주' THEN '광주광역시'
+          WHEN '광주광역시' THEN '광주광역시'
+          WHEN '대전' THEN '대전광역시'
+          WHEN '대전광역시' THEN '대전광역시'
+          WHEN '울산' THEN '울산광역시'
+          WHEN '울산광역시' THEN '울산광역시'
+          WHEN '세종' THEN '세종특별자치시'
+          WHEN '세종특별자치시' THEN '세종특별자치시'
+          WHEN '경기' THEN '경기도'
+          WHEN '경기도' THEN '경기도'
+          WHEN '강원' THEN '강원특별자치도'
+          WHEN '강원도' THEN '강원특별자치도'
+          WHEN '강원특별자치도' THEN '강원특별자치도'
+          WHEN '충북' THEN '충청북도'
+          WHEN '충청북도' THEN '충청북도'
+          WHEN '충남' THEN '충청남도'
+          WHEN '충청남도' THEN '충청남도'
+          WHEN '전북' THEN '전북특별자치도'
+          WHEN '전라북도' THEN '전북특별자치도'
+          WHEN '전북특별자치도' THEN '전북특별자치도'
+          WHEN '전남' THEN '전라남도'
+          WHEN '전라남도' THEN '전라남도'
+          WHEN '경북' THEN '경상북도'
+          WHEN '경상북도' THEN '경상북도'
+          WHEN '경남' THEN '경상남도'
+          WHEN '경상남도' THEN '경상남도'
+          WHEN '제주' THEN '제주특별자치도'
+          WHEN '제주도' THEN '제주특별자치도'
+          WHEN '제주특별자치도' THEN '제주특별자치도'
+          ELSE NULLIF(split_part(COALESCE(address, location), ' ', 1), '')
+        END
+      ),
+      region2 = COALESCE(region2, NULLIF(split_part(COALESCE(address, location), ' ', 2), '')),
+      region3 = COALESCE(region3, NULLIF(split_part(COALESCE(address, location), ' ', 3), ''))
+    WHERE COALESCE(address, location) IS NOT NULL
+      AND COALESCE(address, location) !~ '^(습득|보관|담당)\\s*(장소|기관):';
+  `);
+  await pool.query(`
+    UPDATE items
+    SET region1 = NULL, region2 = NULL, region3 = NULL
+    WHERE region1 IN ('습득', '보관', '담당');
+  `);
+  await pool.query(`
     CREATE UNIQUE INDEX IF NOT EXISTS items_external_source_id_unique
     ON items (external_source, external_id);
   `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS items_region1_idx ON items (region1);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS items_region2_idx ON items (region2);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS items_external_source_idx ON items (external_source);`);
 }
 
 export async function ensureLost112SyncRunSchema(): Promise<void> {
