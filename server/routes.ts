@@ -800,12 +800,26 @@ async function runLost112Sync({
 
 function startLost112SyncScheduler(): void {
   const apiKey = process.env.LOST112_API_KEY;
-  if (!LOST112_SYNC_ENABLED || !apiKey) {
-    console.log("[Lost112 Sync] scheduler disabled");
+  if (!LOST112_SYNC_ENABLED) {
+    console.log("[Lost112 Sync] scheduler disabled by LOST112_SYNC_ENABLED");
+    return;
+  }
+  if (!apiKey) {
+    console.log("[Lost112 Sync] scheduler disabled because LOST112_API_KEY is missing");
     return;
   }
 
   let isRunning = false;
+  const initialDelayMs = Math.max(0, LOST112_SYNC_INITIAL_DELAY_MS);
+  const intervalMs = Math.max(1000 * 60, LOST112_SYNC_INTERVAL_MS);
+
+  console.log("[Lost112 Sync] scheduler started:", {
+    initialDelayMs,
+    intervalMs,
+    numOfRows: LOST112_SYNC_NUM_ROWS,
+    maxPages: LOST112_SYNC_MAX_PAGES,
+  });
+
   const runScheduledSync = async () => {
     if (isRunning) {
       console.warn("[Lost112 Sync] previous job is still running; skipped");
@@ -836,24 +850,11 @@ function startLost112SyncScheduler(): void {
 
   setTimeout(() => {
     void runScheduledSync();
-  }, Math.max(0, LOST112_SYNC_INITIAL_DELAY_MS));
+  }, initialDelayMs);
 
   setInterval(() => {
     void runScheduledSync();
-  }, Math.max(1000 * 60, LOST112_SYNC_INTERVAL_MS));
-}
-
-function isAuthorizedLost112CronRequest(req: {
-  get(name: string): string | undefined;
-}): boolean {
-  const syncSecret = process.env.LOST112_SYNC_SECRET;
-  if (!syncSecret) {
-    return false;
-  }
-
-  const authorization = req.get("authorization") ?? "";
-  const expectedAuthorization = `Bearer ${syncSecret}`;
-  return authorization === expectedAuthorization;
+  }, intervalMs);
 }
 
 function normalizePlainSearchText(value?: string | null): string {
@@ -3691,41 +3692,6 @@ export async function registerRoutes(
       }
 
       console.error("[Lost112 Sync] 오류:", err);
-      res.status(500).json({ message: getErrorMessage(err) });
-    }
-  });
-
-  app.post(api.lost112.cronSync.path, async (req, res) => {
-    try {
-      if (!isAuthorizedLost112CronRequest(req)) {
-        return res.status(401).json({ message: "Unauthorized" });
-      }
-
-      const apiKey = process.env.LOST112_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          message:
-            "Lost112 API 키가 설정되지 않았습니다. .env에 LOST112_API_KEY를 추가해 주세요.",
-        });
-      }
-
-      const input = api.lost112.cronSync.input.parse(req.body ?? {}) ?? {};
-      const result = await runLost112Sync({
-        apiKey,
-        numOfRows: input.numOfRows ?? LOST112_SYNC_NUM_ROWS,
-        maxPages: input.maxPages ?? LOST112_SYNC_MAX_PAGES,
-      });
-
-      res.json(result);
-    } catch (err) {
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join("."),
-        });
-      }
-
-      console.error("[Lost112 Cron Sync] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });
