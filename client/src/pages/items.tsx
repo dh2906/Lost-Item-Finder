@@ -80,24 +80,137 @@ const sourceOptions: Array<{ value: ItemSourceFilter; label: string }> = [
 ];
 
 const radiusOptions = [0.1, 0.3, 0.5, 1, 3, 5, 10, 20, 50] as const;
-const regionOptions = [
-  { label: "서울특별시", value: "서울" },
-  { label: "부산광역시", value: "부산" },
-  { label: "대구광역시", value: "대구" },
-  { label: "인천광역시", value: "인천" },
-  { label: "광주광역시", value: "광주" },
-  { label: "대전광역시", value: "대전" },
-  { label: "울산광역시", value: "울산" },
-  { label: "세종특별자치시", value: "세종" },
-  { label: "경기도", value: "경기" },
-  { label: "강원특별자치도", value: "강원" },
-  { label: "충청북도", value: "충북" },
-  { label: "충청남도", value: "충남" },
-  { label: "전북특별자치도", value: "전북" },
-  { label: "전라남도", value: "전남" },
-  { label: "경상북도", value: "경북" },
-  { label: "경상남도", value: "경남" },
-  { label: "제주특별자치도", value: "제주" },
+const administrativeRegionOptions = [
+  {
+    label: "서울특별시",
+    value: "서울특별시",
+    districts: [
+      { label: "강서구", value: "서울 강서구", dongs: ["마곡동", "등촌동", "화곡동", "공항동", "방화동"] },
+      { label: "금천구", value: "서울 금천구", dongs: ["가산동", "독산동", "시흥동"] },
+      { label: "서초구", value: "서울 서초구", dongs: ["서초동", "양재동", "반포동", "방배동"] },
+      { label: "마포구", value: "서울 마포구", dongs: ["상암동", "서교동", "합정동", "공덕동"] },
+      { label: "종로구", value: "서울 종로구", dongs: ["종로1가", "관철동", "익선동", "혜화동"] },
+      { label: "양천구", value: "서울 양천구", dongs: ["목동", "신정동", "신월동"] },
+    ],
+  },
+  {
+    label: "경기도",
+    value: "경기도",
+    districts: [
+      { label: "파주시", value: "경기 파주시", dongs: ["와동동", "운정동", "금촌동", "문산읍"] },
+      { label: "화성시", value: "경기 화성시", dongs: ["동탄동", "봉담읍", "향남읍", "남양읍"] },
+      { label: "용인시", value: "경기 용인시", dongs: ["처인구", "기흥구", "수지구"] },
+      { label: "부천시", value: "경기 부천시", dongs: ["원미구", "오정구", "소사구"] },
+      { label: "고양시", value: "경기 고양시", dongs: ["일산동구", "일산서구", "덕양구"] },
+      { label: "남양주시", value: "경기 남양주시", dongs: ["화도읍", "다산동", "별내동"] },
+    ],
+  },
+  {
+    label: "부산광역시",
+    value: "부산광역시",
+    districts: [
+      { label: "해운대구", value: "부산 해운대구", dongs: ["좌동", "우동", "중동", "반여동"] },
+      { label: "기장군", value: "부산 기장군", dongs: ["기장읍", "정관읍", "일광읍"] },
+      { label: "강서구", value: "부산 강서구", dongs: ["명지동", "녹산동", "대저동"] },
+      { label: "사상구", value: "부산 사상구", dongs: ["괘법동", "감전동", "덕포동"] },
+    ],
+  },
+  {
+    label: "인천광역시",
+    value: "인천광역시",
+    districts: [
+      { label: "서구", value: "인천 서구", dongs: ["청라동", "가정동", "검암동"] },
+      { label: "미추홀구", value: "인천 미추홀구", dongs: ["주안동", "용현동", "학익동"] },
+    ],
+  },
+  {
+    label: "대구광역시",
+    value: "대구광역시",
+    districts: [
+      { label: "달성군", value: "대구 달성군", dongs: ["구지면", "화원읍", "다사읍"] },
+      { label: "수성구", value: "대구 수성구", dongs: ["범어동", "만촌동", "수성동"] },
+      { label: "중구", value: "대구 중구", dongs: ["동인동", "삼덕동", "태평로"] },
+    ],
+  },
+  {
+    label: "광주광역시",
+    value: "광주광역시",
+    districts: [
+      { label: "동구", value: "광주 동구", dongs: ["충장동", "금남로", "서석동"] },
+      { label: "서구", value: "광주 서구", dongs: ["상무동", "화정동", "농성동"] },
+      { label: "광산구", value: "광주 광산구", dongs: ["수완동", "첨단동", "우산동"] },
+    ],
+  },
+  {
+    label: "울산광역시",
+    value: "울산광역시",
+    districts: [
+      { label: "남구", value: "울산 남구", dongs: ["삼산동", "달동", "무거동"] },
+      { label: "중구", value: "울산 중구", dongs: ["성남동", "학성동", "태화동"] },
+    ],
+  },
+  {
+    label: "세종특별자치시",
+    value: "세종특별자치시",
+    districts: [
+      { label: "세종시", value: "세종", dongs: ["어진동", "나성동", "도담동", "조치원읍"] },
+    ],
+  },
+  {
+    label: "강원특별자치도",
+    value: "강원특별자치도",
+    districts: [
+      { label: "원주시", value: "강원 원주시", dongs: ["중앙동", "단계동", "무실동"] },
+      { label: "춘천시", value: "강원 춘천시", dongs: ["퇴계동", "석사동", "소양동"] },
+    ],
+  },
+  {
+    label: "충청남도",
+    value: "충청남도",
+    districts: [
+      { label: "홍성군", value: "충남 홍성군", dongs: ["홍성읍", "광천읍", "홍북읍"] },
+      { label: "천안시", value: "충남 천안시", dongs: ["동남구", "서북구", "불당동"] },
+    ],
+  },
+  {
+    label: "전북특별자치도",
+    value: "전북특별자치도",
+    districts: [
+      { label: "익산시", value: "전북 익산시", dongs: ["영등동", "어양동", "신동"] },
+      { label: "완주군", value: "전북 완주군", dongs: ["봉동읍", "삼례읍", "이서면"] },
+    ],
+  },
+  {
+    label: "전라남도",
+    value: "전라남도",
+    districts: [
+      { label: "목포시", value: "전남 목포시", dongs: ["상동", "하당동", "용해동"] },
+    ],
+  },
+  {
+    label: "경상북도",
+    value: "경상북도",
+    districts: [
+      { label: "영주시", value: "경북 영주시", dongs: ["가흥동", "휴천동", "영주동"] },
+      { label: "안동시", value: "경북 안동시", dongs: ["옥동", "송현동", "중구동"] },
+      { label: "경산시", value: "경북 경산시", dongs: ["중방동", "하양읍", "진량읍"] },
+    ],
+  },
+  {
+    label: "경상남도",
+    value: "경상남도",
+    districts: [
+      { label: "창원시", value: "경남 창원시", dongs: ["의창구", "성산구", "마산합포구"] },
+    ],
+  },
+  {
+    label: "제주특별자치도",
+    value: "제주특별자치도",
+    districts: [
+      { label: "제주시", value: "제주 제주시", dongs: ["애월읍", "노형동", "이도동"] },
+      { label: "서귀포시", value: "제주 서귀포시", dongs: ["중문동", "대정읍", "성산읍"] },
+    ],
+  },
 ] as const;
 
 function formatRadiusLabel(radiusKm: number): string {
@@ -154,12 +267,13 @@ function getFiltersFromSearch(search: string): ItemsPageFilters {
   const latitude = getValidCoordinate(params.get("latitude"), -90, 90);
   const longitude = getValidCoordinate(params.get("longitude"), -180, 180);
   const hasCoordinates = latitude !== undefined && longitude !== undefined;
+  const location = params.get("location")?.trim() ?? "";
 
   return {
     type: params.get("type") === "lost" ? "lost" : "found",
     category: params.get("category")?.trim() ?? "",
     color: params.get("color")?.trim() ?? "",
-    location: params.get("location")?.trim() ?? "",
+    location: hasCoordinates ? "" : location,
     source: getValidSourceFilter(params.get("source")),
     latitude: hasCoordinates ? latitude : undefined,
     longitude: hasCoordinates ? longitude : undefined,
@@ -168,6 +282,16 @@ function getFiltersFromSearch(search: string): ItemsPageFilters {
     sort: getValidSortOrder(params.get("sort")),
     page: getValidPage(params.get("page")),
   };
+}
+
+function findRegionByValue(value: string) {
+  return administrativeRegionOptions.find((region) => region.value === value);
+}
+
+function findDistrictByValue(regionValue: string, districtValue: string) {
+  return findRegionByValue(regionValue)?.districts.find(
+    (district) => district.value === districtValue
+  );
 }
 
 function buildItemsUrl(filters: ItemsPageFilters): string {
@@ -264,8 +388,15 @@ export default function ItemsPage() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [pageInputValue, setPageInputValue] = useState(String(filters.page));
   const [isLocating, setIsLocating] = useState(false);
+  const [selectedRegion1, setSelectedRegion1] = useState("");
+  const [selectedRegion2, setSelectedRegion2] = useState("");
+  const [selectedRegion3, setSelectedRegion3] = useState("");
   const hasDraftCoordinates =
     draftFilters.latitude !== undefined && draftFilters.longitude !== undefined;
+  const selectedRegion1Option = findRegionByValue(selectedRegion1);
+  const selectedRegion2Option = selectedRegion1Option?.districts.find(
+    (district) => district.value === selectedRegion2
+  );
 
   const { data: itemsResult, isLoading, isFetching } = useItems({
     type: filters.type,
@@ -298,6 +429,11 @@ export default function ItemsPage() {
       const nextFilters = getFiltersFromSearch(window.location.search);
       setFilters(nextFilters);
       setDraftFilters(nextFilters);
+      if (!nextFilters.location) {
+        setSelectedRegion1("");
+        setSelectedRegion2("");
+        setSelectedRegion3("");
+      }
     };
 
     syncFiltersFromUrl();
@@ -328,6 +464,16 @@ export default function ItemsPage() {
       location: nextFilters.location.trim(),
     };
 
+    if (
+      normalizedFilters.location &&
+      normalizedFilters.latitude !== undefined &&
+      normalizedFilters.longitude !== undefined
+    ) {
+      normalizedFilters.latitude = undefined;
+      normalizedFilters.longitude = undefined;
+      normalizedFilters.radiusKm = DEFAULT_FILTERS.radiusKm;
+    }
+
     setFilters(normalizedFilters);
     setDraftFilters(normalizedFilters);
     void setLocation(buildItemsUrl(normalizedFilters));
@@ -352,6 +498,9 @@ export default function ItemsPage() {
   };
 
   const handleResetFilters = () => {
+    setSelectedRegion1("");
+    setSelectedRegion2("");
+    setSelectedRegion3("");
     applyFilters({
       type: filters.type,
       ...DEFAULT_FILTERS,
@@ -399,10 +548,14 @@ export default function ItemsPage() {
       (position) => {
         setDraftFilters((current) => ({
           ...current,
+          location: "",
           latitude: Number(position.coords.latitude.toFixed(6)),
           longitude: Number(position.coords.longitude.toFixed(6)),
           radiusKm: current.radiusKm || DEFAULT_FILTERS.radiusKm,
         }));
+        setSelectedRegion1("");
+        setSelectedRegion2("");
+        setSelectedRegion3("");
         setIsLocating(false);
       },
       () => {
@@ -424,6 +577,38 @@ export default function ItemsPage() {
       longitude: undefined,
       radiusKm: DEFAULT_FILTERS.radiusKm,
     }));
+  };
+
+  const setLocationFilter = (location: string) => {
+    setDraftFilters((current) => ({
+      ...current,
+      location,
+      latitude: undefined,
+      longitude: undefined,
+      radiusKm: DEFAULT_FILTERS.radiusKm,
+    }));
+  };
+
+  const handleRegion1Change = (value: string) => {
+    const region = findRegionByValue(value);
+    setSelectedRegion1(value);
+    setSelectedRegion2("");
+    setSelectedRegion3("");
+    setLocationFilter(region?.value ?? value);
+  };
+
+  const handleRegion2Change = (value: string) => {
+    setSelectedRegion2(value);
+    setSelectedRegion3("");
+    setLocationFilter(value);
+  };
+
+  const handleRegion3Change = (value: string) => {
+    const district = findDistrictByValue(selectedRegion1, selectedRegion2);
+    setSelectedRegion3(value);
+    setLocationFilter(
+      district ? `${district.value} ${value}` : value
+    );
   };
 
   return (
@@ -593,38 +778,62 @@ export default function ItemsPage() {
                       id="location-filter"
                       value={draftFilters.location}
                       onChange={(event) =>
-                        setDraftFilters((current) => ({
-                          ...current,
-                          location: event.target.value,
-                        }))
+                        setLocationFilter(event.target.value)
                       }
-                      placeholder="예: 강남구, 마곡나루역, 정부청사"
+                      placeholder="예: 마곡동, 시흥동, 마곡나루역"
                       className="h-10 rounded-xl"
                     />
-                    <Select
-                      value={
-                        regionOptions.some((option) => option.value === draftFilters.location)
-                          ? draftFilters.location
-                          : undefined
-                      }
-                      onValueChange={(value) =>
-                        setDraftFilters((current) => ({
-                          ...current,
-                          location: value,
-                        }))
-                      }
-                    >
-                      <SelectTrigger className="h-10 rounded-xl">
-                        <SelectValue placeholder="시/도 선택" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {regionOptions.map((region) => (
-                          <SelectItem key={region.value} value={region.value}>
-                            {region.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="grid gap-2">
+                      <Select value={selectedRegion1} onValueChange={handleRegion1Change}>
+                        <SelectTrigger className="h-10 rounded-xl">
+                          <SelectValue placeholder="시/도 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {administrativeRegionOptions.map((region) => (
+                            <SelectItem key={region.value} value={region.value}>
+                              {region.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={selectedRegion2}
+                        onValueChange={handleRegion2Change}
+                        disabled={!selectedRegion1Option}
+                      >
+                        <SelectTrigger className="h-10 rounded-xl">
+                          <SelectValue placeholder="시/군/구 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedRegion1Option?.districts.map((district) => (
+                            <SelectItem key={district.value} value={district.value}>
+                              {district.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Select
+                        value={selectedRegion3}
+                        onValueChange={handleRegion3Change}
+                        disabled={!selectedRegion2Option}
+                      >
+                        <SelectTrigger className="h-10 rounded-xl">
+                          <SelectValue placeholder="읍/면/동 선택" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {selectedRegion2Option?.dongs.map((dong) => (
+                            <SelectItem key={dong} value={dong}>
+                              {dong}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      지역을 선택하면 현재 위치 반경 검색은 자동으로 해제됩니다.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -654,6 +863,9 @@ export default function ItemsPage() {
 
                   <div className="space-y-2">
                     <label className="text-xs font-semibold text-foreground">현재 위치</label>
+                    <p className="text-xs leading-5 text-muted-foreground">
+                      현재 위치를 쓰면 지역 검색은 자동으로 해제됩니다.
+                    </p>
                     <div className="flex gap-2">
                       <Button
                         type="button"

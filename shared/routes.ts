@@ -332,6 +332,14 @@ export const api = {
               path: ["radiusKm"],
             });
           }
+
+          if (value.location !== undefined && hasLatitude && hasLongitude) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "지역 검색과 현재 위치 반경 검색은 동시에 사용할 수 없습니다.",
+              path: ["location"],
+            });
+          }
         })
         .optional(),
       responses: {

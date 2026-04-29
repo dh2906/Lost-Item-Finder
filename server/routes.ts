@@ -701,6 +701,8 @@ type Lost112GeocodingResult = {
   query: string;
   placeName?: string;
   address?: string;
+  addressName?: string;
+  roadAddressName?: string;
   latitude: string;
   longitude: string;
   location: string;
@@ -759,11 +761,13 @@ function parseLocationParts(
   geocoding?: Lost112GeocodingResult | null
 ): ParsedLocationParts {
   const address = geocoding?.address?.trim() || location?.split(" - ")[0]?.trim() || null;
+  const administrativeAddress =
+    geocoding?.addressName?.trim() || address || location?.split(" - ")[0]?.trim() || null;
   const placeName =
     geocoding?.placeName?.trim() ||
     (location?.includes(" - ") ? location.split(" - ").slice(1).join(" - ").trim() : "") ||
     null;
-  const tokens = (address ?? location ?? "").split(/\s+/).filter(Boolean);
+  const tokens = (administrativeAddress ?? location ?? "").split(/\s+/).filter(Boolean);
   const canonicalRegion1 = tokens[0] ? REGION1_ALIASES.get(tokens[0]) ?? tokens[0] : null;
 
   return {
@@ -857,6 +861,8 @@ async function geocodeLost112Location(
         query,
         placeName: document.place_name,
         address: document.road_address_name || document.address_name,
+        addressName: document.address_name,
+        roadAddressName: document.road_address_name,
         latitude: document.y,
         longitude: document.x,
         location: formatLost112GeocodedLocation(document),
