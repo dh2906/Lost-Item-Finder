@@ -16,6 +16,8 @@ import {
   AlertCircle,
   Mail,
   ArrowLeft,
+  ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -102,6 +104,7 @@ export default function ItemDetail() {
   }
 
   const isOwner = item.userId !== null && item.userId === user?.id;
+  const isLost112Item = item.externalSource === "lost112";
 
   const handleMatchStatus = async (
     matchId: number,
@@ -200,6 +203,15 @@ export default function ItemDetail() {
               >
                 {item.reportType === "found" ? "습득" : "분실"}
               </Badge>
+              {isLost112Item ? (
+                <Badge
+                  variant="outline"
+                  className="absolute left-3 top-12 border-sky-200 bg-sky-50/95 text-sky-700 hover:bg-sky-50"
+                >
+                  <ShieldCheck className="mr-1 h-3.5 w-3.5" />
+                  경찰청 등록
+                </Badge>
+              ) : null}
             </div>
 
             {itemImageUrls.length > 1 ? (
@@ -247,13 +259,36 @@ export default function ItemDetail() {
             {item.description && (
                <Card className="border-border/70 bg-white/90">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">상세 설명</CardTitle>
+                  <CardTitle className="text-lg">
+                    {isLost112Item ? "경찰청 등록 설명" : "상세 설명"}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm leading-7 text-muted-foreground">{item.description}</p>
                 </CardContent>
               </Card>
             )}
+
+            {isLost112Item && item.externalUrl ? (
+              <Card className="border-sky-100 bg-sky-50/70">
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-sky-800">
+                      경찰청 유실물 통합포털 등록 물건
+                    </p>
+                    <p className="mt-1 text-xs text-sky-700/80">
+                      원문 페이지에서 보관 기관과 접수 정보를 확인할 수 있습니다.
+                    </p>
+                  </div>
+                  <Button asChild variant="outline" className="rounded-full border-sky-200 bg-white text-sky-700 hover:bg-sky-50">
+                    <a href={item.externalUrl} target="_blank" rel="noreferrer">
+                      원문 보기
+                      <ExternalLink className="ml-1.5 h-4 w-4" />
+                    </a>
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : null}
 
             {(item.itemCategory || item.color || (item.tags && item.tags.length > 0)) && (
                <Card className="border-border/70 bg-white/90">

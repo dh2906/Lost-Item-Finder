@@ -694,7 +694,7 @@ async function normalizeLost112ExternalFoundItemWithAi(
     return {
       ...fallbackItem,
       title: normalizedMetadata.title,
-      description: normalizedMetadata.description,
+      description: fallbackItem.description,
       itemCategory: normalizedMetadata.itemCategory,
       color: normalizedMetadata.color,
       size: normalizedMetadata.size,

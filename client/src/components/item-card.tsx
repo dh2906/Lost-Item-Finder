@@ -8,6 +8,7 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
+  ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
@@ -59,6 +60,7 @@ export function ItemCard({
   const isCompact = variant === "compact" || variant === "list";
   const displayTitle = getDisplayTitle(item);
   const primaryImageUrl = getPrimaryItemImageUrl(item);
+  const isLost112Item = item.externalSource === "lost112";
 
   const getMatchBadge = (scoreValue?: number) => {
     if (scoreValue === undefined) return null;
@@ -142,6 +144,16 @@ export function ItemCard({
               >
                 {statusLabel}
               </Badge>
+
+              {isLost112Item ? (
+                <Badge
+                  variant="outline"
+                  className="border-sky-200 bg-sky-50/95 font-medium text-sky-700 shadow-sm"
+                >
+                  <ShieldCheck className="mr-1 h-3 w-3" />
+                  경찰청 등록
+                </Badge>
+              ) : null}
 
               {!isCompact && matchBadge ? (
                 <Badge
