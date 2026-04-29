@@ -123,6 +123,7 @@ export default function ItemDetail() {
 
   const isOwner = item.userId !== null && item.userId === user?.id;
   const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
+  const listHref = `/items?type=${item.reportType}`;
 
   const handleMatchStatus = async (
     matchId: number,
@@ -145,7 +146,7 @@ export default function ItemDetail() {
     <Layout>
       <div className="container py-8 sm:py-10 xl:max-w-[1440px]">
         <Button variant="ghost" size="sm" asChild className="mb-5 rounded-full">
-          <Link href="/">
+          <Link href={listHref}>
             <ArrowLeft className="h-4 w-4 mr-1" />
             목록으로
           </Link>
@@ -425,7 +426,7 @@ export default function ItemDetail() {
               <CardHeader className="space-y-3 pb-4">
                 <div className="space-y-2">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-                    Item record
+                    요약 정보
                   </p>
                   <CardTitle className="text-2xl leading-tight">{item.title}</CardTitle>
                   <div className="flex flex-wrap gap-2">
@@ -470,7 +471,9 @@ export default function ItemDetail() {
                   </Button>
                 )}
                 <div className="rounded-[22px] bg-secondary/45 p-4 text-sm leading-6 text-muted-foreground">
-                  핵심 정보와 연락 수단을 오른쪽에 고정해 두어, 큰 화면에서도 스크롤 이동 없이 바로 판단할 수 있게 했습니다.
+                  {isLost112Item
+                    ? "경찰청 원문에서 보관 기관과 실제 수령 가능 여부를 확인하세요."
+                    : "장소, 날짜, 상태를 확인한 뒤 연락하거나 제보를 남겨 주세요."}
                 </div>
               </CardContent>
             </Card>

@@ -62,7 +62,6 @@ export function Layout({ children }: { children: ReactNode }) {
   const { data: notifications = [] } = useMatchNotifications();
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
 
-  // 🚀 모바일 햄버거 메뉴 상태 추가
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const hasUnreadChats = chatRooms.some((room) => room.hasUnread);
@@ -72,7 +71,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   const handleReportMenuNavigate = (href: string) => {
     setReportMenuOpen(false);
-    setMobileMenuOpen(false); // 모바일 메뉴에서도 클릭 시 닫히도록 추가
+    setMobileMenuOpen(false);
     void setLocation(href);
   };
 
@@ -81,7 +80,6 @@ export function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-border/70 bg-background/94 backdrop-blur supports-[backdrop-filter]:bg-background/78">
         <div className="container flex h-[68px] items-center justify-between gap-4 xl:max-w-[1440px]">
           <div className="flex items-center gap-3 md:gap-5">
-            {/*모바일 햄버거 메뉴 (Sheet) 영역 시작 */}
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild>
                 <Button
@@ -93,26 +91,29 @@ export function Layout({ children }: { children: ReactNode }) {
                   <span className="sr-only">메뉴 열기</span>
                 </Button>
               </SheetTrigger>
-              <SheetContent side="left" className="w-[280px] sm:w-[320px]">
-                <SheetTitle className="text-left font-bold mb-4">
+              <SheetContent
+                side="left"
+                className="w-[min(88vw,360px)] overflow-y-auto px-5 pb-8 pt-7 sm:px-6"
+              >
+                <SheetTitle className="pr-10 text-left text-lg font-bold">
                   메뉴
                 </SheetTitle>
-                <nav className="flex flex-col gap-6 mt-4">
+                <nav className="mt-6 flex flex-col gap-4">
                   {navigation.map((item) => (
-                    <div key={item.href} className="flex flex-col space-y-3">
+                    <div key={item.href} className="flex min-w-0 flex-col gap-2">
                       {item.children ? (
                         <>
-                          <h4 className="font-semibold text-base text-foreground">
+                          <h4 className="px-3 text-sm font-semibold text-foreground">
                             {item.label}
                           </h4>
-                          <div className="flex flex-col space-y-3 pl-4 border-l-2 border-muted">
+                          <div className="flex flex-col gap-1 border-l border-border/80 pl-3">
                             {item.children.map((child) => (
                               <button
                                 key={child.href}
                                 onClick={() =>
                                   handleReportMenuNavigate(child.href)
                                 }
-                                className="text-left text-sm font-medium text-muted-foreground hover:text-primary transition-colors"
+                                className="min-h-11 rounded-xl px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
                               >
                                 {child.label}
                               </button>
@@ -122,7 +123,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       ) : (
                         <button
                           onClick={() => handleReportMenuNavigate(item.href)}
-                          className="text-left font-semibold text-base text-foreground hover:text-primary transition-colors"
+                          className="min-h-11 rounded-xl px-3 text-left text-base font-semibold text-foreground transition-colors hover:bg-secondary hover:text-primary"
                         >
                           {item.label}
                         </button>
@@ -130,10 +131,10 @@ export function Layout({ children }: { children: ReactNode }) {
                     </div>
                   ))}
                   {user?.role === "admin" && (
-                    <div className="flex flex-col space-y-3 pt-4 border-t border-border">
+                    <div className="flex flex-col gap-2 border-t border-border pt-4">
                       <button
                         onClick={() => handleReportMenuNavigate("/admin")}
-                        className="text-left font-semibold text-base text-amber-700 hover:text-amber-800 transition-colors"
+                        className="min-h-11 rounded-xl px-3 text-left text-base font-semibold text-amber-700 transition-colors hover:bg-amber-50 hover:text-amber-800"
                       >
                         관리자 대시보드
                       </button>
@@ -142,7 +143,6 @@ export function Layout({ children }: { children: ReactNode }) {
                 </nav>
               </SheetContent>
             </Sheet>
-            {/* 모바일 햄버거 메뉴 끝 */}
 
             <Link
               href="/"
