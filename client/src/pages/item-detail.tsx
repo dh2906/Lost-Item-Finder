@@ -222,8 +222,8 @@ export default function ItemDetail() {
                 className={cn(
                   "absolute left-3 top-3",
                   item.reportType === "found"
-                    ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-50 border border-emerald-200"
-                    : "bg-red-50 text-red-600 hover:bg-red-50 border border-red-200"
+                    ? "border border-primary/25 bg-primary/10 text-primary hover:bg-primary/10"
+                    : "border border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/10"
                 )}
               >
                 {item.reportType === "found" ? "습득" : "분실"}
@@ -231,7 +231,7 @@ export default function ItemDetail() {
               {isLost112Item ? (
                 <Badge
                   variant="outline"
-                  className="absolute left-3 top-12 border-sky-200 bg-sky-50/95 text-sky-700 hover:bg-sky-50"
+                  className="absolute left-3 top-12 border-primary/20 bg-white/95 text-primary hover:bg-white"
                 >
                   <ShieldCheck className="mr-1 h-3.5 w-3.5" />
                   경찰청 등록
@@ -267,19 +267,19 @@ export default function ItemDetail() {
             ) : null}
 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-               <div className="rounded-[24px] border border-border/70 bg-white/88 p-4 shadow-sm">
+               <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
                 <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">장소</p>
                 <p className="text-sm font-medium leading-6 break-words">
                   {item.location || "-"}
                 </p>
               </div>
-               <div className="rounded-[24px] border border-border/70 bg-white/88 p-4 shadow-sm">
+               <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
                 <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">날짜</p>
                 <p className="text-sm font-medium">
                   {item.date ? format(new Date(item.date), "MM/dd", { locale: ko }) : "-"}
                 </p>
               </div>
-               <div className="rounded-[24px] border border-border/70 bg-white/88 p-4 shadow-sm">
+               <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
                 <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">카테고리</p>
                 <p className="text-sm font-medium">{item.itemCategory || "-"}</p>
               </div>
@@ -299,17 +299,17 @@ export default function ItemDetail() {
             )}
 
             {isLost112Item && item.externalUrl ? (
-              <Card className="border-sky-100 bg-sky-50/80">
+              <Card className="border-primary/15 bg-primary/8">
                 <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-semibold text-sky-800">
+                    <p className="text-sm font-semibold text-foreground">
                       수령과 보관 정보는 경찰청 원문에서 확인하세요
                     </p>
-                    <p className="mt-1 text-xs text-sky-700/80">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Findy가 수집한 외부 데이터입니다. 실제 보관 상태와 연락처는 원문이 기준입니다.
                     </p>
                   </div>
-                  <Button asChild variant="outline" className="rounded-full border-sky-200 bg-white text-sky-700 hover:bg-sky-50">
+                  <Button asChild variant="outline" className="border-primary/25 bg-white text-primary hover:bg-accent">
                     <a href={item.externalUrl} target="_blank" rel="noreferrer">
                       경찰청 원문으로 이동
                       <ExternalLink className="ml-1.5 h-4 w-4" />
@@ -444,8 +444,8 @@ export default function ItemDetail() {
                       variant="outline"
                       className={cn(
                         item.status === "resolved"
-                          ? "border-slate-300 text-slate-700"
-                          : "border-amber-200 bg-amber-50 text-amber-700"
+                          ? "border-border text-muted-foreground"
+                          : "border-warning/35 bg-warning/14 text-foreground"
                       )}
                     >
                       {item.status === "resolved" ? "해결 완료" : "진행 중"}
@@ -458,7 +458,7 @@ export default function ItemDetail() {
                     {isLost112Item ? (
                       <Badge
                         variant="outline"
-                        className="border-sky-200 bg-sky-50 text-sky-700"
+                        className="border-primary/20 bg-primary/8 text-primary"
                       >
                         <ShieldCheck className="mr-1 h-3.5 w-3.5" />
                         경찰청 등록

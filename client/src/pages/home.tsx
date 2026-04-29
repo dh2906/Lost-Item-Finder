@@ -2,7 +2,6 @@ import { Link } from "wouter";
 import {
   ArrowRight,
   BellRing,
-  CheckCircle2,
   Database,
   MessageCircleMore,
   PackageOpen,
@@ -73,41 +72,17 @@ export default function Home() {
                 </p>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                {steps.map((step, index) => (
-                  <div
-                    key={step.title}
-                    className="rounded-[24px] border border-border/70 bg-white/86 p-5 shadow-[0_18px_30px_-26px_rgba(27,31,59,0.16)]"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                        <step.icon className="h-5 w-5" />
-                      </span>
-                      <span className="text-xs font-bold text-primary">
-                        STEP {index + 1}
-                      </span>
-                    </div>
-                    <h2 className="mt-4 text-base font-semibold text-foreground">
-                      {step.title}
-                    </h2>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                      {step.description}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
+              <div className="grid gap-3 md:grid-cols-[1.15fr_1fr_1fr]">
                 <Link
                   href="/report/lost"
-                  className="group rounded-[26px] border border-primary/20 bg-primary p-6 text-primary-foreground shadow-[0_24px_46px_-30px_hsl(var(--primary)/0.62)] transition-all hover:-translate-y-1"
+                  className="group rounded-xl border border-primary/20 bg-primary p-5 text-primary-foreground shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-all hover:-translate-y-0.5"
                 >
-                  <PackageSearch className="h-7 w-7" />
-                  <h2 className="mt-5 text-xl font-bold">잃어버린 물건 등록</h2>
+                  <PackageSearch className="h-6 w-6" />
+                  <h2 className="mt-4 text-lg font-bold">잃어버린 물건 등록</h2>
                   <p className="mt-2 text-sm leading-6 text-primary-foreground/82">
                     찾고 싶은 물건 정보를 먼저 만들면 이후 매칭 기준이 됩니다.
                   </p>
-                  <span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold">
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold">
                     등록 시작
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </span>
@@ -115,14 +90,14 @@ export default function Home() {
 
                 <Link
                   href="/matches"
-                  className="group rounded-[26px] border border-border/70 bg-white/90 p-6 shadow-[0_18px_34px_-28px_rgba(27,31,59,0.2)] transition-all hover:-translate-y-1 hover:border-primary/25"
+                  className="group rounded-xl border border-border bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-0.5 hover:border-primary/25"
                 >
-                  <BellRing className="h-7 w-7 text-primary" />
-                  <h2 className="mt-5 text-xl font-bold text-foreground">내 매칭 후보</h2>
+                  <BellRing className="h-6 w-6 text-primary" />
+                  <h2 className="mt-4 text-lg font-bold text-foreground">내 매칭 후보</h2>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     등록한 분실물과 가까운 습득물 후보를 한곳에서 확인합니다.
                   </p>
-                  <span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
                     {activeMatchCount > 0 ? `${activeMatchCount}건 확인` : "후보 보기"}
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </span>
@@ -130,23 +105,49 @@ export default function Home() {
 
                 <Link
                   href="/items?type=found"
-                  className="group rounded-[26px] border border-border/70 bg-white/90 p-6 shadow-[0_18px_34px_-28px_rgba(27,31,59,0.2)] transition-all hover:-translate-y-1 hover:border-primary/25"
+                  className="group rounded-xl border border-border bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-0.5 hover:border-primary/25"
                 >
-                  <Search className="h-7 w-7 text-primary" />
-                  <h2 className="mt-5 text-xl font-bold text-foreground">습득물 직접 찾기</h2>
+                  <Search className="h-6 w-6 text-primary" />
+                  <h2 className="mt-4 text-lg font-bold text-foreground">습득물 직접 찾기</h2>
                   <p className="mt-2 text-sm leading-6 text-muted-foreground">
                     경찰청과 사용자 등록 습득물을 지역, 출처, 기간으로 좁혀봅니다.
                   </p>
-                  <span className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                  <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
                     탐색하기
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </span>
                 </Link>
               </div>
+
+              <div className="rounded-xl border border-border bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:p-4">
+                <div className="grid gap-2 sm:grid-cols-3 sm:gap-3">
+                  {steps.map((step, index) => (
+                    <div
+                      key={step.title}
+                      className="flex gap-3 rounded-lg bg-secondary/55 p-3"
+                    >
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-primary">
+                        <step.icon className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <span className="text-[11px] font-bold text-primary">
+                          STEP {index + 1}
+                        </span>
+                        <h2 className="mt-1 text-sm font-bold text-foreground">
+                          {step.title}
+                        </h2>
+                        <p className="mt-1 hidden text-xs leading-5 text-muted-foreground sm:block">
+                          {step.description}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <aside className="space-y-4 lg:sticky lg:top-24">
-              <Card className="border-border/70 bg-white/92 shadow-[0_22px_44px_-34px_rgba(27,31,59,0.18)]">
+              <Card className="border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
                 <CardContent className="space-y-5 p-6">
                   <div>
                     <p className="text-sm font-semibold text-primary">내 진행 상태</p>
@@ -155,7 +156,7 @@ export default function Home() {
                     </h2>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
+                    <div className="rounded-lg border border-border bg-secondary/40 p-4">
                       <p className="text-xs font-medium text-muted-foreground">
                         내 분실물
                       </p>
@@ -163,7 +164,7 @@ export default function Home() {
                         {isAuthenticated ? lostItemCount : "-"}
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-border/70 bg-secondary/40 p-4">
+                    <div className="rounded-lg border border-border bg-secondary/40 p-4">
                       <p className="text-xs font-medium text-muted-foreground">
                         매칭 후보
                       </p>
@@ -173,12 +174,12 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Button asChild className="w-full rounded-full">
+                    <Button asChild className="w-full">
                       <Link href={isAuthenticated ? "/mypage" : "/login"}>
                         {isAuthenticated ? "내 물건 관리" : "로그인하기"}
                       </Link>
                     </Button>
-                    <Button asChild variant="outline" className="w-full rounded-full">
+                    <Button asChild variant="outline" className="w-full">
                       <Link href="/report/found">
                         <Plus className="mr-2 h-4 w-4" />
                         주운 물건 등록
@@ -188,12 +189,12 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              <Card className="border-sky-100 bg-sky-50/80 shadow-sm">
+              <Card className="border-primary/15 bg-primary/8 shadow-sm">
                 <CardContent className="flex gap-3 p-5">
-                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
+                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                   <div>
-                    <h2 className="font-semibold text-sky-900">경찰청 데이터도 함께 확인</h2>
-                    <p className="mt-1 text-sm leading-6 text-sky-800/80">
+                    <h2 className="font-semibold text-foreground">경찰청 데이터도 함께 확인</h2>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
                       경찰청 습득물은 원문 확인이 우선이고, 사용자 등록 습득물은 채팅으로 이어집니다.
                     </p>
                   </div>
@@ -216,7 +217,7 @@ export default function Home() {
                 전체 탐색 전에 최신 후보를 훑어보세요
               </h2>
             </div>
-            <Button asChild variant="outline" className="rounded-full">
+            <Button asChild variant="outline">
               <Link href="/items?type=found&source=lost112">
                 경찰청 습득물 전체 보기
               </Link>
@@ -226,11 +227,11 @@ export default function Home() {
           {isLoading ? (
             <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
               {[1, 2, 3, 4, 5, 6].map((index) => (
-                <div key={index} className="h-[290px] animate-pulse rounded-[24px] bg-muted" />
+                <div key={index} className="h-[290px] animate-pulse rounded-xl bg-muted" />
               ))}
             </div>
           ) : foundItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 px-6 py-16 text-center">
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-secondary/35 px-6 py-16 text-center">
               <PackageOpen className="mb-4 h-10 w-10 text-muted-foreground/55" />
               <h2 className="text-xl font-semibold">표시할 습득물이 없어요</h2>
               <p className="mt-2 text-sm text-muted-foreground">
@@ -253,35 +254,18 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="border-t border-border/60 bg-white/60 py-10">
-        <div className="container grid gap-4 md:grid-cols-3 xl:max-w-[1440px]">
-          <div className="flex items-start gap-3 rounded-[24px] border border-border/70 bg-white/88 p-5">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 text-primary" />
-            <div>
-              <h2 className="font-semibold">분실물은 매칭 기준</h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                내 물건을 등록해야 새 습득물과 자동 비교할 수 있습니다.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3 rounded-[24px] border border-border/70 bg-white/88 p-5">
-            <ShieldCheck className="mt-0.5 h-5 w-5 text-sky-600" />
-            <div>
-              <h2 className="font-semibold">경찰청 물건은 원문 기준</h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                보관 상태와 수령 정보는 경찰청 상세 페이지에서 확인합니다.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3 rounded-[24px] border border-border/70 bg-white/88 p-5">
-            <MessageCircleMore className="mt-0.5 h-5 w-5 text-primary" />
-            <div>
-              <h2 className="font-semibold">사용자 글은 채팅 연결</h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                개인이 등록한 습득물은 상세 확인 후 채팅으로 이어집니다.
-              </p>
-            </div>
-          </div>
+      <section className="border-t border-border bg-white py-8">
+        <div className="container flex flex-col gap-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between xl:max-w-[1440px]">
+          <p>
+            분실물은 매칭 기준으로 저장되고, 경찰청 습득물은 원문 확인을 우선합니다.
+          </p>
+          <Link
+            href="/report/lost"
+            className="inline-flex items-center gap-2 font-semibold text-primary"
+          >
+            내 물건 등록하기
+            <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </section>
     </Layout>

@@ -10,51 +10,51 @@
     --font-sans: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
     --font-mono: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
-    --background: 210 20% 98%;
-    --foreground: 218 23% 13%;
+    --background: 210 17% 98%;
+    --foreground: 210 11% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 218 23% 13%;
-    --card-border: 210 15% 91%;
+    --card-foreground: 210 11% 15%;
+    --card-border: 210 14% 89%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 218 23% 13%;
-    --popover-border: 210 15% 91%;
+    --popover-foreground: 210 11% 15%;
+    --popover-border: 210 14% 89%;
 
-    --primary: 142 71% 45%;
+    --primary: 178 64% 46%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 142 71% 39%;
-    --primary-light: 142 71% 95%;
+    --primary-hover: 178 68% 39%;
+    --primary-light: 178 64% 94%;
 
-    --secondary: 210 22% 96%;
-    --secondary-foreground: 216 15% 36%;
+    --secondary: 210 17% 98%;
+    --secondary-foreground: 210 9% 31%;
 
-    --muted: 210 22% 96%;
-    --muted-foreground: 215 11% 58%;
+    --muted: 210 17% 95%;
+    --muted-foreground: 210 7% 56%;
 
-    --accent: 142 71% 95%;
-    --accent-foreground: 142 55% 31%;
+    --accent: 178 64% 94%;
+    --accent-foreground: 178 68% 32%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 356 100% 71%;
     --destructive-foreground: 0 0% 100%;
     --destructive-light: 0 72% 96%;
 
-    --success: 158 65% 40%;
+    --success: 162 88% 39%;
     --success-foreground: 0 0% 100%;
     --success-light: 158 50% 96%;
 
-    --warning: 38 90% 50%;
+    --warning: 36 100% 64%;
     --warning-foreground: 215 28% 10%;
     --warning-light: 38 90% 96%;
 
-    --info: 199 85% 50%;
+    --info: 205 93% 72%;
     --info-foreground: 0 0% 100%;
     --info-light: 199 60% 96%;
 
-    --border: 210 15% 91%;
-    --input: 210 15% 91%;
-    --ring: 142 71% 45%;
-    --radius: 0.75rem;
+    --border: 210 14% 89%;
+    --input: 210 14% 89%;
+    --ring: 178 64% 46%;
+    --radius: 0.5rem;
 
     --shadow-sm: 0 1px 2px 0 rgb(27 31 59 / 0.035), 0 1px 3px 0 rgb(27 31 59 / 0.02);
     --shadow-md: 0 6px 14px -8px rgb(27 31 59 / 0.08), 0 2px 6px -3px rgb(27 31 59 / 0.04);
@@ -136,7 +136,7 @@
     font-family: var(--font-sans);
     word-break: keep-all;
     letter-spacing: 0;
-    background-image: linear-gradient(180deg, #ffffff 0%, hsl(var(--background)) 42%, hsl(var(--background)) 100%);
+    background-image: linear-gradient(180deg, #ffffff 0%, hsl(var(--background)) 56%, hsl(var(--background)) 100%);
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -165,15 +165,15 @@
   }
 
   .card-modern {
-    @apply rounded-xl border bg-card shadow-sm transition-all duration-200;
+    @apply rounded-xl border bg-card shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all duration-200;
   }
 
   .card-modern:hover {
-    @apply shadow-md;
+    @apply shadow-[0_2px_8px_rgba(0,0,0,0.08)];
   }
 
   .gradient-primary {
-    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(215 55% 50%) 100%);
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-hover)) 100%);
   }
 
   .gradient-soft {
@@ -181,7 +181,7 @@
   }
 
   .badge-found {
-    @apply bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800;
+    @apply border-primary/25 bg-primary/10 text-primary;
   }
 
   .badge-lost {
@@ -246,11 +246,11 @@
 
   /* Shadow utilities */
   .shadow-card {
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.06);
   }
 
   .shadow-card-hover {
-    box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
   }
 
   .shadow-float {

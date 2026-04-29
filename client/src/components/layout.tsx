@@ -79,15 +79,15 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="sticky top-0 z-50 border-b border-slate-800 bg-[#191f28]/96 text-white backdrop-blur supports-[backdrop-filter]:bg-[#191f28]/90">
-        <div className="container flex h-[68px] items-center justify-between gap-4 xl:max-w-[1440px]">
+      <header className="sticky top-0 z-50 border-b border-border bg-white/96 text-foreground backdrop-blur supports-[backdrop-filter]:bg-white/90">
+        <div className="container flex h-16 items-center justify-between gap-4 xl:max-w-[1440px]">
           <div className="flex items-center gap-3 md:gap-5">
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
               <SheetTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="lg:hidden shrink-0 -ml-2 text-white hover:bg-white/10 hover:text-white"
+                  className="lg:hidden shrink-0 -ml-2 text-foreground hover:bg-secondary hover:text-foreground"
                 >
                   <Menu className="h-6 w-6" />
                   <span className="sr-only">메뉴 열기</span>
@@ -151,14 +151,14 @@ export function Layout({ children }: { children: ReactNode }) {
 
             <Link
               href="/"
-              className="flex items-center gap-3 text-sm font-semibold tracking-tight text-white transition-colors hover:text-white/86"
+              className="flex items-center gap-3 text-sm font-semibold tracking-tight text-foreground transition-colors hover:text-primary"
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                 <MapPinCheckInside className="h-5 w-5" />
               </span>
               <span className="flex flex-col leading-none">
                 <span className="text-base">Findy</span>
-                <span className="mt-1 text-[11px] font-medium text-white/55">
+                <span className="mt-1 text-[11px] font-medium text-muted-foreground">
                   분실물 매칭 서비스
                 </span>
               </span>
@@ -187,8 +187,8 @@ export function Layout({ children }: { children: ReactNode }) {
                         className={cn(
                           "relative inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200",
                           active || reportMenuOpen
-                            ? "bg-white text-[#191f28]"
-                            : "text-white/70 hover:bg-white/10 hover:text-white"
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                         )}
                       >
                         {item.label}
@@ -201,7 +201,7 @@ export function Layout({ children }: { children: ReactNode }) {
                             className="absolute inset-x-0 top-full h-4"
                             aria-hidden="true"
                           />
-                          <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-md">
+                          <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_12px_rgba(0,0,0,0.10)]">
                             {item.children.map((child) => {
                               const childActive = location === child.href;
 
@@ -236,8 +236,8 @@ export function Layout({ children }: { children: ReactNode }) {
                       className={cn(
                         "relative inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200",
                         active
-                          ? "bg-white text-[#191f28]"
-                          : "text-white/70 hover:bg-white/10 hover:text-white"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                       )}
                     >
                       {item.label}
@@ -270,7 +270,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   variant="ghost"
                   size="icon"
                   asChild
-                  className="relative h-10 w-10 rounded-lg border border-white/10 bg-white/8 text-white shadow-none hover:bg-white/14 hover:text-white"
+                  className="relative h-10 w-10 rounded-lg border border-border bg-white text-foreground shadow-none hover:bg-secondary hover:text-primary"
                 >
                   <Link href="/chats" aria-label="채팅 목록">
                     <MessageCircleMore className="h-4.5 w-4.5" />
@@ -284,7 +284,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   variant="ghost"
                   size="icon"
                   asChild
-                  className="relative h-10 w-10 rounded-lg border border-white/10 bg-white/8 text-white shadow-none hover:bg-white/14 hover:text-white"
+                  className="relative h-10 w-10 rounded-lg border border-border bg-white text-foreground shadow-none hover:bg-secondary hover:text-primary"
                 >
                   <Link href="/mypage#alerts" aria-label="매칭 알림">
                     <Bell className="h-5 w-5" />
@@ -302,7 +302,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="relative h-10 w-10 rounded-full border border-white/10 bg-white/8 p-0 shadow-none hover:bg-white/14"
+                      className="relative h-10 w-10 rounded-full border border-border bg-white p-0 shadow-none hover:bg-secondary"
                     >
                       <Avatar className="h-10 w-10">
                         <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
@@ -370,7 +370,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   variant="ghost"
                   size="sm"
                   asChild
-                  className="h-9 rounded-lg px-4 text-white/70 hover:bg-white/10 hover:text-white"
+                  className="h-9 rounded-lg px-4 text-muted-foreground hover:bg-secondary hover:text-foreground"
                 >
                   <Link href="/login">로그인</Link>
                 </Button>
@@ -391,7 +391,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   size="icon"
                   asChild
                   aria-label="로그인"
-                  className="h-10 w-10 rounded-lg text-white hover:bg-white/10 hover:text-white"
+                  className="h-10 w-10 rounded-lg text-foreground hover:bg-secondary hover:text-primary"
                 >
                   <Link href="/login">
                     <UserIcon className="h-5 w-5" />

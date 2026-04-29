@@ -105,19 +105,18 @@ export function ItemCard({
     if (percentage >= 70) {
       return {
         text: `${percentage}%`,
-        className:
-          "bg-purple-600 hover:bg-purple-700 text-white border-purple-600",
+        className: "border-primary bg-primary text-primary-foreground",
       };
     }
     if (percentage >= 40) {
       return {
         text: `${percentage}%`,
-        className: "bg-blue-500 hover:bg-blue-600 text-white border-blue-500",
+        className: "border-primary/25 bg-primary/10 text-primary",
       };
     }
     return {
       text: `${percentage}%`,
-      className: "bg-gray-500 hover:bg-gray-600 text-white border-gray-500",
+      className: "border-border bg-white text-muted-foreground",
     };
   };
 
@@ -139,7 +138,7 @@ export function ItemCard({
         transition={{ duration: 0.18, ease: "easeOut" }}
         className="h-full"
       >
-        <Card className="h-full overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition-all duration-200 group-hover:border-primary/30 group-hover:shadow-md group-active:translate-y-0.5">
+        <Card className="h-full overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-all duration-200 group-hover:border-primary/30 group-hover:shadow-md group-active:translate-y-0.5">
           <div
             className={cn(
               "relative overflow-hidden bg-[hsl(var(--primary-light))]",
@@ -164,7 +163,7 @@ export function ItemCard({
               <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary text-center">
                 <div className="rounded-xl border border-border bg-white p-3">
                   {isLost112Item ? (
-                    <ShieldCheck className="h-7 w-7 text-sky-500/75" />
+                    <ShieldCheck className="h-7 w-7 text-primary/70" />
                   ) : (
                     <TagIcon className="h-7 w-7 text-primary/45" />
                   )}
@@ -182,8 +181,8 @@ export function ItemCard({
                 className={cn(
                   "rounded-lg border-0 font-medium",
                   item.reportType === "found"
-                    ? "bg-emerald-500 hover:bg-emerald-600 text-white"
-                    : "bg-rose-500 hover:bg-rose-600 text-white"
+                    ? "bg-primary text-primary-foreground hover:bg-primary"
+                    : "bg-destructive text-destructive-foreground hover:bg-destructive"
                 )}
               >
                 {reportLabel}
@@ -195,8 +194,8 @@ export function ItemCard({
                   className={cn(
                     "rounded-lg border font-medium",
                     item.status === "resolved"
-                      ? "border-slate-300 bg-white/95 text-slate-700"
-                      : "border-amber-200 bg-amber-50/95 text-amber-700"
+                      ? "border-border bg-white/95 text-muted-foreground"
+                      : "border-warning/35 bg-warning/14 text-foreground"
                   )}
                 >
                   {statusLabel}
@@ -206,7 +205,7 @@ export function ItemCard({
               {isLost112Item ? (
                 <Badge
                   variant="outline"
-                  className="rounded-lg border-sky-200 bg-sky-50/95 font-medium text-sky-700"
+                  className="rounded-lg border-primary/20 bg-white/95 font-medium text-primary"
                 >
                   <ShieldCheck className="mr-1 h-3 w-3" />
                   경찰청
@@ -226,7 +225,7 @@ export function ItemCard({
               {!isCompact && distanceText ? (
                 <Badge
                   variant="outline"
-                  className="rounded-lg border-border bg-white/95 font-medium text-slate-700"
+                  className="rounded-lg border-border bg-white/95 font-medium text-muted-foreground"
                 >
                   <MapPin className="mr-1 h-3 w-3 text-primary/70" />
                   {distanceText}
@@ -248,16 +247,16 @@ export function ItemCard({
                 {displayTitle}
               </h3>
 
-              <div className="flex flex-col gap-1.5 pt-0.5 text-sm text-slate-600">
+              <div className="flex flex-col gap-1.5 pt-0.5 text-sm text-muted-foreground">
                 {displayLocation ? (
                   <div className="flex items-start gap-2 leading-snug">
                     <MapPin className="h-3.5 w-3.5 shrink-0 text-primary/50" />
                     <span className="min-w-0 pt-px">
-                      <span className="block truncate font-semibold text-slate-700">
+                      <span className="block truncate font-semibold text-foreground/80">
                         {displayLocation.primary}
                       </span>
                       {displayLocation.secondary ? (
-                        <span className="block truncate text-xs font-medium text-slate-500">
+                        <span className="block truncate text-xs font-medium text-muted-foreground">
                           {displayLocation.secondary}
                         </span>
                       ) : null}
@@ -267,7 +266,7 @@ export function ItemCard({
                 {item.date ? (
                   <div className="flex items-center gap-2 leading-none">
                     <Calendar className="h-3.5 w-3.5 shrink-0 text-primary/50" />
-                    <span className="pt-px font-medium text-slate-600">
+                    <span className="pt-px font-medium text-muted-foreground">
                       {format(
                         new Date(item.date),
                         showDateTime ? "PPP p" : "PPP",
@@ -322,7 +321,7 @@ export function ItemCard({
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <div className="border-t border-primary/10 px-3 pb-2.5 pt-2 text-xs leading-relaxed text-slate-600">
+                      <div className="border-t border-primary/10 px-3 pb-2.5 pt-2 text-xs leading-relaxed text-muted-foreground">
                         {reasoning}
                       </div>
                     </motion.div>
