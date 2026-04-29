@@ -167,7 +167,7 @@ export default function MyPage() {
                   한곳에서 관리해요
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-                  게시글 상태 변경과 자동 매칭 알림 확인을 한 번에 살펴볼 수
+                  내 물건 상태 변경과 자동 매칭 알림 확인을 한 번에 살펴볼 수
                   있어요.
                 </p>
               </div>
@@ -322,7 +322,7 @@ export default function MyPage() {
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <Button asChild className="rounded-full px-5">
-                    <Link href="/report/lost">분실물 등록하기</Link>
+                    <Link href="/report/lost">잃어버린 물건 등록하기</Link>
                   </Button>
                   <Button
                     asChild
@@ -458,7 +458,7 @@ export default function MyPage() {
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
               <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-                <PackageSearch className="h-6 w-6 text-primary" />내 게시글 관리
+                <PackageSearch className="h-6 w-6 text-primary" />내 물건 관리
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 해결된 글은 숨기고, 필요할 때 다시 공개할 수 있어요.
@@ -508,22 +508,22 @@ export default function MyPage() {
                   <PackageSearch className="h-8 w-8 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground">
-                  아직 등록한 게시글이 없어요
+                  아직 등록한 물건이 없어요
                 </h3>
                 <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-                  분실물이나 습득물을 등록하면 여기에서 수정, 삭제, 해결
+                  잃어버린 물건이나 주운 물건을 등록하면 여기에서 수정, 삭제, 해결
                   처리까지 한 번에 관리할 수 있어요.
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <Button asChild className="rounded-full px-5">
-                    <Link href="/report/found">습득물 등록하기</Link>
+                    <Link href="/report/found">주운 물건 등록하기</Link>
                   </Button>
                   <Button
                     asChild
                     variant="outline"
                     className="rounded-full px-5"
                   >
-                    <Link href="/report/lost">분실물 등록하기</Link>
+                    <Link href="/report/lost">잃어버린 물건 등록하기</Link>
                   </Button>
                 </div>
               </CardContent>
@@ -532,7 +532,7 @@ export default function MyPage() {
             <Card className="border-border/70 bg-white/92">
               <CardContent className="py-14 text-center">
                 <h3 className="text-lg font-semibold text-foreground">
-                  선택한 상태의 게시글이 아직 없어요
+                  선택한 상태의 물건이 아직 없어요
                 </h3>
                 <p className="mt-2 text-sm text-muted-foreground">
                   다른 필터를 선택하면 숨겨진 글을 다시 볼 수 있어요.

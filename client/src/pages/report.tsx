@@ -70,21 +70,21 @@ const config = {
   found: {
     locationLabel: "발견 장소",
     locationPlaceholder: "예: 중앙도서관 1층 앞",
-    submitText: "습득물 등록하기",
+    submitText: "주운 물건 등록하기",
     requireImage: true,
-    title: "습득물 신고",
+    title: "주운 물건 등록",
     description:
-      "사진과 위치를 함께 등록하면 찾는 사람이 더 빨리 확인할 수 있어요.",
+      "사진과 위치를 함께 등록하면 잃어버린 사람이 더 빨리 확인할 수 있어요.",
     gradient: "from-primary to-[hsl(270_68%_61%)]",
     badge: "bg-emerald-100 text-emerald-700",
   },
   lost: {
     locationLabel: "분실 장소",
     locationPlaceholder: "예: 학생회관 2층 복도",
-    submitText: "분실물 신고하기",
+    submitText: "잃어버린 물건 등록하기",
     requireImage: false,
-    title: "분실물 신고",
-    description: "물건 특징과 잃어버린 위치를 자세히 적어 주세요.",
+    title: "잃어버린 물건 등록",
+    description: "찾고 싶은 물건의 특징과 잃어버린 위치를 자세히 적어 주세요.",
     gradient: "from-primary to-[hsl(270_68%_61%)]",
     badge: "bg-accent text-primary",
   },
@@ -424,7 +424,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       });
 
       toast({
-        title: "게시글이 등록되었어요.",
+          title: "물건 정보가 등록되었어요.",
         description: "상세 페이지로 이동합니다.",
       });
       setLocation(`/item/${createdItem.id}`);
@@ -499,11 +499,11 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     createMutation.isPending || updateMutation.isPending || isAnalyzing;
   const pageTitle = isEditMode
     ? reportType === "found"
-      ? "습득물 게시글 수정"
-      : "분실물 게시글 수정"
+      ? "주운 물건 정보 수정"
+      : "잃어버린 물건 정보 수정"
     : currentConfig.title;
   const pageDescription = isEditMode
-    ? "기존 게시글 내용을 수정하고 다시 저장할 수 있어요."
+    ? "기존 물건 정보를 수정하고 다시 저장할 수 있어요."
     : currentConfig.description;
   const submitLabel = isEditMode
     ? "수정 내용 저장하기"
@@ -842,7 +842,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                   3단계
                 </div>
                 <CardTitle className="text-base font-semibold">
-                  게시글 정보 입력
+                  물건 정보 입력
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 p-5 pt-3">

@@ -119,7 +119,7 @@ export default function MatchesPage() {
                   새 매칭이 생기면 여기에서 다시 보여드릴게요. 필요하면 분실물 정보를 더 자세히 보완해 보세요.
                 </p>
                 <Button asChild className="mt-6 rounded-full px-6">
-                  <Link href="/report/lost">분실물 신고하기</Link>
+                  <Link href="/report/lost">잃어버린 물건 등록하기</Link>
                 </Button>
               </CardContent>
             </Card>
