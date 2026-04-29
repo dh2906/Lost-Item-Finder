@@ -18,6 +18,8 @@ import {
   ArrowLeft,
   ExternalLink,
   ShieldCheck,
+  BellRing,
+  MessageCircleMore,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -488,12 +490,43 @@ export default function ItemDetail() {
                   </Button>
                 )}
                 <div className="rounded-[22px] bg-secondary/45 p-4 text-sm leading-6 text-muted-foreground">
-                  {isLost112Item
+                  {isOwnedLostItem
+                    ? "이 분실물은 Findy가 새 습득물 후보와 비교하는 기준입니다."
+                    : isLost112Item
                     ? "경찰청 원문에서 보관 기관과 실제 수령 가능 여부를 확인하세요."
-                    : "장소, 날짜, 상태를 확인한 뒤 연락하거나 제보를 남겨 주세요."}
+                    : item.reportType === "found"
+                    ? "사용자 등록 습득물입니다. 내 물건으로 보이면 채팅으로 확인하세요."
+                    : "사용자 등록 분실물입니다. 알고 있는 정보가 있으면 제보하거나 연락해 주세요."}
                 </div>
               </CardContent>
             </Card>
+
+            {isOwnedLostItem ? (
+              <Card className="border-primary/15 bg-[hsl(var(--primary-light))]/70">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <BellRing className="h-5 w-5 text-primary" />
+                    이 분실물의 매칭 후보
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    경찰청 습득물과 사용자 등록 습득물 중 이 물건과 가까운 후보를 확인하세요.
+                  </p>
+                  <div className="rounded-[20px] border border-primary/10 bg-white/90 p-4">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      현재 후보
+                    </p>
+                    <p className="mt-1 text-2xl font-bold text-foreground">
+                      {isMatchesLoading ? "-" : `${matches.length}건`}
+                    </p>
+                  </div>
+                  <Button asChild className="w-full rounded-full">
+                    <Link href="/matches">매칭 후보 보기</Link>
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : null}
 
              <Card className="border-border/70 bg-white/90">
               <CardHeader className="pb-4">
@@ -511,6 +544,8 @@ export default function ItemDetail() {
                     ? "필요하면 내용을 수정하거나, 마이페이지에서 해결 상태를 관리할 수 있어요."
                     : isLost112Item
                     ? "수령 가능 여부와 보관 기관 연락처는 경찰청 원문에서 먼저 확인하세요."
+                    : item.reportType === "found"
+                    ? "사용자 등록 습득물입니다. 물건이 내 것 같으면 등록자와 대화하세요."
                     : "상세 정보를 확인하고 연락해 주세요."}
                 </p>
                 {isOwner ? (
@@ -541,6 +576,11 @@ export default function ItemDetail() {
                       receiverId={item.userId}
                       className="w-full rounded-full"
                     />
+                  </div>
+                ) : !isLost112Item && !item.contactInfo && !isOwner ? (
+                  <div className="mt-3 flex items-center gap-2 rounded-[22px] border border-border/70 bg-secondary/40 p-4 text-sm text-muted-foreground">
+                    <MessageCircleMore className="h-4 w-4 text-primary" />
+                    로그인 후 등록자와 채팅할 수 있어요.
                   </div>
                 ) : null}
               </CardContent>
