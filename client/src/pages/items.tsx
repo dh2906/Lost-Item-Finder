@@ -663,13 +663,13 @@ export default function ItemsPage() {
 
       <section className="pb-16 pt-6 md:pt-8">
         <div className="container mx-auto max-w-6xl px-5">
-          <div className="grid gap-6 lg:grid-cols-[292px_minmax(0,1fr)] lg:items-start">
+          <div className="space-y-6">
             <form
               onSubmit={handleFilterSubmit}
-              className="rounded-2xl border border-border bg-white p-4 shadow-sm md:p-5 lg:sticky lg:top-24"
+              className="rounded-xl border border-border bg-white p-4 shadow-sm md:p-5"
             >
               <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <Filter className="h-4 w-4 text-primary" />
@@ -679,7 +679,7 @@ export default function ItemsPage() {
                       지역과 현재 위치는 동시에 적용되지 않습니다.
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 self-start lg:self-auto">
+                  <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
                     {hasActiveFilters ? (
                       <div className="inline-flex items-center rounded-lg bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
                         적용된 필터 {activeFilterCount}개
@@ -690,9 +690,9 @@ export default function ItemsPage() {
                       aria-expanded={isFilterOpen}
                       aria-controls="items-filter-fields"
                       onClick={() => setIsFilterOpen((current) => !current)}
-                      className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-white px-3.5 text-sm font-medium text-foreground  transition-all hover:border-primary/20 hover:bg-accent md:hidden"
+                      className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-white px-3.5 text-sm font-medium text-foreground transition-all hover:border-primary/20 hover:bg-accent"
                     >
-                      필터
+                      {isFilterOpen ? "필터 닫기" : "필터 열기"}
                       <ChevronDown
                         className={cn(
                           "h-4 w-4 transition-transform",
@@ -705,13 +705,12 @@ export default function ItemsPage() {
 
                 <div
                   id="items-filter-fields"
-                  style={{ gridTemplateColumns: "minmax(0, 1fr)" }}
                   className={cn(
-                    "filter-fields grid-cols-1 gap-4",
-                    isFilterOpen ? "grid" : "hidden md:grid"
+                    "grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4",
+                    isFilterOpen ? "grid" : "hidden"
                   )}
                 >
-                  <div className="space-y-2">
+                  <div className="space-y-2 md:col-span-2 lg:col-span-2">
                     <label className="text-xs font-semibold text-foreground">출처</label>
                     <Select
                       value={draftFilters.source}
@@ -943,7 +942,7 @@ export default function ItemsPage() {
                     </Select>
                   </div>
 
-                  <div className="flex items-end gap-2">
+                  <div className="flex items-end gap-2 md:col-span-2 lg:col-span-4">
                     <Button type="submit" className="h-11 flex-1 rounded-lg px-4">
                       적용
                     </Button>
@@ -963,7 +962,7 @@ export default function ItemsPage() {
 
             <div className="min-w-0 space-y-6">
               {isLoading ? (
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
                 {[1, 2, 3, 4, 5].map((index) => (
                   <div key={index} className="h-[290px] animate-pulse rounded-2xl bg-muted" />
                 ))}
@@ -1061,7 +1060,7 @@ export default function ItemsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {items.map((item, index) => (
                     <ItemCard
                       key={item.id}
