@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ItemCard } from "@/components/item-card";
 import { useAuth } from "@/hooks/use-auth";
@@ -55,23 +54,9 @@ export default function Home() {
   return (
     <Layout>
       <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,hsl(var(--background))_58%,hsl(var(--background))_100%)]">
-        <div className="container py-10 sm:py-12 lg:py-14 xl:max-w-[1440px]">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-start">
-            <div className="space-y-8">
-              <div className="max-w-3xl">
-                <Badge className="rounded-full border border-primary/15 bg-white/90 px-4 py-1.5 text-sm font-semibold text-primary shadow-sm hover:bg-white/90">
-                  분실물 찾기 작업대
-                </Badge>
-                <h1 className="mt-5 text-3xl font-bold leading-tight tracking-tight text-foreground sm:text-4xl lg:text-[3.35rem] lg:leading-[1.06]">
-                  잃어버린 물건을 등록하고
-                  <br />
-                  찾을 후보를 바로 확인하세요
-                </h1>
-                <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground sm:text-[1.0625rem] sm:leading-8">
-                  Findy는 내 분실물 정보를 기준으로 경찰청 습득물과 사용자 등록 습득물을 함께 비교합니다.
-                </p>
-              </div>
-
+        <div className="container py-8 sm:py-10 lg:py-12 xl:max-w-[1440px]">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-start">
+            <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-[1.15fr_1fr_1fr]">
                 <Link
                   href="/report/lost"
