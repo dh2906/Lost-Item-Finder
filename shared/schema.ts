@@ -70,6 +70,25 @@ export const itemEmbeddings = pgTable("item_embeddings", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const lost112SyncRuns = pgTable("lost112_sync_runs", {
+  id: serial("id").primaryKey(),
+  trigger: text("trigger").notNull(),
+  status: text("status").notNull(),
+  page: integer("page").notNull(),
+  numOfRows: integer("num_of_rows").notNull(),
+  maxPages: integer("max_pages").notNull(),
+  fetchedCount: integer("fetched_count").notNull().default(0),
+  createdCount: integer("created_count").notNull().default(0),
+  updatedCount: integer("updated_count").notNull().default(0),
+  skippedCount: integer("skipped_count").notNull().default(0),
+  embeddedCount: integer("embedded_count").notNull().default(0),
+  embeddingFailedCount: integer("embedding_failed_count").notNull().default(0),
+  automaticMatchCount: integer("automatic_match_count").notNull().default(0),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+});
+
 export const itemMatches = pgTable(
   "item_matches",
   {

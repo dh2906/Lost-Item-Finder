@@ -163,6 +163,25 @@ const lost112SyncResponseSchema = z.object({
   items: z.array(itemResponseSchema),
 });
 
+const lost112SyncRunResponseSchema = z.object({
+  id: z.number(),
+  trigger: z.string(),
+  status: z.string(),
+  page: z.number(),
+  numOfRows: z.number(),
+  maxPages: z.number(),
+  fetchedCount: z.number(),
+  createdCount: z.number(),
+  updatedCount: z.number(),
+  skippedCount: z.number(),
+  embeddedCount: z.number(),
+  embeddingFailedCount: z.number(),
+  automaticMatchCount: z.number(),
+  errorMessage: z.string().nullable(),
+  startedAt: z.union([z.string(), z.date()]),
+  finishedAt: z.union([z.string(), z.date()]).nullable(),
+});
+
 export const errorSchemas = {
   validation: z.object({
     message: z.string(),
@@ -329,6 +348,15 @@ export const api = {
         403: errorSchemas.validation,
         500: errorSchemas.internal,
         503: errorSchemas.internal,
+      },
+    },
+    latestSyncRun: {
+      method: "GET" as const,
+      path: "/api/lost112/sync/latest" as const,
+      responses: {
+        200: lost112SyncRunResponseSchema.nullable(),
+        403: errorSchemas.validation,
+        500: errorSchemas.internal,
       },
     },
   },

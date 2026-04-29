@@ -17,6 +17,7 @@ import {
   items,
   itemEmbeddings,
   itemMatches,
+  lost112SyncRuns,
   matchNotifications,
   updateItemMatchStatusSchema,
   users,
@@ -316,6 +317,7 @@ type Lost112SyncOptions = {
   page?: number;
   numOfRows?: number;
   maxPages?: number;
+  trigger?: string;
 };
 
 type Lost112SyncResult = {
@@ -770,27 +772,20 @@ async function runLost112Sync({
   page = 1,
   numOfRows = 50,
   maxPages = 1,
+  trigger = "manual",
 }: Lost112SyncOptions): Promise<Lost112SyncResult> {
-  const fetchedItems: Lost112NormalizedItem[] = [];
-
-  for (let pageOffset = 0; pageOffset < maxPages; pageOffset += 1) {
-    const pageData = await fetchLost112ItemsPage({
-      apiKey,
-      category,
-      region,
-      startDate,
-      endDate,
-      page: page + pageOffset,
+  const [syncRun] = await db
+    .insert(lost112SyncRuns)
+    .values({
+      trigger,
+      status: "running",
+      page,
       numOfRows,
-    });
+      maxPages,
+    })
+    .returning();
 
-    fetchedItems.push(...pageData.items);
-
-    if (pageData.items.length < pageData.numOfRows) {
-      break;
-    }
-  }
-
+  const fetchedItems: Lost112NormalizedItem[] = [];
   let createdCount = 0;
   let updatedCount = 0;
   let skippedCount = 0;
@@ -799,71 +794,123 @@ async function runLost112Sync({
   let automaticMatchCount = 0;
   const syncedItems: Item[] = [];
 
-  for (const lost112Item of fetchedItems) {
-    const atcId = lost112Item.atcId?.trim();
-    if (!atcId) {
-      continue;
-    }
-    const fdSn = lost112Item.fdSn?.trim() || "1";
-    const externalId = `${atcId}:${fdSn}`;
-    const payloadHash = createLost112PayloadHash(lost112Item);
-    const existingState = await getLost112SyncState(externalId);
-    if (
-      existingState?.item.externalPayloadHash === payloadHash &&
-      existingState.hasEmbedding
-    ) {
-      skippedCount += 1;
-      syncedItems.push(existingState.item);
-      continue;
-    }
+  try {
+    for (let pageOffset = 0; pageOffset < maxPages; pageOffset += 1) {
+      const pageData = await fetchLost112ItemsPage({
+        apiKey,
+        category,
+        region,
+        startDate,
+        endDate,
+        page: page + pageOffset,
+        numOfRows,
+      });
 
-    const externalItem = await normalizeLost112ExternalFoundItemWithAi(
-      lost112Item
-    );
-    if (!externalItem) {
-      continue;
-    }
+      fetchedItems.push(...pageData.items);
 
-    const { item, created } = await storage.upsertExternalFoundItem(
-      externalItem
-    );
-    syncedItems.push(item);
-
-    if (created) {
-      createdCount += 1;
-    } else {
-      updatedCount += 1;
-    }
-
-    let itemEmbedding: number[] | undefined;
-    try {
-      itemEmbedding = await ensureItemEmbedding(item);
-      embeddedCount += 1;
-    } catch (embeddingError) {
-      embeddingFailedCount += 1;
-      console.error("Failed to store Lost112 item embedding:", embeddingError);
-    }
-
-    if (item.status === "active" && itemEmbedding !== undefined) {
-      queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
-      try {
-        automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
-      } catch (matchError) {
-        console.error("Failed to match Lost112 item:", matchError);
+      if (pageData.items.length < pageData.numOfRows) {
+        break;
       }
     }
-  }
 
-  return {
-    fetchedCount: fetchedItems.length,
-    createdCount,
-    updatedCount,
-    skippedCount,
-    embeddedCount,
-    embeddingFailedCount,
-    automaticMatchCount,
-    items: syncedItems,
-  };
+    for (const lost112Item of fetchedItems) {
+      const atcId = lost112Item.atcId?.trim();
+      if (!atcId) {
+        continue;
+      }
+      const fdSn = lost112Item.fdSn?.trim() || "1";
+      const externalId = `${atcId}:${fdSn}`;
+      const payloadHash = createLost112PayloadHash(lost112Item);
+      const existingState = await getLost112SyncState(externalId);
+      if (
+        existingState?.item.externalPayloadHash === payloadHash &&
+        existingState.hasEmbedding
+      ) {
+        skippedCount += 1;
+        syncedItems.push(existingState.item);
+        continue;
+      }
+
+      const externalItem = await normalizeLost112ExternalFoundItemWithAi(
+        lost112Item
+      );
+      if (!externalItem) {
+        continue;
+      }
+
+      const { item, created } = await storage.upsertExternalFoundItem(
+        externalItem
+      );
+      syncedItems.push(item);
+
+      if (created) {
+        createdCount += 1;
+      } else {
+        updatedCount += 1;
+      }
+
+      let itemEmbedding: number[] | undefined;
+      try {
+        itemEmbedding = await ensureItemEmbedding(item);
+        embeddedCount += 1;
+      } catch (embeddingError) {
+        embeddingFailedCount += 1;
+        console.error("Failed to store Lost112 item embedding:", embeddingError);
+      }
+
+      if (item.status === "active" && itemEmbedding !== undefined) {
+        queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
+        try {
+          automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
+        } catch (matchError) {
+          console.error("Failed to match Lost112 item:", matchError);
+        }
+      }
+    }
+
+    await db
+      .update(lost112SyncRuns)
+      .set({
+        status: "completed",
+        fetchedCount: fetchedItems.length,
+        createdCount,
+        updatedCount,
+        skippedCount,
+        embeddedCount,
+        embeddingFailedCount,
+        automaticMatchCount,
+        finishedAt: new Date(),
+      })
+      .where(eq(lost112SyncRuns.id, syncRun.id));
+
+    return {
+      fetchedCount: fetchedItems.length,
+      createdCount,
+      updatedCount,
+      skippedCount,
+      embeddedCount,
+      embeddingFailedCount,
+      automaticMatchCount,
+      items: syncedItems,
+    };
+  } catch (error) {
+    await db
+      .update(lost112SyncRuns)
+      .set({
+        status: "failed",
+        fetchedCount: fetchedItems.length,
+        createdCount,
+        updatedCount,
+        skippedCount,
+        embeddedCount,
+        embeddingFailedCount,
+        automaticMatchCount,
+        errorMessage: getErrorMessage(error),
+        finishedAt: new Date(),
+      })
+      .where(eq(lost112SyncRuns.id, syncRun.id));
+    throw error;
+  }
 }
 
 function startLost112SyncScheduler(): void {
@@ -900,6 +947,7 @@ function startLost112SyncScheduler(): void {
         apiKey,
         numOfRows: LOST112_SYNC_NUM_ROWS,
         maxPages: LOST112_SYNC_MAX_PAGES,
+        trigger: "scheduled",
       });
       console.log("[Lost112 Sync] scheduled job completed:", {
         fetchedCount: result.fetchedCount,
@@ -3770,6 +3818,21 @@ export async function registerRoutes(
       }
 
       console.error("[Lost112 Sync] 오류:", err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get(api.lost112.latestSyncRun.path, isAdmin, async (_req, res) => {
+    try {
+      const [latestRun] = await db
+        .select()
+        .from(lost112SyncRuns)
+        .orderBy(desc(lost112SyncRuns.startedAt))
+        .limit(1);
+
+      res.json(latestRun ?? null);
+    } catch (err) {
+      console.error("[Lost112 Sync Latest] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });

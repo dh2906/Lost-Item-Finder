@@ -4,6 +4,7 @@ import {
   ensureChatSchema,
   ensureItemImageSchema,
   ensureItemMatchSchema,
+  ensureLost112SyncRunSchema,
   ensureVectorExtension,
 } from "./db";
 import { registerRoutes } from "./routes";
@@ -135,6 +136,7 @@ app.use((req, res, next) => {
   await ensureItemImageSchema();
   await ensureChatSchema();
   await ensureItemMatchSchema();
+  await ensureLost112SyncRunSchema();
   log("database schema ready");
 
   setupAuth(app);
