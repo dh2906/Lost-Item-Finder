@@ -416,6 +416,7 @@ export const api = {
         limit: z.coerce.number().int().positive().max(1000).optional(),
         offset: z.coerce.number().int().min(0).optional(),
         onlyMissingLocation: z.boolean().optional(),
+        onlyMissingEmbedding: z.boolean().optional(),
       }).optional(),
       responses: {
         200: lost112ReprocessExistingResponseSchema,

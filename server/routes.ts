@@ -1239,10 +1239,12 @@ async function reprocessExistingLost112Items({
   limit = 100,
   offset = 0,
   onlyMissingLocation = true,
+  onlyMissingEmbedding = false,
 }: {
   limit?: number;
   offset?: number;
   onlyMissingLocation?: boolean;
+  onlyMissingEmbedding?: boolean;
 }): Promise<{
   fetchedCount: number;
   updatedCount: number;
@@ -1258,13 +1260,24 @@ async function reprocessExistingLost112Items({
     conditions.push(or(isNull(items.latitude), isNull(items.longitude))!);
   }
 
-  const existingItems = await db
-    .select()
-    .from(items)
-    .where(and(...conditions))
-    .orderBy(asc(items.id))
-    .limit(limit)
-    .offset(offset);
+  const existingItems = onlyMissingEmbedding
+    ? (
+        await db
+          .select({ item: items })
+          .from(items)
+          .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
+          .where(and(...conditions, isNull(itemEmbeddings.itemId)))
+          .orderBy(asc(items.id))
+          .limit(limit)
+          .offset(offset)
+      ).map((row) => row.item)
+    : await db
+        .select()
+        .from(items)
+        .where(and(...conditions))
+        .orderBy(asc(items.id))
+        .limit(limit)
+        .offset(offset);
 
   let updatedCount = 0;
   let skippedCount = 0;
@@ -4272,19 +4285,21 @@ export async function registerRoutes(
 
   app.post(api.lost112.reprocessExisting.path, isAdmin, async (req, res) => {
     try {
-      if (!KAKAO_REST_API_KEY) {
+      const input =
+        api.lost112.reprocessExisting.input.parse(req.body ?? {}) ?? {};
+
+      if (input.onlyMissingLocation !== false && !KAKAO_REST_API_KEY) {
         return res.status(503).json({
           message:
             "Kakao REST API 키가 설정되지 않았습니다. .env에 KAKAO_REST_API_KEY를 추가해 주세요.",
         });
       }
 
-      const input =
-        api.lost112.reprocessExisting.input.parse(req.body ?? {}) ?? {};
       const result = await reprocessExistingLost112Items({
         limit: input.limit,
         offset: input.offset,
         onlyMissingLocation: input.onlyMissingLocation,
+        onlyMissingEmbedding: input.onlyMissingEmbedding,
       });
 
       res.json(result);
