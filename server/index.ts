@@ -130,12 +130,17 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  log("initializing database schema");
   await ensureVectorExtension();
   await ensureItemImageSchema();
   await ensureChatSchema();
   await ensureItemMatchSchema();
+  log("database schema ready");
+
   setupAuth(app);
+  log("registering routes");
   await registerRoutes(httpServer, app);
+  log("routes registered");
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
