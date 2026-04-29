@@ -307,6 +307,7 @@ type Lost112FetchedPage = {
   totalCount: number;
   pageNo: number;
   numOfRows: number;
+  rawCount: number;
 };
 
 type Lost112SyncOptions = {
@@ -552,6 +553,7 @@ async function fetchLost112ItemsPage({
         : body.totalCount ?? filteredItems.length,
     pageNo: body.pageNo ?? safePageNo,
     numOfRows: safeNumOfRows,
+    rawCount: rawItems.length,
   };
 }
 
@@ -977,9 +979,22 @@ async function runLost112Sync({
         numOfRows,
       });
 
+      console.log("[Lost112 Sync] page fetched:", {
+        page: pageData.pageNo,
+        rawCount: pageData.rawCount,
+        filteredCount: pageData.items.length,
+        totalCount: pageData.totalCount,
+      });
+
       fetchedItems.push(...pageData.items);
 
       if (pageData.items.length < pageData.numOfRows) {
+        console.log("[Lost112 Sync] stopping page scan:", {
+          page: pageData.pageNo,
+          reason: "page returned fewer items than requested",
+          filteredCount: pageData.items.length,
+          numOfRows: pageData.numOfRows,
+        });
         break;
       }
     }
@@ -1055,6 +1070,17 @@ async function runLost112Sync({
         finishedAt: new Date(),
       })
       .where(eq(lost112SyncRuns.id, syncRun.id));
+
+    console.log("[Lost112 Sync] job completed:", {
+      trigger,
+      fetchedCount: fetchedItems.length,
+      createdCount,
+      updatedCount,
+      skippedCount,
+      embeddedCount,
+      embeddingFailedCount,
+      automaticMatchCount,
+    });
 
     return {
       fetchedCount: fetchedItems.length,
@@ -1225,6 +1251,7 @@ function startLost112SyncScheduler(): void {
         fetchedCount: result.fetchedCount,
         createdCount: result.createdCount,
         updatedCount: result.updatedCount,
+        skippedCount: result.skippedCount,
         embeddedCount: result.embeddedCount,
         embeddingFailedCount: result.embeddingFailedCount,
         automaticMatchCount: result.automaticMatchCount,
