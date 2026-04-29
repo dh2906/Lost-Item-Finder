@@ -113,6 +113,8 @@ export interface ExternalFoundItemInput {
   size?: string | null;
   tags?: string[] | null;
   location?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
   date?: Date | null;
   contactInfo?: string | null;
 }
@@ -459,8 +461,8 @@ export class DatabaseStorage implements IStorage {
       size: input.size ?? null,
       tags: input.tags ?? [],
       location: input.location ?? null,
-      latitude: null,
-      longitude: null,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
       // date가 없으면 null로 저장 — 현재 시각으로 대체하면 실제 습득일을 왜곡함
       date: input.date ?? null,
       contactInfo: input.contactInfo ?? null,

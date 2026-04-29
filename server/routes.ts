@@ -101,6 +101,7 @@ const LOST112_SYNC_INITIAL_DELAY_MS = Number(
 );
 const LOST112_SYNC_NUM_ROWS = Number(process.env.LOST112_SYNC_NUM_ROWS ?? 50);
 const LOST112_SYNC_MAX_PAGES = Number(process.env.LOST112_SYNC_MAX_PAGES ?? 1);
+const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY;
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -332,7 +333,7 @@ type Lost112SyncResult = {
 };
 
 const LOST112_SOURCE = "lost112";
-const LOST112_NORMALIZATION_VERSION = "location-admin-v2";
+const LOST112_NORMALIZATION_VERSION = "geocoded-location-v3";
 
 const LOST112_REGION_CODES: Record<string, string> = {
   서울특별시: "LCA000",
@@ -610,6 +611,118 @@ function createLost112PayloadHash(item: Lost112NormalizedItem): string {
     .digest("hex");
 }
 
+type KakaoKeywordDocument = {
+  place_name?: string;
+  address_name?: string;
+  road_address_name?: string;
+  x?: string;
+  y?: string;
+};
+
+type Lost112GeocodingResult = {
+  provider: "kakao";
+  query: string;
+  placeName?: string;
+  address?: string;
+  latitude: string;
+  longitude: string;
+  location: string;
+};
+
+function getLost112LocationSearchQueries(
+  item: Lost112NormalizedItem,
+  fallbackLocation?: string | null
+): string[] {
+  return Array.from(
+    new Set(
+      [
+        [item.orgNm, item.depPlace].filter(Boolean).join(" "),
+        [item.orgNm, item.fdPlace].filter(Boolean).join(" "),
+        item.depPlace,
+        item.orgNm,
+        item.fdPlace,
+        fallbackLocation,
+      ]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+}
+
+function formatLost112GeocodedLocation(document: KakaoKeywordDocument): string {
+  const address = document.road_address_name || document.address_name || "";
+  const placeName = document.place_name || "";
+  if (address && placeName && !address.includes(placeName)) {
+    return `${address} - ${placeName}`;
+  }
+  return address || placeName;
+}
+
+async function geocodeLost112Location(
+  item: Lost112NormalizedItem,
+  fallbackLocation?: string | null
+): Promise<Lost112GeocodingResult | null> {
+  if (!KAKAO_REST_API_KEY) {
+    return null;
+  }
+
+  for (const query of getLost112LocationSearchQueries(item, fallbackLocation)) {
+    try {
+      const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
+      url.searchParams.set("query", query);
+      url.searchParams.set("size", "1");
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `KakaoAK ${KAKAO_REST_API_KEY}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error(
+          `Failed to geocode Lost112 location with Kakao: ${response.status} ${response.statusText}`
+        );
+        continue;
+      }
+
+      const body = z
+        .object({
+          documents: z.array(
+            z.object({
+              place_name: z.string().optional(),
+              address_name: z.string().optional(),
+              road_address_name: z.string().optional(),
+              x: z.string().optional(),
+              y: z.string().optional(),
+            })
+          ),
+        })
+        .parse(await response.json());
+      const document = body.documents.find(
+        (entry) => entry.x && entry.y && formatLost112GeocodedLocation(entry)
+      );
+
+      if (!document?.x || !document.y) {
+        continue;
+      }
+
+      return {
+        provider: "kakao",
+        query,
+        placeName: document.place_name,
+        address: document.road_address_name || document.address_name,
+        latitude: document.y,
+        longitude: document.x,
+        location: formatLost112GeocodedLocation(document),
+      };
+    } catch (error) {
+      console.error("Failed to geocode Lost112 location with Kakao:", error);
+    }
+  }
+
+  return null;
+}
+
 async function getLost112SyncState(externalId: string): Promise<{
   item: Item;
   hasEmbedding: boolean;
@@ -719,6 +832,26 @@ async function normalizeLost112ExternalFoundItemWithAi(
     return null;
   }
 
+  const applyGeocoding = async (
+    externalItem: ExternalFoundItemInput
+  ): Promise<ExternalFoundItemInput> => {
+    const geocoding = await geocodeLost112Location(item, externalItem.location);
+    if (!geocoding) {
+      return externalItem;
+    }
+
+    return {
+      ...externalItem,
+      location: geocoding.location,
+      latitude: geocoding.latitude,
+      longitude: geocoding.longitude,
+      externalPayload: {
+        ...(externalItem.externalPayload ?? {}),
+        geocoding,
+      },
+    };
+  };
+
   try {
     const response = await openai.chat.completions.create({
       model: GPT_TEXT_MODEL,
@@ -758,7 +891,7 @@ async function normalizeLost112ExternalFoundItemWithAi(
       .parse(JSON.parse(content));
     const normalizedMetadata = normalizeItemMetadata(normalized);
 
-    return {
+    return applyGeocoding({
       ...fallbackItem,
       title: normalizedMetadata.title,
       description: fallbackItem.description,
@@ -772,10 +905,10 @@ async function normalizeLost112ExternalFoundItemWithAi(
         ])
       ),
       location: normalizedMetadata.location ?? fallbackItem.location,
-    };
+    });
   } catch (error) {
     console.error("Failed to normalize Lost112 item with AI:", error);
-    return fallbackItem;
+    return applyGeocoding(fallbackItem);
   }
 }
 
