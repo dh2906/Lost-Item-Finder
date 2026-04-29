@@ -55,8 +55,8 @@ export default function Home() {
     <Layout>
       <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,hsl(var(--background))_58%,hsl(var(--background))_100%)]">
         <div className="container py-8 sm:py-10 lg:py-12 xl:max-w-[1440px]">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-start">
-            <div className="space-y-4">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-stretch">
+            <div className="flex h-full min-w-0 flex-col gap-4">
               <div className="grid gap-3 md:grid-cols-[1.15fr_1fr_1fr]">
                 <Link
                   href="/report/lost"
@@ -104,8 +104,8 @@ export default function Home() {
                 </Link>
               </div>
 
-              <div className="rounded-xl border border-border bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:p-4">
-                <div className="grid gap-2 sm:grid-cols-3 sm:gap-3">
+              <div className="flex flex-1 rounded-xl border border-border bg-white p-3 shadow-[0_2px_8px_rgba(0,0,0,0.06)] sm:p-4">
+                <div className="grid flex-1 gap-2 sm:grid-cols-3 sm:gap-3">
                   {steps.map((step, index) => (
                     <div
                       key={step.title}
@@ -131,7 +131,7 @@ export default function Home() {
               </div>
             </div>
 
-            <aside className="space-y-4 lg:sticky lg:top-24">
+            <aside className="flex h-full flex-col gap-4 lg:sticky lg:top-24">
               <Card className="border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
                 <CardContent className="space-y-5 p-6">
                   <div>
@@ -174,7 +174,7 @@ export default function Home() {
                 </CardContent>
               </Card>
 
-              <Card className="border-primary/15 bg-primary/8 shadow-sm">
+              <Card className="flex flex-1 border-primary/15 bg-primary/8 shadow-sm">
                 <CardContent className="flex gap-3 p-5">
                   <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                   <div>
