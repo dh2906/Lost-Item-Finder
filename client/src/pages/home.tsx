@@ -240,7 +240,7 @@ export default function Home() {
                 <p className="text-lg font-semibold">등록된 {emptyLabel}이 없어요</p>
                 <p className="mt-2 text-base text-muted-foreground">첫 게시물을 작성해보세요</p>
                 <Button className="mt-6 h-12 rounded-xl px-8 text-base" asChild>
-                  <Link href={`/report?type=${tab}`}>
+                  <Link href={tab === "found" ? "/report/found" : "/report/lost"}>
                     <Plus className="mr-2 h-5 w-5" />
                     작성하기
                   </Link>
@@ -248,8 +248,14 @@ export default function Home() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                {items.map((item) => (
-                  <ItemCard key={item.id} item={item} variant="compact" showDateTime />
+                {items.map((item, index) => (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    variant="compact"
+                    showDateTime
+                    imageLoading={index < 5 ? "eager" : "lazy"}
+                  />
                 ))}
               </div>
             )}

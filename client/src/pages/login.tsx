@@ -4,7 +4,7 @@ import { Link, useLocation, Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@shared/routes";
 import { Layout } from "@/components/layout";
@@ -79,7 +79,7 @@ export function LoginPage() {
               <MapPinCheckInside className="h-8 w-8" />
             </div>
             <div className="space-y-2">
-              <CardTitle className="text-2xl font-bold">로그인</CardTitle>
+              <h1 className="text-2xl font-bold">로그인</h1>
               <CardDescription className="text-base">
                 계정에 로그인하여 서비스를 이용하세요.
               </CardDescription>

@@ -28,6 +28,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
@@ -98,6 +99,9 @@ export function Layout({ children }: { children: ReactNode }) {
                 <SheetTitle className="pr-10 text-left text-lg font-bold">
                   메뉴
                 </SheetTitle>
+                <SheetDescription className="sr-only">
+                  주요 화면과 신고 화면으로 이동하는 모바일 메뉴입니다.
+                </SheetDescription>
                 <nav className="mt-6 flex flex-col gap-4">
                   {navigation.map((item) => (
                     <div key={item.href} className="flex min-w-0 flex-col gap-2">

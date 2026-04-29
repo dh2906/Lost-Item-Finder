@@ -39,10 +39,34 @@ function DefaultReportPage() {
   return <ReportPage />;
 }
 
+function getPageTitle(location: string): string {
+  const path = location.split("?")[0];
+
+  if (path === "/") return "Findy - 분실물 연결 게시판";
+  if (path === "/install") return "앱 설치 | Findy";
+  if (path === "/report/found") return "습득물 신고 | Findy";
+  if (path === "/report/lost") return "분실물 신고 | Findy";
+  if (path === "/report") return "물건 신고 | Findy";
+  if (path === "/search") return "분실물 찾기 | Findy";
+  if (path === "/items") return "물건 목록 | Findy";
+  if (path.startsWith("/item/") && path.endsWith("/edit")) return "게시글 수정 | Findy";
+  if (path.startsWith("/item/")) return "게시글 상세 | Findy";
+  if (path === "/mypage") return "마이페이지 | Findy";
+  if (path === "/admin") return "관리자 | Findy";
+  if (path === "/matches") return "내 매칭 | Findy";
+  if (path === "/chats") return "채팅 목록 | Findy";
+  if (path.startsWith("/chat/")) return "채팅 | Findy";
+  if (path === "/login") return "로그인 | Findy";
+  if (path === "/register") return "회원가입 | Findy";
+
+  return "페이지를 찾을 수 없습니다 | Findy";
+}
+
 function Router() {
   const [location] = useLocation();
 
   useEffect(() => {
+    document.title = getPageTitle(location);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [location]);
 

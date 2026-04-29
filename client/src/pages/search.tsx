@@ -499,13 +499,14 @@ export default function SearchPage() {
               ) : (
                 <>
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                    {searchMutation.data.map((result) => (
+                    {searchMutation.data.map((result, index) => (
                       <ItemCard
                         key={result.item.id}
                         item={result.item}
                         score={result.score}
                         reasoning={result.reasoning}
                         distanceText={typeof result.distanceKm === "number" ? formatDistance(result.distanceKm) : undefined}
+                        imageLoading={index < 3 ? "eager" : "lazy"}
                       />
                     ))}
                   </div>

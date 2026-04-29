@@ -107,6 +107,7 @@ export default function ChatRoomPage() {
   return (
     <Layout>
       <div className="container flex h-[calc(100dvh-120px)] min-h-0 flex-col overflow-hidden py-3 md:h-[calc(100dvh-124px)] md:py-4 xl:max-w-[960px]">
+        <h1 className="sr-only">{room?.item ? `${room.item.title} 채팅` : "채팅"}</h1>
         <div className="mb-3 flex items-center gap-3">
           <Button
             variant="ghost"
@@ -131,6 +132,8 @@ export default function ChatRoomPage() {
                   <img
                     src={room.item.imageUrl}
                     alt={room.item.title}
+                    loading="eager"
+                    decoding="async"
                     className="h-11 w-11 rounded-xl border border-border/50 object-cover"
                   />
                 ) : (

@@ -1,7 +1,7 @@
 import { Link } from "wouter";
 import { MessageCircle, Image as ImageIcon } from "lucide-react";
 import { Layout } from "@/components/layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { useChatRooms } from "@/hooks/use-chat";
 import { formatChatRoomTimestamp } from "@/lib/chat-time";
@@ -15,7 +15,7 @@ export default function ChatsPage() {
       <div className="container py-8 xl:max-w-[960px]">
         <Card className="border-border/70 bg-white/90">
           <CardHeader>
-            <CardTitle className="text-2xl">채팅 목록</CardTitle>
+            <h1 className="text-2xl font-semibold tracking-tight">채팅 목록</h1>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -54,6 +54,8 @@ export default function ChatsPage() {
                             <img
                               src={imageUrl}
                               alt={room.item?.title || "물건 사진"}
+                              loading="lazy"
+                              decoding="async"
                               className="h-14 w-14 rounded-xl border border-border/50 object-cover"
                             />
                           ) : (
