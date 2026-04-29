@@ -309,11 +309,12 @@ export default function ItemsPage() {
   }, []);
 
   const title =
-    filters.type === "found" ? "등록된 습득물 전체보기" : "등록된 분실물 전체보기";
+    filters.type === "found" ? "습득물 탐색" : "분실물 제보 탐색";
   const description =
     filters.type === "found"
-      ? "경찰청 수집 데이터와 사용자 등록글을 출처, 지역, 기간으로 좁혀서 내 물건과 가까운 후보를 확인하세요."
-      : "사용자가 등록한 분실물을 지역과 특징으로 좁혀 필요한 제보를 더 빨리 확인하세요.";
+      ? "경찰청 수집 데이터와 사용자 등록 습득물을 출처, 지역, 기간으로 좁혀 직접 확인하는 보조 탐색 화면입니다."
+      : "사용자가 등록한 분실물을 지역과 특징으로 좁혀 필요한 제보 대상을 확인하세요.";
+  const resultTitle = filters.type === "found" ? "습득물 탐색 결과" : "분실물 탐색 결과";
   const emptyLabel = filters.type === "found" ? "습득물" : "분실물";
   const activeFilterCount = getActiveFilterCount(filters);
   const hasActiveFilters = activeFilterCount > 0;
@@ -431,7 +432,7 @@ export default function ItemsPage() {
         <div className="container mx-auto max-w-6xl px-5">
           <div className="space-y-4">
             <div className="inline-flex items-center rounded-full border border-primary/12 bg-white/88 px-3 py-1 text-sm font-semibold text-primary shadow-sm">
-              실시간 등록 게시물
+              {filters.type === "found" ? "경찰청 + 사용자 습득물" : "사용자 분실물"}
             </div>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="space-y-2.5">
@@ -466,7 +467,7 @@ export default function ItemsPage() {
                 >
                   <Link href={filters.type === "found" ? "/report/found" : "/report/lost"}>
                     <PlusCircle className="mr-2 h-4 w-4" />
-                    {filters.type === "found" ? "습득물 등록" : "분실물 신고"}
+                    {filters.type === "found" ? "주운 물건 등록" : "잃어버린 물건 등록"}
                   </Link>
                 </Button>
               </div>
@@ -487,10 +488,10 @@ export default function ItemsPage() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <Filter className="h-4 w-4 text-primary" />
-                      게시글 필터
+                      탐색 조건
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      출처, 지역, 물건 특징을 기준으로 후보를 좁혀보세요.
+                      출처, 지역, 물건 특징을 기준으로 확인할 대상을 좁혀보세요.
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-start lg:self-auto">
@@ -766,7 +767,9 @@ export default function ItemsPage() {
                 <p className="mb-8 max-w-sm text-center leading-relaxed text-muted-foreground">
                   {hasActiveFilters
                     ? "카테고리, 색상, 날짜 조건을 바꿔서 다시 확인해보세요."
-                    : "첫 게시물을 등록해서 더 빠르게 연결을 시작해보세요."}
+                    : filters.type === "found"
+                    ? "주운 물건을 등록하면 다른 사람의 분실물과 매칭될 수 있어요."
+                    : "잃어버린 물건을 등록하면 습득물 후보와 자동으로 비교할 수 있어요."}
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
                   {hasActiveFilters ? (
@@ -783,7 +786,7 @@ export default function ItemsPage() {
                   <Button asChild className="h-11 rounded-full px-6 font-medium">
                     <Link href={filters.type === "found" ? "/report/found" : "/report/lost"}>
                       <PlusCircle className="mr-2 h-4 w-4" />
-                      {filters.type === "found" ? "습득물 등록하기" : "분실물 신고하기"}
+                      {filters.type === "found" ? "주운 물건 등록하기" : "잃어버린 물건 등록하기"}
                     </Link>
                   </Button>
                 </div>
@@ -814,7 +817,7 @@ export default function ItemsPage() {
 
                 <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
                   <h2 className="flex items-center gap-3 text-2xl font-bold text-foreground">
-                    전체 게시물
+                    {resultTitle}
                     <span className="inline-flex items-center justify-center rounded-full bg-accent px-3 py-0.5 text-sm font-bold text-primary">
                       {totalCount.toLocaleString()}건
                     </span>
@@ -837,7 +840,7 @@ export default function ItemsPage() {
                       <Button asChild variant="outline" className="rounded-full px-4">
                         <Link href="/search">
                           <SearchIcon className="mr-2 h-4 w-4" />
-                          AI로 찾기
+                          사진/설명으로 찾기
                         </Link>
                       </Button>
                     ) : null}
