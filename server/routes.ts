@@ -1701,6 +1701,15 @@ function buildAutomaticMatchReason(params: {
   });
 }
 
+function getAutomaticRerankImageUrl(item: FoundItemForAutoMatch): string | undefined {
+  if (!qwen || item.externalSource === LOST112_SOURCE) {
+    return undefined;
+  }
+
+  const imageUrl = item.imageUrl?.trim();
+  return imageUrl ? imageUrl : undefined;
+}
+
 async function ensureEmbeddingsForItems(itemsToEnsure: Item[]): Promise<void> {
   for (const item of itemsToEnsure) {
     try {
@@ -2270,6 +2279,7 @@ type FoundItemForAutoMatch = {
   location?: string | null;
   latitude?: string | null;
   longitude?: string | null;
+  externalSource?: string | null;
 };
 let automaticMatchQueue: Promise<void> = Promise.resolve();
 
@@ -2385,7 +2395,7 @@ async function runAutomaticMatchNotificationsForFoundItem(
   const queryText = buildItemSearchText(foundItem);
   const rerankedMatches = await rerankCandidates({
     prompt: foundItem.description ?? undefined,
-    imageUrl: qwen && foundItem.imageUrl ? foundItem.imageUrl : undefined,
+    imageUrl: getAutomaticRerankImageUrl(foundItem),
     queryText,
     candidates: filteredVectorMatches,
     signal,
