@@ -613,10 +613,10 @@ export default function ItemsPage() {
 
   return (
     <Layout>
-      <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-7 pt-9 md:pb-8 md:pt-11">
+      <section className="border-b border-border bg-white pb-7 pt-8 md:pb-8 md:pt-10">
         <div className="container mx-auto max-w-6xl px-5">
           <div className="space-y-4">
-            <div className="inline-flex items-center rounded-full border border-primary/12 bg-white/88 px-3 py-1 text-sm font-semibold text-primary shadow-sm">
+            <div className="inline-flex items-center rounded-lg bg-accent px-3 py-1 text-sm font-semibold text-primary">
               {filters.type === "found" ? "경찰청 + 사용자 습득물" : "사용자 분실물"}
             </div>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -630,16 +630,16 @@ export default function ItemsPage() {
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <Tabs value={filters.type} onValueChange={handleTabChange}>
-                  <TabsList className="h-11 rounded-full border border-border/70 bg-white/90 p-1 shadow-sm">
+                  <TabsList className="h-11 rounded-xl border border-border bg-secondary p-1 shadow-none">
                     <TabsTrigger
                       value="found"
-                      className="rounded-full px-4 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                      className="rounded-lg px-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                     >
                       습득물
                     </TabsTrigger>
                     <TabsTrigger
                       value="lost"
-                      className="rounded-full px-4 text-sm font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                      className="rounded-lg px-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:"
                     >
                       분실물
                     </TabsTrigger>
@@ -648,7 +648,7 @@ export default function ItemsPage() {
                 <Button
                   asChild
                   variant="outline"
-                  className="rounded-full border-border/70 bg-white/92 px-4 shadow-sm"
+                  className="rounded-lg border-border bg-white px-4 shadow-none"
                 >
                   <Link href={filters.type === "found" ? "/report/found" : "/report/lost"}>
                     <PlusCircle className="mr-2 h-4 w-4" />
@@ -663,25 +663,25 @@ export default function ItemsPage() {
 
       <section className="pb-16 pt-6 md:pt-8">
         <div className="container mx-auto max-w-6xl px-5">
-          <div className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-[292px_minmax(0,1fr)] lg:items-start">
             <form
               onSubmit={handleFilterSubmit}
-              className="rounded-[22px] border border-border/70 bg-white/92 p-4 shadow-[0_16px_34px_-30px_rgba(27,31,59,0.18)] md:p-5"
+              className="rounded-2xl border border-border bg-white p-4 shadow-sm md:p-5 lg:sticky lg:top-24"
             >
               <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col gap-3">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <Filter className="h-4 w-4 text-primary" />
                       탐색 조건
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      출처, 지역, 물건 특징을 기준으로 확인할 대상을 좁혀보세요.
+                      지역과 현재 위치는 동시에 적용되지 않습니다.
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-start lg:self-auto">
                     {hasActiveFilters ? (
-                      <div className="inline-flex items-center rounded-full bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
+                      <div className="inline-flex items-center rounded-lg bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
                         적용된 필터 {activeFilterCount}개
                       </div>
                     ) : null}
@@ -690,7 +690,7 @@ export default function ItemsPage() {
                       aria-expanded={isFilterOpen}
                       aria-controls="items-filter-fields"
                       onClick={() => setIsFilterOpen((current) => !current)}
-                      className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-full border border-input bg-white/92 px-3.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/20 hover:bg-accent md:hidden"
+                      className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-input bg-white px-3.5 text-sm font-medium text-foreground  transition-all hover:border-primary/20 hover:bg-accent md:hidden"
                     >
                       필터
                       <ChevronDown
@@ -705,8 +705,9 @@ export default function ItemsPage() {
 
                 <div
                   id="items-filter-fields"
+                  style={{ gridTemplateColumns: "minmax(0, 1fr)" }}
                   className={cn(
-                    "filter-fields gap-3 md:grid-cols-2 xl:grid-cols-4",
+                    "filter-fields grid-cols-1 gap-4",
                     isFilterOpen ? "grid" : "hidden md:grid"
                   )}
                 >
@@ -721,7 +722,7 @@ export default function ItemsPage() {
                         }))
                       }
                     >
-                      <SelectTrigger className="h-10 rounded-xl">
+                      <SelectTrigger className="h-11 rounded-lg bg-white shadow-none">
                         <SelectValue placeholder="출처 선택" />
                       </SelectTrigger>
                       <SelectContent>
@@ -748,7 +749,7 @@ export default function ItemsPage() {
                         }))
                       }
                       placeholder="예: 지갑"
-                      className="h-10 rounded-xl"
+                      className="h-11 rounded-lg bg-white shadow-none"
                     />
                   </div>
 
@@ -766,7 +767,7 @@ export default function ItemsPage() {
                         }))
                       }
                       placeholder="예: 검정"
-                      className="h-10 rounded-xl"
+                      className="h-11 rounded-lg bg-white shadow-none"
                     />
                   </div>
 
@@ -781,11 +782,11 @@ export default function ItemsPage() {
                         setLocationFilter(event.target.value)
                       }
                       placeholder="예: 마곡동, 시흥동, 마곡나루역"
-                      className="h-10 rounded-xl"
+                      className="h-11 rounded-lg bg-white shadow-none"
                     />
                     <div className="grid gap-2">
                       <Select value={selectedRegion1} onValueChange={handleRegion1Change}>
-                        <SelectTrigger className="h-10 rounded-xl">
+                        <SelectTrigger className="h-11 rounded-lg bg-white shadow-none">
                           <SelectValue placeholder="시/도 선택" />
                         </SelectTrigger>
                         <SelectContent>
@@ -802,7 +803,7 @@ export default function ItemsPage() {
                         onValueChange={handleRegion2Change}
                         disabled={!selectedRegion1Option}
                       >
-                        <SelectTrigger className="h-10 rounded-xl">
+                        <SelectTrigger className="h-11 rounded-lg bg-white shadow-none">
                           <SelectValue placeholder="시/군/구 선택" />
                         </SelectTrigger>
                         <SelectContent>
@@ -819,7 +820,7 @@ export default function ItemsPage() {
                         onValueChange={handleRegion3Change}
                         disabled={!selectedRegion2Option}
                       >
-                        <SelectTrigger className="h-10 rounded-xl">
+                        <SelectTrigger className="h-11 rounded-lg bg-white shadow-none">
                           <SelectValue placeholder="읍/면/동 선택" />
                         </SelectTrigger>
                         <SelectContent>
@@ -848,7 +849,7 @@ export default function ItemsPage() {
                       }
                       disabled={!hasDraftCoordinates}
                     >
-                      <SelectTrigger className="h-10 rounded-xl">
+                      <SelectTrigger className="h-11 rounded-lg bg-white shadow-none">
                         <SelectValue placeholder="반경 선택" />
                       </SelectTrigger>
                       <SelectContent>
@@ -872,7 +873,7 @@ export default function ItemsPage() {
                         variant="outline"
                         onClick={handleUseCurrentLocation}
                         disabled={isLocating}
-                        className="h-10 flex-1 rounded-xl px-4"
+                        className="h-11 flex-1 rounded-lg px-4"
                       >
                         <LocateFixed
                           className={`mr-2 h-4 w-4 ${isLocating ? "animate-pulse" : ""}`}
@@ -885,7 +886,7 @@ export default function ItemsPage() {
                           variant="ghost"
                           size="icon"
                           onClick={handleClearCoordinates}
-                          className="h-10 w-10 rounded-xl border border-border/70"
+                          className="h-11 w-11 rounded-lg border border-border"
                           aria-label="현재 위치 기준 해제"
                         >
                           <MapPin className="h-4 w-4" />
@@ -905,7 +906,7 @@ export default function ItemsPage() {
                         }))
                       }
                     >
-                      <SelectTrigger className="h-10 rounded-xl">
+                      <SelectTrigger className="h-11 rounded-lg bg-white shadow-none">
                         <SelectValue placeholder="기간 선택" />
                       </SelectTrigger>
                       <SelectContent>
@@ -929,7 +930,7 @@ export default function ItemsPage() {
                         }))
                       }
                     >
-                      <SelectTrigger className="h-10 rounded-xl">
+                      <SelectTrigger className="h-11 rounded-lg bg-white shadow-none">
                         <SelectValue placeholder="정렬 선택" />
                       </SelectTrigger>
                       <SelectContent>
@@ -942,15 +943,15 @@ export default function ItemsPage() {
                     </Select>
                   </div>
 
-                  <div className="flex items-end gap-2 xl:col-span-2">
-                    <Button type="submit" className="h-10 flex-1 rounded-xl px-4">
+                  <div className="flex items-end gap-2">
+                    <Button type="submit" className="h-11 flex-1 rounded-lg px-4">
                       적용
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       onClick={handleResetFilters}
-                      className="h-10 rounded-xl px-4"
+                      className="h-11 rounded-lg px-4"
                     >
                       <RotateCcw className="mr-2 h-4 w-4" />
                       초기화
@@ -960,15 +961,16 @@ export default function ItemsPage() {
               </div>
             </form>
 
-            {isLoading ? (
+            <div className="min-w-0 space-y-6">
+              {isLoading ? (
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {[1, 2, 3, 4, 5].map((index) => (
-                  <div key={index} className="h-[290px] animate-pulse rounded-[26px] bg-muted" />
+                  <div key={index} className="h-[290px] animate-pulse rounded-2xl bg-muted" />
                 ))}
               </div>
             ) : items.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
-                <div className="mb-4 rounded-full border border-border/70 bg-white p-4 shadow-sm">
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
+                <div className="mb-4 rounded-lg border border-border bg-white p-4 ">
                   <PackageOpen className="h-8 w-8 text-muted-foreground/55" />
                 </div>
                 <h3 className="mb-2 text-lg font-bold text-foreground">
@@ -989,13 +991,13 @@ export default function ItemsPage() {
                       type="button"
                       variant="outline"
                       onClick={handleResetFilters}
-                      className="h-11 rounded-full px-6 font-medium"
+                      className="h-11 rounded-lg px-6 font-medium"
                     >
                       <RotateCcw className="mr-2 h-4 w-4" />
                       필터 초기화
                     </Button>
                   ) : null}
-                  <Button asChild className="h-11 rounded-full px-6 font-medium">
+                  <Button asChild className="h-11 rounded-lg px-6 font-medium">
                     <Link href={filters.type === "found" ? "/report/found" : "/report/lost"}>
                       <PlusCircle className="mr-2 h-4 w-4" />
                       {filters.type === "found" ? "주운 물건 등록하기" : "잃어버린 물건 등록하기"}
@@ -1006,12 +1008,12 @@ export default function ItemsPage() {
             ) : (
               <div className="space-y-6">
                 {activeFilterLabels.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-2 rounded-[20px] border border-primary/10 bg-[hsl(var(--primary-light))]/55 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/10 bg-[hsl(var(--primary-light))]/55 px-4 py-3">
                     <span className="text-xs font-semibold text-primary">적용 조건</span>
                     {activeFilterLabels.map((label) => (
                       <span
                         key={label}
-                        className="inline-flex items-center rounded-full border border-primary/15 bg-white/90 px-3 py-1 text-xs font-semibold text-foreground shadow-sm"
+                        className="inline-flex items-center rounded-lg border border-primary/15 bg-white px-3 py-1 text-xs font-semibold text-foreground "
                       >
                         {label}
                       </span>
@@ -1020,7 +1022,7 @@ export default function ItemsPage() {
                       type="button"
                       variant="ghost"
                       onClick={handleResetFilters}
-                      className="h-8 rounded-full px-3 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                      className="h-8 rounded-lg px-3 text-xs font-semibold text-muted-foreground hover:text-foreground"
                     >
                       초기화
                     </Button>
@@ -1030,26 +1032,26 @@ export default function ItemsPage() {
                 <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
                   <h2 className="flex items-center gap-3 text-2xl font-bold text-foreground">
                     {resultTitle}
-                    <span className="inline-flex items-center justify-center rounded-full bg-accent px-3 py-0.5 text-sm font-bold text-primary">
+                    <span className="inline-flex items-center justify-center rounded-lg bg-accent px-3 py-0.5 text-sm font-bold text-primary">
                       {totalCount.toLocaleString()}건
                     </span>
                   </h2>
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="inline-flex items-center rounded-full border border-border/70 bg-white px-3 py-1 text-xs font-semibold text-muted-foreground shadow-sm">
+                    <span className="inline-flex items-center rounded-lg border border-border bg-white px-3 py-1 text-xs font-semibold text-muted-foreground ">
                       {currentPage}/{totalPages}페이지
                     </span>
                     {isFetching ? (
-                      <span className="inline-flex items-center rounded-full border border-primary/15 bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
+                      <span className="inline-flex items-center rounded-lg border border-primary/15 bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
                         새 목록 불러오는 중
                       </span>
                     ) : null}
                     {hasActiveFilters ? (
-                      <span className="inline-flex items-center rounded-full border border-primary/15 bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
+                      <span className="inline-flex items-center rounded-lg border border-primary/15 bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
                         필터 적용 중
                       </span>
                     ) : null}
                     {filters.type === "found" ? (
-                      <Button asChild variant="outline" className="rounded-full px-4">
+                      <Button asChild variant="outline" className="rounded-lg px-4">
                         <Link href="/search">
                           <SearchIcon className="mr-2 h-4 w-4" />
                           사진/설명으로 찾기
@@ -1059,7 +1061,7 @@ export default function ItemsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {items.map((item, index) => (
                     <ItemCard
                       key={item.id}
@@ -1080,7 +1082,7 @@ export default function ItemsPage() {
                         variant="outline"
                         onClick={() => handlePageChange(1)}
                         disabled={currentPage <= 1 || isFetching}
-                        className="h-10 rounded-full px-4"
+                        className="h-10 rounded-lg px-4"
                       >
                         처음
                       </Button>
@@ -1089,7 +1091,7 @@ export default function ItemsPage() {
                         variant="outline"
                         onClick={() => handlePageChange(currentPage - 1)}
                         disabled={currentPage <= 1 || isFetching}
-                        className="h-10 rounded-full px-4"
+                        className="h-10 rounded-lg px-4"
                       >
                         <ChevronLeft className="mr-1 h-4 w-4" />
                         이전
@@ -1102,7 +1104,7 @@ export default function ItemsPage() {
                         variant="outline"
                         onClick={() => handlePageChange(currentPage + 1)}
                         disabled={currentPage >= totalPages || isFetching}
-                        className="h-10 rounded-full px-4"
+                        className="h-10 rounded-lg px-4"
                       >
                         다음
                         <ChevronRight className="ml-1 h-4 w-4" />
@@ -1112,13 +1114,13 @@ export default function ItemsPage() {
                         variant="outline"
                         onClick={() => handlePageChange(totalPages)}
                         disabled={currentPage >= totalPages || isFetching}
-                        className="h-10 rounded-full px-4"
+                        className="h-10 rounded-lg px-4"
                       >
                         끝
                       </Button>
                       <form
                         onSubmit={handlePageJumpSubmit}
-                        className="flex items-center gap-2 rounded-full border border-border/70 bg-white p-1 shadow-sm"
+                        className="flex items-center gap-2 rounded-lg border border-border bg-white p-1 "
                       >
                         <Input
                           type="number"
@@ -1126,14 +1128,14 @@ export default function ItemsPage() {
                           max={totalPages}
                           value={pageInputValue}
                           onChange={(event) => setPageInputValue(event.target.value)}
-                          className="h-8 w-16 rounded-full border-0 px-3 text-center text-sm font-semibold shadow-none [appearance:textfield] focus-visible:ring-1 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          className="h-8 w-16 rounded-lg border-0 px-3 text-center text-sm font-semibold shadow-none [appearance:textfield] focus-visible:ring-1 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           aria-label="이동할 페이지"
                         />
                         <Button
                           type="submit"
                           size="sm"
                           disabled={isFetching}
-                          className="h-8 rounded-full px-3"
+                          className="h-8 rounded-lg px-3"
                         >
                           이동
                         </Button>
@@ -1143,6 +1145,7 @@ export default function ItemsPage() {
                 ) : null}
               </div>
             )}
+            </div>
           </div>
         </div>
       </section>

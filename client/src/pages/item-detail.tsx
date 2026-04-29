@@ -156,9 +156,9 @@ export default function ItemDetail() {
         </Button>
         <h1 className="sr-only">{displayTitle}</h1>
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px] xl:gap-8">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,760px)_420px] xl:justify-center xl:gap-8">
           <div className="order-2 space-y-5 xl:order-1">
-            <div className="relative mb-5 overflow-hidden rounded-[28px] border border-border/70 bg-muted/70 shadow-card">
+            <div className="relative mb-5 overflow-hidden rounded-2xl border border-border bg-muted/70 shadow-sm">
               {itemImageUrls.length > 0 ? (
                 <>
                   <Carousel
@@ -169,7 +169,7 @@ export default function ItemDetail() {
                     <CarouselContent className="-ml-0">
                       {itemImageUrls.map((imageUrl, index) => (
                         <CarouselItem key={`${imageUrl}-${index}`} className="pl-0">
-                          <div className="aspect-[4/3] bg-muted">
+                          <div className="aspect-[16/10] bg-muted">
                             <img
                               src={imageUrl}
                               alt={`${item.title} 이미지 ${index + 1}`}
@@ -214,7 +214,7 @@ export default function ItemDetail() {
                   ) : null}
                 </>
               ) : (
-                <div className="flex aspect-[4/3] items-center justify-center">
+                <div className="flex aspect-[16/10] items-center justify-center">
                   <Tag className="h-12 w-12 text-muted-foreground/30" />
                 </div>
               )}

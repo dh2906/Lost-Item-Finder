@@ -79,7 +79,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="sticky top-0 z-50 border-b border-border/70 bg-background/94 backdrop-blur supports-[backdrop-filter]:bg-background/78">
+      <header className="sticky top-0 z-50 border-b border-slate-800 bg-[#191f28]/96 text-white backdrop-blur supports-[backdrop-filter]:bg-[#191f28]/90">
         <div className="container flex h-[68px] items-center justify-between gap-4 xl:max-w-[1440px]">
           <div className="flex items-center gap-3 md:gap-5">
             <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
@@ -87,9 +87,9 @@ export function Layout({ children }: { children: ReactNode }) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="lg:hidden shrink-0 -ml-2"
+                  className="lg:hidden shrink-0 -ml-2 text-white hover:bg-white/10 hover:text-white"
                 >
-                  <Menu className="h-6 w-6 text-foreground" />
+                  <Menu className="h-6 w-6" />
                   <span className="sr-only">메뉴 열기</span>
                 </Button>
               </SheetTrigger>
@@ -151,20 +151,20 @@ export function Layout({ children }: { children: ReactNode }) {
 
             <Link
               href="/"
-              className="flex items-center gap-3 text-sm font-semibold tracking-tight text-foreground transition-colors hover:text-foreground/80"
+              className="flex items-center gap-3 text-sm font-semibold tracking-tight text-white transition-colors hover:text-white/86"
             >
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-primary to-primary/80 text-primary-foreground shadow-[0_12px_24px_-16px_hsl(var(--primary)/0.45)]">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
                 <MapPinCheckInside className="h-5 w-5" />
               </span>
               <span className="flex flex-col leading-none">
                 <span className="text-base">Findy</span>
-                <span className="mt-1 text-[11px] font-medium text-muted-foreground">
+                <span className="mt-1 text-[11px] font-medium text-white/55">
                   분실물 매칭 서비스
                 </span>
               </span>
             </Link>
 
-            <nav className="hidden items-center rounded-full border border-border/55 bg-white/80 p-0.5 shadow-[0_10px_22px_-20px_rgba(27,31,59,0.14)] lg:flex">
+            <nav className="hidden items-center gap-1 lg:flex">
               {navigation.map((item) => {
                 const itemPath = item.href.split("?")[0];
                 const active =
@@ -185,10 +185,10 @@ export function Layout({ children }: { children: ReactNode }) {
                       <button
                         type="button"
                         className={cn(
-                          "relative inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
+                          "relative inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200",
                           active || reportMenuOpen
-                            ? "bg-primary text-primary-foreground font-semibold shadow-[0_8px_16px_-14px_hsl(var(--primary)/0.34)]"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                            ? "bg-white text-[#191f28]"
+                            : "text-white/70 hover:bg-white/10 hover:text-white"
                         )}
                       >
                         {item.label}
@@ -201,7 +201,7 @@ export function Layout({ children }: { children: ReactNode }) {
                             className="absolute inset-x-0 top-full h-4"
                             aria-hidden="true"
                           />
-                          <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-2xl border border-border/70 bg-popover p-1.5 text-popover-foreground shadow-md">
+                          <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-md">
                             {item.children.map((child) => {
                               const childActive = location === child.href;
 
@@ -213,7 +213,7 @@ export function Layout({ children }: { children: ReactNode }) {
                                     handleReportMenuNavigate(child.href)
                                   }
                                   className={cn(
-                                    "block w-full rounded-xl px-3 py-2 text-left text-sm transition-colors",
+                                    "block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors",
                                     childActive
                                       ? "bg-accent text-accent-foreground"
                                       : "text-foreground hover:bg-accent hover:text-accent-foreground"
@@ -234,10 +234,10 @@ export function Layout({ children }: { children: ReactNode }) {
                   <Link key={item.href} href={item.href}>
                     <span
                       className={cn(
-                        "relative inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-200",
+                        "relative inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200",
                         active
-                          ? "bg-primary text-primary-foreground font-semibold shadow-[0_8px_16px_-14px_hsl(var(--primary)/0.34)]"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                          ? "bg-white text-[#191f28]"
+                          : "text-white/70 hover:bg-white/10 hover:text-white"
                       )}
                     >
                       {item.label}
@@ -250,7 +250,7 @@ export function Layout({ children }: { children: ReactNode }) {
                 <Link href="/admin">
                   <span
                     className={cn(
-                      "relative inline-flex items-center rounded-full px-3.5 py-1.5 text-sm font-semibold transition-all duration-200",
+                      "relative inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200",
                       location === "/admin"
                         ? "bg-amber-500 text-white shadow-[0_8px_16px_-14px_rgba(245,158,11,0.45)]"
                         : "text-amber-700 hover:bg-amber-50"
@@ -270,10 +270,10 @@ export function Layout({ children }: { children: ReactNode }) {
                   variant="ghost"
                   size="icon"
                   asChild
-                  className="relative h-10 w-10 rounded-xl border border-border/70 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
+                  className="relative h-10 w-10 rounded-lg border border-white/10 bg-white/8 text-white shadow-none hover:bg-white/14 hover:text-white"
                 >
                   <Link href="/chats" aria-label="채팅 목록">
-                    <MessageCircleMore className="h-4.5 w-4.5 text-foreground" />
+                    <MessageCircleMore className="h-4.5 w-4.5" />
                     {hasUnreadChats ? (
                       <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-background bg-primary shadow-sm" />
                     ) : null}
@@ -284,7 +284,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   variant="ghost"
                   size="icon"
                   asChild
-                  className="relative h-10 w-10 rounded-xl border border-border/70 bg-white/90 shadow-sm transition-shadow hover:shadow-md"
+                  className="relative h-10 w-10 rounded-lg border border-white/10 bg-white/8 text-white shadow-none hover:bg-white/14 hover:text-white"
                 >
                   <Link href="/mypage#alerts" aria-label="매칭 알림">
                     <Bell className="h-5 w-5" />
@@ -302,10 +302,10 @@ export function Layout({ children }: { children: ReactNode }) {
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="relative h-10 w-10 rounded-full border border-border/70 bg-white/90 p-0 shadow-sm transition-shadow hover:shadow-md"
+                      className="relative h-10 w-10 rounded-full border border-white/10 bg-white/8 p-0 shadow-none hover:bg-white/14"
                     >
                       <Avatar className="h-10 w-10">
-                        <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-sm font-semibold text-primary">
+                        <AvatarFallback className="bg-primary text-sm font-semibold text-primary-foreground">
                           {user?.name?.[0] ||
                             user?.username?.[0]?.toUpperCase() || (
                               <UserIcon className="h-4 w-4" />
@@ -370,14 +370,14 @@ export function Layout({ children }: { children: ReactNode }) {
                   variant="ghost"
                   size="sm"
                   asChild
-                  className="h-9 rounded-full px-4 text-muted-foreground hover:bg-accent/70 hover:text-foreground"
+                  className="h-9 rounded-lg px-4 text-white/70 hover:bg-white/10 hover:text-white"
                 >
                   <Link href="/login">로그인</Link>
                 </Button>
                 <Button
                   size="sm"
                   asChild
-                  className="h-9 rounded-full px-4 shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.42)]"
+                  className="h-9 rounded-lg px-4"
                 >
                   <Link href="/register">회원가입</Link>
                 </Button>
@@ -391,7 +391,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   size="icon"
                   asChild
                   aria-label="로그인"
-                  className="h-10 w-10 rounded-xl"
+                  className="h-10 w-10 rounded-lg text-white hover:bg-white/10 hover:text-white"
                 >
                   <Link href="/login">
                     <UserIcon className="h-5 w-5" />
@@ -405,7 +405,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
 
-      <footer className="border-t border-border/35 bg-white/70">
+      <footer className="border-t border-border bg-white">
         <div className="container flex flex-col gap-1 py-1.5 text-sm text-muted-foreground/72 md:flex-row md:items-center md:justify-between xl:max-w-[1440px]">
           <div className="flex items-center gap-2 font-medium text-foreground/72">
             <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-primary/80 text-primary-foreground/92">

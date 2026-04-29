@@ -7,33 +7,33 @@
 
   @layer base {
   :root {
-    --font-sans: "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+    --font-sans: "Pretendard", "Noto Sans KR", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    --font-mono: "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
 
-    /* Teal Theme - Hopeful & Trustworthy */
-    --background: 170 20% 98%;
-    --foreground: 175 28% 15%;
+    --background: 210 20% 98%;
+    --foreground: 218 23% 13%;
 
     --card: 0 0% 100%;
-    --card-foreground: 175 28% 15%;
-    --card-border: 170 18% 90%;
+    --card-foreground: 218 23% 13%;
+    --card-border: 210 15% 91%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 175 28% 15%;
-    --popover-border: 170 18% 90%;
+    --popover-foreground: 218 23% 13%;
+    --popover-border: 210 15% 91%;
 
-    --primary: 175 65% 38%;
+    --primary: 142 71% 45%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 175 70% 33%;
-    --primary-light: 175 50% 96%;
+    --primary-hover: 142 71% 39%;
+    --primary-light: 142 71% 95%;
 
-    --secondary: 210 20% 96%;
-    --secondary-foreground: 215 20% 35%;
+    --secondary: 210 22% 96%;
+    --secondary-foreground: 216 15% 36%;
 
-    --muted: 210 18% 96%;
-    --muted-foreground: 215 14% 45%;
+    --muted: 210 22% 96%;
+    --muted-foreground: 215 11% 58%;
 
-    --accent: 215 50% 96%;
-    --accent-foreground: 215 50% 30%;
+    --accent: 142 71% 95%;
+    --accent-foreground: 142 55% 31%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
@@ -51,9 +51,9 @@
     --info-foreground: 0 0% 100%;
     --info-light: 199 60% 96%;
 
-    --border: 214 20% 90%;
-    --input: 214 20% 90%;
-    --ring: 215 60% 45%;
+    --border: 210 15% 91%;
+    --input: 210 15% 91%;
+    --ring: 142 71% 45%;
     --radius: 0.75rem;
 
     --shadow-sm: 0 1px 2px 0 rgb(27 31 59 / 0.035), 0 1px 3px 0 rgb(27 31 59 / 0.02);
@@ -136,9 +136,7 @@
     font-family: var(--font-sans);
     word-break: keep-all;
     letter-spacing: 0;
-    background-image:
-      radial-gradient(circle at top, hsl(var(--primary) / 0.08), transparent 30%),
-      linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
+    background-image: linear-gradient(180deg, #ffffff 0%, hsl(var(--background)) 42%, hsl(var(--background)) 100%);
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -167,11 +165,11 @@
   }
 
   .card-modern {
-    @apply rounded-[var(--radius)] border bg-card shadow-[0_8px_24px_-20px_rgb(27_31_59_/_0.10),0_2px_8px_rgb(27_31_59_/_0.04)] transition-all duration-300;
+    @apply rounded-xl border bg-card shadow-sm transition-all duration-200;
   }
 
   .card-modern:hover {
-    @apply shadow-[0_16px_32px_-22px_rgb(88_56_190_/_0.16),0_8px_18px_-14px_rgb(27_31_59_/_0.08)] -translate-y-0.5;
+    @apply shadow-md;
   }
 
   .gradient-primary {
@@ -216,7 +214,7 @@
   }
 
   .glass {
-    @apply bg-white/82 backdrop-blur-md dark:bg-black/50;
+    @apply bg-white/86 backdrop-blur-md;
   }
 
   .fade-in {
@@ -248,11 +246,11 @@
 
   /* Shadow utilities */
   .shadow-card {
-    box-shadow: 0 8px 24px -20px rgb(27 31 59 / 0.1), 0 2px 8px rgb(27 31 59 / 0.04);
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.08);
   }
 
   .shadow-card-hover {
-    box-shadow: 0 16px 32px -22px rgb(88 56 190 / 0.16), 0 8px 18px -14px rgb(27 31 59 / 0.08);
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
   }
 
   .shadow-float {
@@ -272,7 +270,7 @@
 
 ::-webkit-scrollbar-thumb {
   border-radius: 99px;
-  background: hsl(175 16% 75% / 0.6);
+  background: hsl(215 11% 58% / 0.45);
   border: 2px solid transparent;
   background-clip: padding-box;
 }

@@ -135,11 +135,11 @@ export function ItemCard({
       className={cn("group block h-full outline-none", className)}
     >
       <motion.div
-        whileHover={{ y: -4 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
+        whileHover={{ y: -2 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
         className="h-full"
       >
-        <Card className="h-full overflow-hidden rounded-[24px] border border-border/70 bg-white/92 shadow-[0_14px_28px_-24px_rgba(27,31,59,0.16)] transition-all duration-300 group-hover:border-primary/20 group-hover:bg-white group-hover:shadow-[0_22px_36px_-28px_hsl(var(--primary)/0.2)] group-active:translate-y-0.5">
+        <Card className="h-full overflow-hidden rounded-2xl border border-border bg-white shadow-sm transition-all duration-200 group-hover:border-primary/30 group-hover:shadow-md group-active:translate-y-0.5">
           <div
             className={cn(
               "relative overflow-hidden bg-[hsl(var(--primary-light))]",
@@ -161,8 +161,8 @@ export function ItemCard({
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
               />
             ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,hsl(var(--primary-light))_0%,white_56%,hsl(199_60%_96%)_100%)] text-center">
-                <div className="rounded-2xl border border-primary/10 bg-white/90 p-3 shadow-sm">
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary text-center">
+                <div className="rounded-xl border border-border bg-white p-3">
                   {isLost112Item ? (
                     <ShieldCheck className="h-7 w-7 text-sky-500/75" />
                   ) : (
@@ -180,7 +180,7 @@ export function ItemCard({
             <div className="absolute left-3 top-3 flex flex-wrap gap-2">
               <Badge
                 className={cn(
-                  "border-0 font-medium shadow-sm",
+                  "rounded-lg border-0 font-medium",
                   item.reportType === "found"
                     ? "bg-emerald-500 hover:bg-emerald-600 text-white"
                     : "bg-rose-500 hover:bg-rose-600 text-white"
@@ -193,7 +193,7 @@ export function ItemCard({
                 <Badge
                   variant="outline"
                   className={cn(
-                    "border font-medium shadow-sm",
+                    "rounded-lg border font-medium",
                     item.status === "resolved"
                       ? "border-slate-300 bg-white/95 text-slate-700"
                       : "border-amber-200 bg-amber-50/95 text-amber-700"
@@ -206,7 +206,7 @@ export function ItemCard({
               {isLost112Item ? (
                 <Badge
                   variant="outline"
-                  className="border-sky-200 bg-sky-50/95 font-medium text-sky-700 shadow-sm"
+                  className="rounded-lg border-sky-200 bg-sky-50/95 font-medium text-sky-700"
                 >
                   <ShieldCheck className="mr-1 h-3 w-3" />
                   경찰청
@@ -216,7 +216,7 @@ export function ItemCard({
               {!isCompact && matchBadge ? (
                 <Badge
                   variant="outline"
-                  className={cn("font-medium shadow-sm border", matchBadge.className)}
+                  className={cn("rounded-lg border font-medium", matchBadge.className)}
                 >
                   <Sparkles className="mr-1 h-3 w-3" />
                   {matchBadge.text}
@@ -226,7 +226,7 @@ export function ItemCard({
               {!isCompact && distanceText ? (
                 <Badge
                   variant="outline"
-                  className="border-border/70 bg-white/95 font-medium text-slate-700 shadow-sm"
+                  className="rounded-lg border-border bg-white/95 font-medium text-slate-700"
                 >
                   <MapPin className="mr-1 h-3 w-3 text-primary/70" />
                   {distanceText}
@@ -284,13 +284,13 @@ export function ItemCard({
                 {visibleTags.slice(0, 2).map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center rounded-full bg-[hsl(var(--primary-light))] px-2.5 py-1 text-xs font-medium text-primary/80"
+                    className="inline-flex items-center rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-primary"
                   >
                     {tag}
                   </span>
                 ))}
                 {visibleTags.length > 2 ? (
-                  <span className="inline-flex items-center rounded-full bg-[hsl(var(--primary-light))] px-2.5 py-1 text-xs font-medium text-primary/80">
+                  <span className="inline-flex items-center rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-primary">
                     +{visibleTags.length - 2}
                   </span>
                 ) : null}
@@ -298,7 +298,7 @@ export function ItemCard({
             ) : null}
 
             {!isCompact && reasoning ? (
-              <div className="mt-2 overflow-hidden rounded-[18px] border border-primary/10 bg-[hsl(var(--primary-light))/0.7] transition-colors hover:bg-[hsl(var(--primary-light))]">
+              <div className="mt-2 overflow-hidden rounded-xl border border-primary/10 bg-accent transition-colors">
                 <button
                   type="button"
                   onClick={toggleReason}
