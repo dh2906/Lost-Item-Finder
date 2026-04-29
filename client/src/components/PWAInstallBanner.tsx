@@ -47,11 +47,7 @@ export function PWAInstallBanner() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 48 }}
           transition={{ type: "spring", stiffness: 320, damping: 28 }}
-          className={
-            "fixed z-50 flex items-center gap-2 rounded-full border border-blue-200 bg-white/95 px-3 py-2 text-slate-800 shadow-xl backdrop-blur " +
-            "bottom-4 left-4 right-4 " +
-            "md:bottom-6 md:left-auto md:right-6 md:w-auto md:max-w-80"
-          }
+          className="fixed bottom-4 left-4 right-4 z-50 flex items-center gap-2 rounded-full border border-blue-200 bg-white/95 px-3 py-2 text-slate-800 shadow-xl backdrop-blur md:hidden"
           role="region"
           aria-label="앱 설치 안내"
         >

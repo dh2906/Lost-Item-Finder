@@ -135,7 +135,7 @@
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
     word-break: keep-all;
-    letter-spacing: -0.01em;
+    letter-spacing: 0;
     background-image:
       radial-gradient(circle at top, hsl(var(--primary) / 0.08), transparent 30%),
       linear-gradient(180deg, hsl(var(--background)), hsl(var(--background)));
@@ -143,7 +143,7 @@
 
   h1, h2, h3, h4, h5, h6 {
     @apply font-bold tracking-tight;
-    letter-spacing: -0.025em;
+    letter-spacing: 0;
   }
 
   img {

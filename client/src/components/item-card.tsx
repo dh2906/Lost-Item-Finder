@@ -93,6 +93,7 @@ export function ItemCard({
   const primaryImageUrl = getPrimaryItemImageUrl(item);
   const shouldShowImage =
     primaryImageUrl && !(isLost112Item && isPlaceholderImageUrl(primaryImageUrl));
+  const hasVisualImage = Boolean(shouldShowImage);
   const displayLocation = splitLocation(item.location);
   const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
 
@@ -140,7 +141,13 @@ export function ItemCard({
           <div
             className={cn(
               "relative overflow-hidden bg-[hsl(var(--primary-light))]",
-              isCompact ? "aspect-[5/4]" : "aspect-[4/3]"
+              isCompact
+                ? hasVisualImage
+                  ? "aspect-[5/4]"
+                  : "aspect-[4/3]"
+                : hasVisualImage
+                  ? "aspect-[4/3]"
+                  : "aspect-[16/9]"
             )}
           >
             {shouldShowImage ? (
@@ -150,13 +157,17 @@ export function ItemCard({
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
               />
             ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/6 via-white to-sky-50 text-center">
-                <div className="rounded-2xl border border-primary/10 bg-white/85 p-3 shadow-sm">
-                  <TagIcon className="h-7 w-7 text-primary/45" />
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-[linear-gradient(135deg,hsl(var(--primary-light))_0%,white_56%,hsl(199_60%_96%)_100%)] text-center">
+                <div className="rounded-2xl border border-primary/10 bg-white/90 p-3 shadow-sm">
+                  {isLost112Item ? (
+                    <ShieldCheck className="h-7 w-7 text-sky-500/75" />
+                  ) : (
+                    <TagIcon className="h-7 w-7 text-primary/45" />
+                  )}
                 </div>
                 {!isCompact ? (
                   <span className="text-xs font-medium text-muted-foreground">
-                    사진 없음
+                    {isLost112Item ? "경찰청 등록 데이터" : "사진 없음"}
                   </span>
                 ) : null}
               </div>

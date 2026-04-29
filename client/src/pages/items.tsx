@@ -314,18 +314,18 @@ export default function ItemsPage() {
 
   return (
     <Layout>
-      <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-10 pt-14">
+      <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-7 pt-9 md:pb-8 md:pt-11">
         <div className="container mx-auto max-w-6xl px-5">
-          <div className="space-y-5">
+          <div className="space-y-4">
             <div className="inline-flex items-center rounded-full border border-primary/12 bg-white/88 px-3 py-1 text-sm font-semibold text-primary shadow-sm">
               실시간 등록 게시물
             </div>
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-3">
-                <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div className="space-y-2.5">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl lg:text-4xl">
                   {title}
                 </h1>
-                <p className="max-w-2xl text-base leading-7 text-muted-foreground">
+                <p className="max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
                   {description}
                 </p>
               </div>
@@ -362,14 +362,14 @@ export default function ItemsPage() {
         </div>
       </section>
 
-      <section className="pb-16 pt-10">
+      <section className="pb-16 pt-6 md:pt-8">
         <div className="container mx-auto max-w-6xl px-5">
           <div className="space-y-6">
             <form
               onSubmit={handleFilterSubmit}
-              className="rounded-[28px] border border-border/70 bg-white/92 p-5 shadow-[0_20px_40px_-32px_rgba(27,31,59,0.2)]"
+              className="rounded-[22px] border border-border/70 bg-white/92 p-4 shadow-[0_16px_34px_-30px_rgba(27,31,59,0.18)] md:p-5"
             >
-              <div className="flex flex-col gap-5">
+              <div className="flex flex-col gap-4">
                 <input id="items-filter-toggle" type="checkbox" className="peer sr-only" />
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-1">
@@ -378,7 +378,7 @@ export default function ItemsPage() {
                       게시글 필터
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      카테고리, 색상, 날짜, 정렬 기준으로 목록을 좁혀보세요.
+                      필요한 조건만 빠르게 적용하세요.
                     </p>
                   </div>
                   <div className="flex items-center gap-2 self-start lg:self-auto">
@@ -399,11 +399,11 @@ export default function ItemsPage() {
 
                 <div
                   className={cn(
-                    "filter-fields hidden gap-4 peer-checked:grid md:grid md:grid-cols-2 xl:grid-cols-3"
+                    "filter-fields hidden gap-3 peer-checked:grid md:grid md:grid-cols-2 xl:grid-cols-4"
                   )}
                 >
                   <div className="space-y-2">
-                    <label htmlFor="category-filter" className="text-sm font-medium text-foreground">
+                    <label htmlFor="category-filter" className="text-xs font-semibold text-foreground">
                       카테고리
                     </label>
                     <Input
@@ -416,12 +416,12 @@ export default function ItemsPage() {
                         }))
                       }
                       placeholder="예: 지갑"
-                      className="rounded-2xl"
+                      className="h-10 rounded-xl"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label htmlFor="color-filter" className="text-sm font-medium text-foreground">
+                    <label htmlFor="color-filter" className="text-xs font-semibold text-foreground">
                       색상
                     </label>
                     <Input
@@ -434,12 +434,12 @@ export default function ItemsPage() {
                         }))
                       }
                       placeholder="예: 검정"
-                      className="rounded-2xl"
+                      className="h-10 rounded-xl"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label htmlFor="location-filter" className="text-sm font-medium text-foreground">
+                    <label htmlFor="location-filter" className="text-xs font-semibold text-foreground">
                       지역
                     </label>
                     <Input
@@ -452,7 +452,7 @@ export default function ItemsPage() {
                         }))
                       }
                       placeholder="예: 강남역, 서대문구"
-                      className="rounded-2xl"
+                      className="h-10 rounded-xl"
                     />
                     <Select
                       value={
@@ -467,7 +467,7 @@ export default function ItemsPage() {
                         }))
                       }
                     >
-                      <SelectTrigger className="h-10 rounded-2xl">
+                      <SelectTrigger className="h-10 rounded-xl">
                         <SelectValue placeholder="빠른 지역 선택" />
                       </SelectTrigger>
                       <SelectContent>
@@ -481,7 +481,7 @@ export default function ItemsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">반경</label>
+                    <label className="text-xs font-semibold text-foreground">반경</label>
                     <Select
                       value={String(draftFilters.radiusKm)}
                       onValueChange={(value) =>
@@ -492,7 +492,7 @@ export default function ItemsPage() {
                       }
                       disabled={!hasDraftCoordinates}
                     >
-                      <SelectTrigger className="h-11 rounded-2xl">
+                      <SelectTrigger className="h-10 rounded-xl">
                         <SelectValue placeholder="반경 선택" />
                       </SelectTrigger>
                       <SelectContent>
@@ -506,14 +506,14 @@ export default function ItemsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">현재 위치</label>
+                    <label className="text-xs font-semibold text-foreground">현재 위치</label>
                     <div className="flex gap-2">
                       <Button
                         type="button"
                         variant="outline"
                         onClick={handleUseCurrentLocation}
                         disabled={isLocating}
-                        className="h-11 flex-1 rounded-2xl px-4"
+                        className="h-10 flex-1 rounded-xl px-4"
                       >
                         <LocateFixed
                           className={`mr-2 h-4 w-4 ${isLocating ? "animate-pulse" : ""}`}
@@ -526,7 +526,7 @@ export default function ItemsPage() {
                           variant="ghost"
                           size="icon"
                           onClick={handleClearCoordinates}
-                          className="h-11 w-11 rounded-2xl border border-border/70"
+                          className="h-10 w-10 rounded-xl border border-border/70"
                           aria-label="현재 위치 기준 해제"
                         >
                           <MapPin className="h-4 w-4" />
@@ -536,7 +536,7 @@ export default function ItemsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">날짜</label>
+                    <label className="text-xs font-semibold text-foreground">날짜</label>
                     <Select
                       value={draftFilters.dateRange}
                       onValueChange={(value) =>
@@ -546,7 +546,7 @@ export default function ItemsPage() {
                         }))
                       }
                     >
-                      <SelectTrigger className="h-11 rounded-2xl">
+                      <SelectTrigger className="h-10 rounded-xl">
                         <SelectValue placeholder="기간 선택" />
                       </SelectTrigger>
                       <SelectContent>
@@ -560,7 +560,7 @@ export default function ItemsPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">정렬</label>
+                    <label className="text-xs font-semibold text-foreground">정렬</label>
                     <Select
                       value={draftFilters.sort}
                       onValueChange={(value) =>
@@ -570,7 +570,7 @@ export default function ItemsPage() {
                         }))
                       }
                     >
-                      <SelectTrigger className="h-11 rounded-2xl">
+                      <SelectTrigger className="h-10 rounded-xl">
                         <SelectValue placeholder="정렬 선택" />
                       </SelectTrigger>
                       <SelectContent>
@@ -583,15 +583,15 @@ export default function ItemsPage() {
                     </Select>
                   </div>
 
-                  <div className="flex items-end gap-2">
-                    <Button type="submit" className="h-11 flex-1 rounded-2xl px-4">
+                  <div className="flex items-end gap-2 xl:col-span-2">
+                    <Button type="submit" className="h-10 flex-1 rounded-xl px-4">
                       적용
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
                       onClick={handleResetFilters}
-                      className="h-11 rounded-2xl px-4"
+                      className="h-10 rounded-xl px-4"
                     >
                       <RotateCcw className="mr-2 h-4 w-4" />
                       초기화
@@ -668,7 +668,7 @@ export default function ItemsPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {items.map((item) => (
                     <ItemCard key={item.id} item={item} />
                   ))}

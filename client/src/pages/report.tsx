@@ -560,7 +560,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
           onSubmit={form.handleSubmit(onSubmit)}
           className="grid gap-5 min-w-0 xl:grid-cols-[380px_minmax(0,1fr)] xl:items-start"
         >
-          <div className="space-y-5 min-w-0 xl:sticky xl:top-24">
+          <div className="space-y-4 min-w-0 xl:sticky xl:top-24">
             <Card className="overflow-hidden">
               <CardHeader
                 className={cn(
@@ -579,7 +579,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                   사진을 올리면 AI가 물건 특징을 먼저 분석해 줍니다.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="p-5">
+              <CardContent className="p-4">
                 <input
                   type="file"
                   accept="image/*"
@@ -588,8 +588,8 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                   ref={fileInputRef}
                   onChange={handleImageSelect}
                 />
-                <div className="space-y-4">
-                  <div className="rounded-[22px] border border-border/70 bg-secondary/30 p-4">
+                <div className="space-y-3">
+                  <div className="rounded-[18px] border border-border/70 bg-secondary/30 p-3.5">
                     <div className="space-y-1">
                       <div className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-primary shadow-sm">
                         <Images className="h-3.5 w-3.5" />
@@ -617,15 +617,15 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       className={cn(
-                        "group relative overflow-hidden rounded-[22px] border transition-all",
+                        "group relative overflow-hidden rounded-[18px] border transition-all",
                         imagePreviews.length === 0
-                          ? "aspect-[4/3] border-dashed border-primary/35 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] hover:border-primary/55"
+                          ? "aspect-[16/9] border-dashed border-primary/35 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] hover:border-primary/55"
                           : "aspect-square border-border/70 bg-white hover:border-primary/45 hover:shadow-md"
                       )}
                     >
                       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
-                        <div className="mb-3 rounded-full bg-[hsl(var(--primary-light))] p-3 text-primary shadow-sm transition-transform group-hover:scale-105">
-                          <Upload className="h-6 w-6" />
+                        <div className="mb-2 rounded-full bg-[hsl(var(--primary-light))] p-2.5 text-primary shadow-sm transition-transform group-hover:scale-105">
+                          <Upload className="h-5 w-5" />
                         </div>
                         <p className="text-sm font-semibold text-foreground">
                           {imagePreviews.length === 0
