@@ -156,6 +156,7 @@ const lost112SyncResponseSchema = z.object({
   fetchedCount: z.number(),
   createdCount: z.number(),
   updatedCount: z.number(),
+  skippedCount: z.number(),
   embeddedCount: z.number(),
   embeddingFailedCount: z.number(),
   automaticMatchCount: z.number(),

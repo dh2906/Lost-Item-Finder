@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { createHash } from "crypto";
 import passport from "passport";
 import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
@@ -13,6 +14,8 @@ import { and, eq, ne, or, desc, asc, isNull } from "drizzle-orm";
 import {
   chatRooms,
   chatMessages,
+  items,
+  itemEmbeddings,
   itemMatches,
   matchNotifications,
   updateItemMatchStatusSchema,
@@ -319,6 +322,7 @@ type Lost112SyncResult = {
   fetchedCount: number;
   createdCount: number;
   updatedCount: number;
+  skippedCount: number;
   embeddedCount: number;
   embeddingFailedCount: number;
   automaticMatchCount: number;
@@ -584,6 +588,50 @@ function parseLost112Date(value?: string): Date | null {
   return parsed;
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function createLost112PayloadHash(item: Lost112NormalizedItem): string {
+  return createHash("sha256").update(stableStringify(item)).digest("hex");
+}
+
+async function getLost112SyncState(externalId: string): Promise<{
+  item: Item;
+  hasEmbedding: boolean;
+} | null> {
+  const [row] = await db
+    .select({
+      item: items,
+      embeddingItemId: itemEmbeddings.itemId,
+    })
+    .from(items)
+    .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
+    .where(
+      and(
+        eq(items.externalSource, LOST112_SOURCE),
+        eq(items.externalId, externalId)
+      )
+    )
+    .limit(1);
+
+  return row
+    ? {
+        item: row.item,
+        hasEmbedding: row.embeddingItemId !== null,
+      }
+    : null;
+}
+
 function normalizeLost112ToExternalFoundItem(
   item: Lost112NormalizedItem
 ): ExternalFoundItemInput | null {
@@ -635,6 +683,7 @@ function normalizeLost112ToExternalFoundItem(
     externalId: `${atcId}:${fdSn}`,
     externalUrl: getLost112DetailUrl(item),
     externalPayload: { ...item },
+    externalPayloadHash: createLost112PayloadHash(item),
     title,
     description: descriptionParts.join("\n"),
     imageUrl,
@@ -744,12 +793,30 @@ async function runLost112Sync({
 
   let createdCount = 0;
   let updatedCount = 0;
+  let skippedCount = 0;
   let embeddedCount = 0;
   let embeddingFailedCount = 0;
   let automaticMatchCount = 0;
   const syncedItems: Item[] = [];
 
   for (const lost112Item of fetchedItems) {
+    const atcId = lost112Item.atcId?.trim();
+    if (!atcId) {
+      continue;
+    }
+    const fdSn = lost112Item.fdSn?.trim() || "1";
+    const externalId = `${atcId}:${fdSn}`;
+    const payloadHash = createLost112PayloadHash(lost112Item);
+    const existingState = await getLost112SyncState(externalId);
+    if (
+      existingState?.item.externalPayloadHash === payloadHash &&
+      existingState.hasEmbedding
+    ) {
+      skippedCount += 1;
+      syncedItems.push(existingState.item);
+      continue;
+    }
+
     const externalItem = await normalizeLost112ExternalFoundItemWithAi(
       lost112Item
     );
@@ -791,6 +858,7 @@ async function runLost112Sync({
     fetchedCount: fetchedItems.length,
     createdCount,
     updatedCount,
+    skippedCount,
     embeddedCount,
     embeddingFailedCount,
     automaticMatchCount,

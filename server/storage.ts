@@ -103,6 +103,7 @@ export interface ExternalFoundItemInput {
   externalId: string;
   externalUrl?: string | null;
   externalPayload?: Record<string, unknown> | null;
+  externalPayloadHash?: string | null;
   title: string;
   description?: string | null;
   imageUrl?: string | null;
@@ -467,6 +468,7 @@ export class DatabaseStorage implements IStorage {
       externalId: input.externalId,
       externalUrl: input.externalUrl ?? null,
       externalPayload: input.externalPayload ?? null,
+      externalPayloadHash: input.externalPayloadHash ?? null,
     } satisfies typeof items.$inferInsert;
 
     const [savedItem] = await db
@@ -498,6 +500,7 @@ export class DatabaseStorage implements IStorage {
         externalId: items.externalId,
         externalUrl: items.externalUrl,
         externalPayload: items.externalPayload,
+        externalPayloadHash: items.externalPayloadHash,
         created: sql<boolean>`xmax = 0`,
       });
 

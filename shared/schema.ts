@@ -51,6 +51,7 @@ export const items = pgTable(
     externalId: text("external_id"),
     externalUrl: text("external_url"),
     externalPayload: jsonb("external_payload").$type<Record<string, unknown>>(),
+    externalPayloadHash: text("external_payload_hash"),
   },
   (table) => ({
     externalSourceIdUnique: uniqueIndex("items_external_source_id_unique").on(
