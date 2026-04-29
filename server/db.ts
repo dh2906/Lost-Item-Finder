@@ -98,6 +98,21 @@ export async function ensureItemMatchSchema(): Promise<void> {
   );
 }
 
+export async function ensureExternalItemSchema(): Promise<void> {
+  await pool.query(`
+    ALTER TABLE items
+    ADD COLUMN IF NOT EXISTS external_source text,
+    ADD COLUMN IF NOT EXISTS external_id text,
+    ADD COLUMN IF NOT EXISTS external_url text,
+    ADD COLUMN IF NOT EXISTS external_payload jsonb,
+    ADD COLUMN IF NOT EXISTS external_payload_hash text;
+  `);
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS items_external_source_id_unique
+    ON items (external_source, external_id);
+  `);
+}
+
 export async function ensureLost112SyncRunSchema(): Promise<void> {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS lost112_sync_runs (

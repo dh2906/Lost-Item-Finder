@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import {
   ensureChatSchema,
+  ensureExternalItemSchema,
   ensureItemImageSchema,
   ensureItemMatchSchema,
   ensureLost112SyncRunSchema,
@@ -136,6 +137,7 @@ app.use((req, res, next) => {
   await ensureItemImageSchema();
   await ensureChatSchema();
   await ensureItemMatchSchema();
+  await ensureExternalItemSchema();
   await ensureLost112SyncRunSchema();
   log("database schema ready");
 
