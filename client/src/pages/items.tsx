@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import {
+  ChevronDown,
   Filter,
   LocateFixed,
   MapPin,
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { ItemCard } from "@/components/item-card";
 import { useItems } from "@/hooks/use-items";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -189,6 +191,7 @@ export default function ItemsPage() {
     getFiltersFromSearch(window.location.search)
   );
   const [isLocating, setIsLocating] = useState(false);
+  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const hasDraftCoordinates =
     draftFilters.latitude !== undefined && draftFilters.longitude !== undefined;
 
@@ -368,7 +371,7 @@ export default function ItemsPage() {
               className="rounded-[28px] border border-border/70 bg-white/92 p-5 shadow-[0_20px_40px_-32px_rgba(27,31,59,0.2)]"
             >
               <div className="flex flex-col gap-5">
-                <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <Filter className="h-4 w-4 text-primary" />
@@ -378,14 +381,36 @@ export default function ItemsPage() {
                       카테고리, 색상, 날짜, 정렬 기준으로 목록을 좁혀보세요.
                     </p>
                   </div>
-                  {hasActiveFilters ? (
-                    <div className="inline-flex items-center self-start rounded-full bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary lg:self-auto">
-                      적용된 필터 {activeFilterCount}개
-                    </div>
-                  ) : null}
+                  <div className="flex items-center gap-2 self-start lg:self-auto">
+                    {hasActiveFilters ? (
+                      <div className="inline-flex items-center rounded-full bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
+                        적용된 필터 {activeFilterCount}개
+                      </div>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full md:hidden"
+                      onClick={() => setIsFilterExpanded((current) => !current)}
+                    >
+                      {isFilterExpanded ? "접기" : "필터 열기"}
+                      <ChevronDown
+                        className={cn(
+                          "ml-1 h-4 w-4 transition-transform",
+                          isFilterExpanded && "rotate-180"
+                        )}
+                      />
+                    </Button>
+                  </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div
+                  className={cn(
+                    "gap-4 md:grid md:grid-cols-2 xl:grid-cols-3",
+                    isFilterExpanded ? "grid" : "hidden"
+                  )}
+                >
                   <div className="space-y-2">
                     <label htmlFor="category-filter" className="text-sm font-medium text-foreground">
                       카테고리

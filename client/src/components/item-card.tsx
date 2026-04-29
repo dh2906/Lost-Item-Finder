@@ -18,6 +18,8 @@ import { getPrimaryItemImageUrl } from "@shared/item-images";
 import type { Item } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
+const INTERNAL_TAGS = new Set(["lost112", "police", "경찰청"]);
+
 interface ItemCardProps {
   item: Item;
   score?: number;
@@ -45,6 +47,34 @@ export function getDisplayTitle(item: Item) {
   return item.reportType === "found" ? "등록된 습득물" : "등록된 분실물";
 }
 
+function isPlaceholderImageUrl(imageUrl?: string): boolean {
+  if (!imageUrl) {
+    return false;
+  }
+  const normalized = imageUrl.toLowerCase();
+  return (
+    normalized.includes("noimage") ||
+    normalized.includes("no_img") ||
+    normalized.includes("no-image") ||
+    normalized.includes("ready") ||
+    normalized.includes("placeholder")
+  );
+}
+
+function splitLocation(location?: string | null): {
+  primary: string;
+  secondary?: string;
+} | null {
+  if (!location) {
+    return null;
+  }
+  const [primary, ...rest] = location.split(" - ").map((value) => value.trim());
+  return {
+    primary,
+    secondary: rest.join(" - ") || undefined,
+  };
+}
+
 export function ItemCard({
   item,
   score,
@@ -59,8 +89,12 @@ export function ItemCard({
   const statusLabel = item.status === "resolved" ? "해결 완료" : "진행 중";
   const isCompact = variant === "compact" || variant === "list";
   const displayTitle = getDisplayTitle(item);
-  const primaryImageUrl = getPrimaryItemImageUrl(item);
   const isLost112Item = item.externalSource === "lost112";
+  const primaryImageUrl = getPrimaryItemImageUrl(item);
+  const shouldShowImage =
+    primaryImageUrl && !(isLost112Item && isPlaceholderImageUrl(primaryImageUrl));
+  const displayLocation = splitLocation(item.location);
+  const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
 
   const getMatchBadge = (scoreValue?: number) => {
     if (scoreValue === undefined) return null;
@@ -109,15 +143,22 @@ export function ItemCard({
               isCompact ? "aspect-[5/4]" : "aspect-[4/3]"
             )}
           >
-            {primaryImageUrl ? (
+            {shouldShowImage ? (
               <img
                 src={primaryImageUrl}
                 alt={displayTitle}
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <TagIcon className="h-10 w-10 text-primary/25" />
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-primary/6 via-white to-sky-50 text-center">
+                <div className="rounded-2xl border border-primary/10 bg-white/85 p-3 shadow-sm">
+                  <TagIcon className="h-7 w-7 text-primary/45" />
+                </div>
+                {!isCompact ? (
+                  <span className="text-xs font-medium text-muted-foreground">
+                    사진 없음
+                  </span>
+                ) : null}
               </div>
             )}
 
@@ -133,17 +174,19 @@ export function ItemCard({
                 {reportLabel}
               </Badge>
 
-              <Badge
-                variant="outline"
-                className={cn(
-                  "border font-medium shadow-sm",
-                  item.status === "resolved"
-                    ? "border-slate-300 bg-white/95 text-slate-700"
-                    : "border-amber-200 bg-amber-50/95 text-amber-700"
-                )}
-              >
-                {statusLabel}
-              </Badge>
+              {item.status === "resolved" || !isLost112Item ? (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "border font-medium shadow-sm",
+                    item.status === "resolved"
+                      ? "border-slate-300 bg-white/95 text-slate-700"
+                      : "border-amber-200 bg-amber-50/95 text-amber-700"
+                  )}
+                >
+                  {statusLabel}
+                </Badge>
+              ) : null}
 
               {isLost112Item ? (
                 <Badge
@@ -151,7 +194,7 @@ export function ItemCard({
                   className="border-sky-200 bg-sky-50/95 font-medium text-sky-700 shadow-sm"
                 >
                   <ShieldCheck className="mr-1 h-3 w-3" />
-                  경찰청 등록
+                  경찰청
                 </Badge>
               ) : null}
 
@@ -191,11 +234,18 @@ export function ItemCard({
               </h3>
 
               <div className="flex flex-col gap-1.5 pt-0.5 text-sm text-slate-600">
-                {item.location ? (
-                  <div className="flex items-center gap-2 leading-none">
+                {displayLocation ? (
+                  <div className="flex items-start gap-2 leading-snug">
                     <MapPin className="h-3.5 w-3.5 shrink-0 text-primary/50" />
-                    <span className="truncate pt-px font-medium text-slate-600">
-                      {item.location}
+                    <span className="min-w-0 pt-px">
+                      <span className="block truncate font-semibold text-slate-700">
+                        {displayLocation.primary}
+                      </span>
+                      {displayLocation.secondary ? (
+                        <span className="block truncate text-xs font-medium text-slate-500">
+                          {displayLocation.secondary}
+                        </span>
+                      ) : null}
                     </span>
                   </div>
                 ) : null}
@@ -214,9 +264,9 @@ export function ItemCard({
               </div>
             </div>
 
-            {!isCompact && item.tags && item.tags.length > 0 ? (
+            {!isCompact && visibleTags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {item.tags.slice(0, 3).map((tag) => (
+                {visibleTags.slice(0, 2).map((tag) => (
                   <span
                     key={tag}
                     className="inline-flex items-center rounded-full bg-[hsl(var(--primary-light))] px-2.5 py-1 text-xs font-medium text-primary/80"
@@ -224,9 +274,9 @@ export function ItemCard({
                     {tag}
                   </span>
                 ))}
-                {item.tags.length > 3 ? (
+                {visibleTags.length > 2 ? (
                   <span className="inline-flex items-center rounded-full bg-[hsl(var(--primary-light))] px-2.5 py-1 text-xs font-medium text-primary/80">
-                    +{item.tags.length - 3}
+                    +{visibleTags.length - 2}
                   </span>
                 ) : null}
               </div>

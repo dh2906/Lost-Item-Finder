@@ -34,6 +34,19 @@ import {
 import { cn } from "@/lib/utils";
 import { normalizeItemImageUrls } from "@shared/item-images";
 
+const INTERNAL_TAGS = new Set(["lost112", "police", "경찰청"]);
+
+function isPlaceholderImageUrl(imageUrl: string): boolean {
+  const normalized = imageUrl.toLowerCase();
+  return (
+    normalized.includes("noimage") ||
+    normalized.includes("no_img") ||
+    normalized.includes("no-image") ||
+    normalized.includes("ready") ||
+    normalized.includes("placeholder")
+  );
+}
+
 export default function ItemDetail() {
   const [, params] = useRoute("/item/:id");
   const id = params?.id ? parseInt(params.id, 10) : 0;
@@ -51,7 +64,12 @@ export default function ItemDetail() {
   const updateMatchStatus = useUpdateMatchStatus();
   const [carouselApi, setCarouselApi] = useState<CarouselApi>();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const itemImageUrls = item ? normalizeItemImageUrls(item) : [];
+  const isLost112Item = item?.externalSource === "lost112";
+  const itemImageUrls = item
+    ? normalizeItemImageUrls(item).filter(
+        (imageUrl) => !(isLost112Item && isPlaceholderImageUrl(imageUrl))
+      )
+    : [];
 
   useEffect(() => {
     if (!carouselApi) {
@@ -104,7 +122,7 @@ export default function ItemDetail() {
   }
 
   const isOwner = item.userId !== null && item.userId === user?.id;
-  const isLost112Item = item.externalSource === "lost112";
+  const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
 
   const handleMatchStatus = async (
     matchId: number,
@@ -270,14 +288,14 @@ export default function ItemDetail() {
             )}
 
             {isLost112Item && item.externalUrl ? (
-              <Card className="border-sky-100 bg-sky-50/70">
+              <Card className="border-sky-100 bg-sky-50/80">
                 <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold text-sky-800">
-                      경찰청 유실물 통합포털 등록 물건
+                      수령과 보관 정보는 경찰청 원문에서 확인하세요
                     </p>
                     <p className="mt-1 text-xs text-sky-700/80">
-                      원문 페이지에서 보관 기관과 접수 정보를 확인할 수 있습니다.
+                      Findy가 수집한 외부 데이터입니다. 실제 보관 상태와 연락처는 원문이 기준입니다.
                     </p>
                   </div>
                   <Button asChild variant="outline" className="rounded-full border-sky-200 bg-white text-sky-700 hover:bg-sky-50">
@@ -290,7 +308,7 @@ export default function ItemDetail() {
               </Card>
             ) : null}
 
-            {(item.itemCategory || item.color || (item.tags && item.tags.length > 0)) && (
+            {(item.itemCategory || item.color || visibleTags.length > 0) && (
                <Card className="border-border/70 bg-white/90">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg">추가 정보</CardTitle>
@@ -311,11 +329,11 @@ export default function ItemDetail() {
                     )}
                   </div>
 
-                  {item.tags && item.tags.length > 0 && (
+                  {visibleTags.length > 0 && (
                     <div>
                       <p className="mb-2 text-sm font-medium">태그</p>
                       <div className="flex flex-wrap gap-1.5">
-                        {item.tags.map((tag) => (
+                        {visibleTags.map((tag) => (
                           <Badge key={tag} variant="secondary" className="rounded-full border border-border/70 bg-muted/70 px-2.5">
                             {tag}
                           </Badge>
@@ -459,13 +477,24 @@ export default function ItemDetail() {
 
              <Card className="border-border/70 bg-white/90">
               <CardHeader className="pb-4">
-                <CardTitle className="text-lg">이 물건이 당신의 것인가요?</CardTitle>
+                <CardTitle className="text-lg">
+                  {isLost112Item ? "경찰청에 등록된 물건입니다" : "이 물건이 당신의 것인가요?"}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="mb-4 text-sm leading-6 text-muted-foreground">
-                  상세 정보를 확인하고 연락해 주세요.
+                  {isLost112Item
+                    ? "수령 가능 여부와 보관 기관 연락처는 경찰청 원문에서 먼저 확인하세요."
+                    : "상세 정보를 확인하고 연락해 주세요."}
                 </p>
-                {item.contactInfo ? (
+                {isLost112Item && item.externalUrl ? (
+                  <Button asChild className="w-full rounded-full">
+                    <a href={item.externalUrl} target="_blank" rel="noreferrer">
+                      경찰청 원문 확인
+                      <ExternalLink className="ml-1.5 h-4 w-4" />
+                    </a>
+                  </Button>
+                ) : item.contactInfo ? (
                    <div className="flex items-center gap-2 rounded-[22px] border border-border/70 bg-secondary/40 p-4">
                      <Mail className="h-4 w-4 text-primary" />
                      <span className="font-medium">{item.contactInfo}</span>
