@@ -3401,6 +3401,8 @@ export async function registerRoutes(
             ? req.query.dateRange
             : undefined,
         sort: typeof req.query.sort === "string" ? req.query.sort : undefined,
+        page: typeof req.query.page === "string" ? req.query.page : undefined,
+        limit: typeof req.query.limit === "string" ? req.query.limit : undefined,
       });
       const itemsList = await storage.getItems(filters);
       res.json(itemsList);

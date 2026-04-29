@@ -52,7 +52,8 @@ const actions = [
 
 export default function Home() {
   const [tab, setTab] = useState<"found" | "lost">("found");
-  const { data: items, isLoading } = useItems({ type: tab });
+  const { data: itemsResult, isLoading } = useItems({ type: tab, limit: 5 });
+  const items = itemsResult?.items ?? [];
   const emptyLabel = tab === "found" ? "습득물" : "분실물";
   const sectionTitle = tab === "found" ? "방금 등록된 습득물을 확인해보세요" : "방금 등록된 분실물을 확인해보세요";
   const sectionDescription = "실제로 등록된 게시물을 바로 살펴보고 내 물건과 비슷한 글이 있는지 한눈에 확인해보세요.";
@@ -231,7 +232,7 @@ export default function Home() {
                    <div key={i} className="h-[290px] animate-pulse rounded-[26px] bg-muted" />
                  ))}
                </div>
-             ) : !items || items.length === 0 ? (
+             ) : items.length === 0 ? (
                <div className="flex flex-col items-center justify-center rounded-[28px] border border-border/70 bg-background px-6 py-16 text-center">
                  <div className="mb-5 rounded-[22px] bg-muted p-5">
                    <PackageOpen className="h-10 w-10 text-muted-foreground/50" />

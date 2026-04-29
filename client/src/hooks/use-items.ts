@@ -33,6 +33,8 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
   if (filters?.radiusKm !== undefined) queryParams.set("radiusKm", String(filters.radiusKm));
   if (filters?.dateRange) queryParams.set("dateRange", filters.dateRange);
   if (filters?.sort) queryParams.set("sort", filters.sort);
+  if (filters?.page) queryParams.set("page", String(filters.page));
+  if (filters?.limit) queryParams.set("limit", String(filters.limit));
   
   const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
   const url = `${api.items.list.path}${queryString}`;

@@ -192,7 +192,15 @@ export interface IStorage {
     radiusKm?: number;
     dateRange?: "all" | "7d" | "30d" | "90d";
     sort?: "latest" | "oldest";
-  }): Promise<Item[]>;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    items: Item[];
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>;
   getMyItems(
     userId: number,
     filters?: { type?: "lost" | "found"; status?: ItemStatus }
@@ -323,13 +331,23 @@ export class DatabaseStorage implements IStorage {
     radiusKm?: number;
     dateRange?: "all" | "7d" | "30d" | "90d";
     sort?: "latest" | "oldest";
-  }): Promise<Item[]> {
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    items: Item[];
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const conditions = [eq(items.status, "active" as const)];
     const search = filters?.search?.trim();
     const category = filters?.category?.trim();
     const color = filters?.color?.trim();
     const location = filters?.location?.trim();
     const sort = filters?.sort ?? "latest";
+    const page = Math.max(1, filters?.page ?? 1);
+    const limit = Math.min(Math.max(1, filters?.limit ?? 24), 60);
     const hasCoordinates =
       typeof filters?.latitude === "number" && typeof filters?.longitude === "number";
     const radiusKm = filters?.radiusKm ?? DEFAULT_LOCATION_RADIUS_KM;
@@ -402,15 +420,33 @@ export class DatabaseStorage implements IStorage {
       conditions.push(gte(items.date, startDate));
     }
 
-    return await db
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const [{ totalCount }] = await db
+      .select({ totalCount: sql<number>`count(*)::int` })
+      .from(items)
+      .where(whereClause);
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    const currentPage = Math.min(page, totalPages);
+    const currentOffset = (currentPage - 1) * limit;
+    const pageItems = await db
       .select()
       .from(items)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(whereClause)
       .orderBy(
         ...(distanceKm ? [asc(distanceKm)] : []),
         sort === "oldest" ? asc(items.date) : desc(items.date),
         sort === "oldest" ? asc(items.id) : desc(items.id)
-      );
+      )
+      .limit(limit)
+      .offset(currentOffset);
+
+    return {
+      items: pageItems,
+      totalCount,
+      page: currentPage,
+      limit,
+      totalPages,
+    };
   }
 
   async getMyItems(

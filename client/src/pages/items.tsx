@@ -9,6 +9,8 @@ import {
   PlusCircle,
   RotateCcw,
   Search as SearchIcon,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -29,6 +31,7 @@ import {
 type ItemTab = "found" | "lost";
 type ItemDateRange = "all" | "7d" | "30d" | "90d";
 type ItemSortOrder = "latest" | "oldest";
+const ITEMS_PAGE_SIZE = 24;
 
 type ItemsPageFilters = {
   type: ItemTab;
@@ -40,6 +43,7 @@ type ItemsPageFilters = {
   radiusKm: number;
   dateRange: ItemDateRange;
   sort: ItemSortOrder;
+  page: number;
 };
 
 const DEFAULT_FILTERS = {
@@ -51,6 +55,7 @@ const DEFAULT_FILTERS = {
   radiusKm: 5,
   dateRange: "all" as const,
   sort: "latest" as const,
+  page: 1,
 };
 
 const dateRangeOptions: Array<{ value: ItemDateRange; label: string }> = [
@@ -115,6 +120,11 @@ function getValidRadiusKm(value: string | null): number {
     : DEFAULT_FILTERS.radiusKm;
 }
 
+function getValidPage(value: string | null): number {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
 function getFiltersFromSearch(search: string): ItemsPageFilters {
   const params = new URLSearchParams(search);
   const latitude = getValidCoordinate(params.get("latitude"), -90, 90);
@@ -131,6 +141,7 @@ function getFiltersFromSearch(search: string): ItemsPageFilters {
     radiusKm: getValidRadiusKm(params.get("radiusKm")),
     dateRange: getValidDateRange(params.get("dateRange")),
     sort: getValidSortOrder(params.get("sort")),
+    page: getValidPage(params.get("page")),
   };
 }
 
@@ -167,6 +178,10 @@ function buildItemsUrl(filters: ItemsPageFilters): string {
     params.set("sort", filters.sort);
   }
 
+  if (filters.page > 1) {
+    params.set("page", String(filters.page));
+  }
+
   return `/items?${params.toString()}`;
 }
 
@@ -194,7 +209,7 @@ export default function ItemsPage() {
   const hasDraftCoordinates =
     draftFilters.latitude !== undefined && draftFilters.longitude !== undefined;
 
-  const { data: items, isLoading } = useItems({
+  const { data: itemsResult, isLoading, isFetching } = useItems({
     type: filters.type,
     category: filters.category || undefined,
     color: filters.color || undefined,
@@ -207,7 +222,13 @@ export default function ItemsPage() {
         : undefined,
     dateRange: filters.dateRange === "all" ? undefined : filters.dateRange,
     sort: filters.sort === "latest" ? undefined : filters.sort,
+    page: filters.page,
+    limit: ITEMS_PAGE_SIZE,
   });
+  const items = itemsResult?.items ?? [];
+  const totalCount = itemsResult?.totalCount ?? 0;
+  const totalPages = itemsResult?.totalPages ?? 1;
+  const currentPage = itemsResult?.page ?? filters.page;
 
   useEffect(() => {
     const syncFiltersFromUrl = () => {
@@ -252,6 +273,7 @@ export default function ItemsPage() {
     applyFilters({
       ...filters,
       type: nextType,
+      page: 1,
     });
   };
 
@@ -260,6 +282,7 @@ export default function ItemsPage() {
     applyFilters({
       ...draftFilters,
       type: filters.type,
+      page: 1,
     });
   };
 
@@ -268,6 +291,15 @@ export default function ItemsPage() {
       type: filters.type,
       ...DEFAULT_FILTERS,
     });
+  };
+
+  const handlePageChange = (page: number) => {
+    const nextPage = Math.min(Math.max(1, page), totalPages);
+    applyFilters({
+      ...filters,
+      page: nextPage,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleUseCurrentLocation = () => {
@@ -607,7 +639,7 @@ export default function ItemsPage() {
                   <div key={index} className="h-[290px] animate-pulse rounded-[26px] bg-muted" />
                 ))}
               </div>
-            ) : !items || items.length === 0 ? (
+            ) : items.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
                 <div className="mb-4 rounded-full border border-border/70 bg-white p-4 shadow-sm">
                   <PackageOpen className="h-8 w-8 text-muted-foreground/55" />
@@ -648,10 +680,18 @@ export default function ItemsPage() {
                   <h2 className="flex items-center gap-3 text-2xl font-bold text-foreground">
                     전체 게시물
                     <span className="inline-flex items-center justify-center rounded-full bg-accent px-3 py-0.5 text-sm font-bold text-primary">
-                      {items.length}건
+                      {totalCount.toLocaleString()}건
                     </span>
                   </h2>
                   <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center rounded-full border border-border/70 bg-white px-3 py-1 text-xs font-semibold text-muted-foreground shadow-sm">
+                      {currentPage}/{totalPages}페이지
+                    </span>
+                    {isFetching ? (
+                      <span className="inline-flex items-center rounded-full border border-primary/15 bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
+                        새 목록 불러오는 중
+                      </span>
+                    ) : null}
                     {hasActiveFilters ? (
                       <span className="inline-flex items-center rounded-full border border-primary/15 bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
                         필터 적용 중
@@ -673,6 +713,39 @@ export default function ItemsPage() {
                     <ItemCard key={item.id} item={item} />
                   ))}
                 </div>
+
+                {totalPages > 1 ? (
+                  <div className="flex flex-col items-center gap-3 border-t border-border/60 pt-5 sm:flex-row sm:justify-between">
+                    <p className="text-sm font-medium text-muted-foreground">
+                      한 페이지에 {ITEMS_PAGE_SIZE}개씩 표시합니다.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handlePageChange(currentPage - 1)}
+                        disabled={currentPage <= 1 || isFetching}
+                        className="h-10 rounded-full px-4"
+                      >
+                        <ChevronLeft className="mr-1 h-4 w-4" />
+                        이전
+                      </Button>
+                      <span className="min-w-20 text-center text-sm font-semibold text-foreground">
+                        {currentPage} / {totalPages}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => handlePageChange(currentPage + 1)}
+                        disabled={currentPage >= totalPages || isFetching}
+                        className="h-10 rounded-full px-4"
+                      >
+                        다음
+                        <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>

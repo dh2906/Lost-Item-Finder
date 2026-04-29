@@ -93,6 +93,14 @@ const adminDashboardResponseSchema = z.object({
   recentItems: z.array(adminItemResponseSchema),
 });
 
+const itemsListResponseSchema = z.object({
+  items: z.array(itemResponseSchema),
+  totalCount: z.number(),
+  page: z.number(),
+  limit: z.number(),
+  totalPages: z.number(),
+});
+
 function getFirstQueryValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -106,6 +114,11 @@ const optionalPositiveIntegerQuerySchema = z.preprocess((value) => {
   const normalizedValue = getFirstQueryValue(value);
   return normalizedValue === undefined ? undefined : normalizedValue;
 }, z.coerce.number().int().positive().optional());
+
+const optionalItemsPageLimitQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return normalizedValue === undefined ? undefined : normalizedValue;
+}, z.coerce.number().int().positive().max(60).optional());
 
 function getOptionalTrimmedQueryValue(value: unknown) {
   const normalizedValue = getFirstQueryValue(value);
@@ -295,6 +308,8 @@ export const api = {
           radiusKm: optionalRadiusKmQuerySchema,
           dateRange: z.enum(itemDateRanges).optional(),
           sort: z.enum(itemSortOrders).optional(),
+          page: optionalPositiveIntegerQuerySchema,
+          limit: optionalItemsPageLimitQuerySchema,
         })
         .superRefine((value, ctx) => {
           const hasLatitude = value.latitude !== undefined;
@@ -318,7 +333,7 @@ export const api = {
         })
         .optional(),
       responses: {
-        200: z.array(itemResponseSchema),
+        200: itemsListResponseSchema,
       },
     },
     mine: {
