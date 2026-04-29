@@ -166,16 +166,13 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
     console.error("[LocationPicker] 렌더링 에러:", error);
     return (
         <div 
-          className="flex items-center justify-center rounded-[var(--radius)] border border-destructive/20 bg-destructive/10"
+          className="flex items-center justify-center rounded-[var(--radius)] border border-border/70 bg-secondary/40"
           style={{ height }}
         >
-        <div className="text-center p-4">
-          <p className="text-destructive mb-2">지도를 불러올 수 없습니다</p>
-          <p className="text-sm text-muted-foreground mb-2">
-            에러: {String(error)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            VITE_KAKAO_MAP_KEY: {import.meta.env.VITE_KAKAO_MAP_KEY ? "설정됨" : "없음"}
+        <div className="max-w-sm px-5 text-center">
+          <p className="font-semibold text-foreground">지도를 불러오지 못했어요</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            장소명은 아래 입력칸에 직접 적어도 등록할 수 있어요. 잠시 후 다시 시도하거나 주소를 자세히 남겨 주세요.
           </p>
         </div>
       </div>

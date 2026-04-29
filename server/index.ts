@@ -18,6 +18,7 @@ const httpServer = createServer(app);
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
 
 app.set("trust proxy", 1);
+app.set("etag", false);
 
 declare module "http" {
   interface IncomingMessage {
@@ -69,6 +70,11 @@ app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
 // ngrok 인터스티셜 페이지 bypass: 크롤러(PWABuilder 등)도 실제 앱에 바로 접근 가능
 app.use((_req, res, next) => {
   res.setHeader("ngrok-skip-browser-warning", "true");
+  next();
+});
+
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
   next();
 });
 

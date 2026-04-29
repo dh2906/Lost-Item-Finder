@@ -481,16 +481,26 @@ export default function ItemDetail() {
              <Card className="border-border/70 bg-white/90">
               <CardHeader className="pb-4">
                 <CardTitle className="text-lg">
-                  {isLost112Item ? "경찰청에 등록된 물건입니다" : "이 물건이 당신의 것인가요?"}
+                  {isOwner
+                    ? "내 게시글 관리"
+                    : isLost112Item
+                      ? "경찰청에 등록된 물건입니다"
+                      : "이 물건이 당신의 것인가요?"}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="mb-4 text-sm leading-6 text-muted-foreground">
-                  {isLost112Item
+                  {isOwner
+                    ? "필요하면 내용을 수정하거나, 마이페이지에서 해결 상태를 관리할 수 있어요."
+                    : isLost112Item
                     ? "수령 가능 여부와 보관 기관 연락처는 경찰청 원문에서 먼저 확인하세요."
                     : "상세 정보를 확인하고 연락해 주세요."}
                 </p>
-                {isLost112Item && item.externalUrl ? (
+                {isOwner ? (
+                  <Button asChild className="w-full rounded-full">
+                    <Link href="/mypage">마이페이지에서 관리</Link>
+                  </Button>
+                ) : isLost112Item && item.externalUrl ? (
                   <Button asChild className="w-full rounded-full">
                     <a href={item.externalUrl} target="_blank" rel="noreferrer">
                       경찰청 원문 확인
@@ -503,13 +513,10 @@ export default function ItemDetail() {
                      <span className="font-medium">{item.contactInfo}</span>
                    </div>
                 ) : (
-                  <Button className="bg-primary text-primary-foreground hover:bg-primary/90">관리자에게 문의</Button>
+                  <div className="rounded-[22px] border border-border/70 bg-secondary/40 p-4 text-sm text-muted-foreground">
+                    공개된 연락 수단이 없어요.
+                  </div>
                 )}
-                {isAuthenticated && item.userId === user?.id ? (
-                  <Button className="mt-3 w-full rounded-full" disabled>
-                    내 게시물입니다.
-                  </Button>
-                ) : null}
                 {isAuthenticated && item.userId && item.userId !== user?.id ? (
                   <div className="mt-3">
                     <ChatButton
