@@ -22,6 +22,13 @@ export OPENAI_EMBEDDING_DIMENSIONS="512"
 export VECTOR_CANDIDATE_COUNT="40"
 export FINAL_RESULT_COUNT="12"
 
+export LOST112_API_KEY="your-public-data-service-key"
+export LOST112_SYNC_ENABLED="true"
+export LOST112_SYNC_INTERVAL_MS="1800000"
+export LOST112_SYNC_INITIAL_DELAY_MS="60000"
+export LOST112_SYNC_NUM_ROWS="50"
+export LOST112_SYNC_MAX_PAGES="1"
+
 export QWEN_API_KEY="your-qwen-key"
 export QWEN_BASE_URL="https://coding-intl.dashscope.aliyuncs.com/v1"
 export QWEN_VISION_MODEL="qwen3.5-plus"

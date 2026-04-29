@@ -310,23 +310,6 @@ export const api = {
     },
   },
   lost112: {
-    items: {
-      method: "GET" as const,
-      path: "/api/lost112/items" as const,
-      input: z.object({
-        category: optionalQueryStringSchema,
-        region: optionalQueryStringSchema,
-        startDate: optionalQueryStringSchema,
-        endDate: optionalQueryStringSchema,
-        page: optionalPositiveIntegerQuerySchema,
-        numOfRows: optionalPositiveIntegerQuerySchema,
-      }),
-      responses: {
-        200: lost112ItemsResponseSchema,
-        400: errorSchemas.validation,
-        500: errorSchemas.internal,
-      },
-    },
     sync: {
       method: "POST" as const,
       path: "/api/lost112/sync" as const,
@@ -520,11 +503,6 @@ export type ItemResponse = z.infer<(typeof api.items.create.responses)[201]>;
 export type ItemsListResponse = z.infer<(typeof api.items.list.responses)[200]>;
 export type ItemsListFilters = NonNullable<z.infer<typeof api.items.list.input>>;
 export type MyItemsResponse = z.infer<(typeof api.items.mine.responses)[200]>;
-export type Lost112ItemsInput = z.infer<typeof api.lost112.items.input>;
-export type Lost112ItemsResponse = z.infer<
-  (typeof api.lost112.items.responses)[200]
->;
-export type Lost112ItemResponse = Lost112ItemsResponse["items"][number];
 export type Lost112SyncInput = z.infer<typeof api.lost112.sync.input>;
 export type Lost112SyncResponse = z.infer<
   (typeof api.lost112.sync.responses)[200]

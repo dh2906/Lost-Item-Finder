@@ -88,21 +88,15 @@ const AUTO_MATCH_MIN_CATEGORY_SCORE = Number(
   process.env.AUTO_MATCH_MIN_CATEGORY_SCORE ?? 0.2
 );
 const AUTO_MATCH_MAX_RESULTS = Number(process.env.AUTO_MATCH_MAX_RESULTS ?? 12);
-const LOST112_SEARCH_SYNC_ROWS = Number(
-  process.env.LOST112_SEARCH_SYNC_ROWS ?? 10
+const LOST112_SYNC_ENABLED = process.env.LOST112_SYNC_ENABLED !== "false";
+const LOST112_SYNC_INTERVAL_MS = Number(
+  process.env.LOST112_SYNC_INTERVAL_MS ?? 1000 * 60 * 30
 );
-const LOST112_SEARCH_TERM_LIMIT = Number(
-  process.env.LOST112_SEARCH_TERM_LIMIT ?? 2
+const LOST112_SYNC_INITIAL_DELAY_MS = Number(
+  process.env.LOST112_SYNC_INITIAL_DELAY_MS ?? 1000 * 60
 );
-const LOST112_SEARCH_SYNC_TIMEOUT_MS = Number(
-  process.env.LOST112_SEARCH_SYNC_TIMEOUT_MS ?? 4500
-);
-const LOST112_SEARCH_FETCH_TIMEOUT_MS = Number(
-  process.env.LOST112_SEARCH_FETCH_TIMEOUT_MS ?? 2500
-);
-const LOST112_SEARCH_EMBEDDING_LIMIT = Number(
-  process.env.LOST112_SEARCH_EMBEDDING_LIMIT ?? 6
-);
+const LOST112_SYNC_NUM_ROWS = Number(process.env.LOST112_SYNC_NUM_ROWS ?? 50);
+const LOST112_SYNC_MAX_PAGES = Number(process.env.LOST112_SYNC_MAX_PAGES ?? 1);
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -308,6 +302,27 @@ type Lost112FetchedPage = {
   totalCount: number;
   pageNo: number;
   numOfRows: number;
+};
+
+type Lost112SyncOptions = {
+  apiKey: string;
+  category?: string;
+  region?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  numOfRows?: number;
+  maxPages?: number;
+};
+
+type Lost112SyncResult = {
+  fetchedCount: number;
+  createdCount: number;
+  updatedCount: number;
+  embeddedCount: number;
+  embeddingFailedCount: number;
+  automaticMatchCount: number;
+  items: Item[];
 };
 
 const LOST112_SOURCE = "lost112";
@@ -633,34 +648,200 @@ function normalizeLost112ToExternalFoundItem(
   };
 }
 
-const LOST112_ITEM_KEYWORDS = [
-  "지갑",
-  "차 키",
-  "자동차 키",
-  "키",
-  "열쇠",
-  "카드",
-  "신분증",
-  "학생증",
-  "주민등록증",
-  "운전면허증",
-  "휴대폰",
-  "핸드폰",
-  "스마트폰",
-  "이어폰",
-  "에어팟",
-  "가방",
-  "백팩",
-  "노트북",
-  "태블릿",
-  "아이패드",
-  "시계",
-  "반지",
-  "목걸이",
-  "우산",
-  "모자",
-  "옷",
-] as const;
+async function normalizeLost112ExternalFoundItemWithAi(
+  item: Lost112NormalizedItem
+): Promise<ExternalFoundItemInput | null> {
+  const fallbackItem = normalizeLost112ToExternalFoundItem(item);
+  if (!fallbackItem) {
+    return null;
+  }
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: GPT_TEXT_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "너는 경찰청 Lost112 습득물 원천 데이터를 우리 서비스의 검색용 물건 메타데이터로 정규화하는 도우미다.",
+            '반드시 JSON 객체만 반환하고 형식은 {"title":"...","itemCategory":"...","color":"...","size":"...","tags":["..."],"description":"...","location":"..."} 이어야 한다.',
+            "원천 데이터에 없는 사실을 만들어내지 말고, 불확실하면 '알 수 없음' 또는 원천 표현을 보존해라.",
+            "title은 사용자가 물건을 바로 알아볼 수 있는 짧은 한국어 명사구로 작성해라.",
+            "description은 물품명, 색상, 습득 장소, 보관 장소, 담당 기관, 습득일처럼 매칭에 필요한 사실을 자연스러운 한국어 문장으로 정리해라.",
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: [
+            `Lost112 원천 JSON:\n${JSON.stringify(item, null, 2)}`,
+            `현재 fallback JSON:\n${JSON.stringify(fallbackItem, null, 2)}`,
+            "fallback의 externalSource, externalId, externalUrl, externalPayload, imageUrl, imageUrls, date, contactInfo는 유지한다. 검색/매칭 품질에 필요한 텍스트 메타데이터만 더 정확하게 정규화해라.",
+          ].join("\n\n"),
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const content = getCompletionText(
+      response,
+      "Lost112 메타데이터 정규화 응답을 받지 못했습니다"
+    );
+    const normalized = normalizedAnalyzeImageSchema
+      .extend({ location: z.string().min(1).optional() })
+      .parse(JSON.parse(content));
+    const normalizedMetadata = normalizeItemMetadata(normalized);
+
+    return {
+      ...fallbackItem,
+      title: normalizedMetadata.title,
+      description: normalizedMetadata.description,
+      itemCategory: normalizedMetadata.itemCategory,
+      color: normalizedMetadata.color,
+      size: normalizedMetadata.size,
+      tags: Array.from(
+        new Set([
+          ...(fallbackItem.tags ?? []),
+          ...(normalizedMetadata.tags ?? []),
+        ])
+      ),
+      location: normalizedMetadata.location ?? fallbackItem.location,
+    };
+  } catch (error) {
+    console.error("Failed to normalize Lost112 item with AI:", error);
+    return fallbackItem;
+  }
+}
+
+async function runLost112Sync({
+  apiKey,
+  category,
+  region,
+  startDate,
+  endDate,
+  page = 1,
+  numOfRows = 50,
+  maxPages = 1,
+}: Lost112SyncOptions): Promise<Lost112SyncResult> {
+  const fetchedItems: Lost112NormalizedItem[] = [];
+
+  for (let pageOffset = 0; pageOffset < maxPages; pageOffset += 1) {
+    const pageData = await fetchLost112ItemsPage({
+      apiKey,
+      category,
+      region,
+      startDate,
+      endDate,
+      page: page + pageOffset,
+      numOfRows,
+    });
+
+    fetchedItems.push(...pageData.items);
+
+    if (pageData.items.length < pageData.numOfRows) {
+      break;
+    }
+  }
+
+  let createdCount = 0;
+  let updatedCount = 0;
+  let embeddedCount = 0;
+  let embeddingFailedCount = 0;
+  let automaticMatchCount = 0;
+  const syncedItems: Item[] = [];
+
+  for (const lost112Item of fetchedItems) {
+    const externalItem = await normalizeLost112ExternalFoundItemWithAi(
+      lost112Item
+    );
+    if (!externalItem) {
+      continue;
+    }
+
+    const { item, created } = await storage.upsertExternalFoundItem(
+      externalItem
+    );
+    syncedItems.push(item);
+
+    if (created) {
+      createdCount += 1;
+    } else {
+      updatedCount += 1;
+    }
+
+    let itemEmbedding: number[] | undefined;
+    try {
+      itemEmbedding = await ensureItemEmbedding(item);
+      embeddedCount += 1;
+    } catch (embeddingError) {
+      embeddingFailedCount += 1;
+      console.error("Failed to store Lost112 item embedding:", embeddingError);
+    }
+
+    if (item.status === "active" && itemEmbedding !== undefined) {
+      queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
+      try {
+        automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
+      } catch (matchError) {
+        console.error("Failed to match Lost112 item:", matchError);
+      }
+    }
+  }
+
+  return {
+    fetchedCount: fetchedItems.length,
+    createdCount,
+    updatedCount,
+    embeddedCount,
+    embeddingFailedCount,
+    automaticMatchCount,
+    items: syncedItems,
+  };
+}
+
+function startLost112SyncScheduler(): void {
+  const apiKey = process.env.LOST112_API_KEY;
+  if (!LOST112_SYNC_ENABLED || !apiKey) {
+    console.log("[Lost112 Sync] scheduler disabled");
+    return;
+  }
+
+  let isRunning = false;
+  const runScheduledSync = async () => {
+    if (isRunning) {
+      console.warn("[Lost112 Sync] previous job is still running; skipped");
+      return;
+    }
+
+    isRunning = true;
+    try {
+      const result = await runLost112Sync({
+        apiKey,
+        numOfRows: LOST112_SYNC_NUM_ROWS,
+        maxPages: LOST112_SYNC_MAX_PAGES,
+      });
+      console.log("[Lost112 Sync] scheduled job completed:", {
+        fetchedCount: result.fetchedCount,
+        createdCount: result.createdCount,
+        updatedCount: result.updatedCount,
+        embeddedCount: result.embeddedCount,
+        embeddingFailedCount: result.embeddingFailedCount,
+        automaticMatchCount: result.automaticMatchCount,
+      });
+    } catch (error) {
+      console.error("[Lost112 Sync] scheduled job failed:", error);
+    } finally {
+      isRunning = false;
+    }
+  };
+
+  setTimeout(() => {
+    void runScheduledSync();
+  }, Math.max(0, LOST112_SYNC_INITIAL_DELAY_MS));
+
+  setInterval(() => {
+    void runScheduledSync();
+  }, Math.max(1000 * 60, LOST112_SYNC_INTERVAL_MS));
+}
 
 function normalizePlainSearchText(value?: string | null): string {
   return (value ?? "")
@@ -668,28 +849,6 @@ function normalizePlainSearchText(value?: string | null): string {
     .replace(/[^0-9a-zA-Z가-힣\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function extractLost112SearchTerms(queryText: string): string[] {
-  const normalized = normalizePlainSearchText(queryText);
-  if (!normalized) {
-    return [];
-  }
-  const terms = new Set<string>();
-  for (const keyword of LOST112_ITEM_KEYWORDS) {
-    if (normalized.includes(keyword)) {
-      terms.add(keyword);
-    }
-  }
-
-  normalized
-    .split(" ")
-    .filter((token) => token.length >= 2 && token.length <= 12)
-    .filter((token) => !/^\d+$/.test(token))
-    .slice(0, LOST112_SEARCH_TERM_LIMIT)
-    .forEach((token) => terms.add(token));
-
-  return Array.from(terms).slice(0, LOST112_SEARCH_TERM_LIMIT);
 }
 
 function itemMatchesLocationText(item: Item, locationText?: string): boolean {
@@ -707,118 +866,6 @@ function itemMatchesLocationText(item: Item, locationText?: string): boolean {
     .join(" ");
 
   return locationTextMatchesFilter(locationHaystack, locationText);
-}
-
-function getRemainingTimeMs(deadlineAt: number): number {
-  return Math.max(0, deadlineAt - Date.now());
-}
-
-function hasLost112SearchSyncBudget(deadlineAt: number): boolean {
-  return getRemainingTimeMs(deadlineAt) > 250;
-}
-
-async function ensureLost112SearchItemEmbedding(
-  item: Item,
-  created: boolean,
-  deadlineAt: number
-): Promise<{ embedding: number[]; generated: boolean } | undefined> {
-  if (!hasLost112SearchSyncBudget(deadlineAt)) {
-    return undefined;
-  }
-  const normalizedItem = normalizeItemMetadata(item);
-  const content = buildItemSearchText(normalizedItem);
-  const existingEmbedding = created
-    ? undefined
-    : await storage.getItemEmbedding(item.id);
-
-  if (existingEmbedding?.content === content) {
-    return { embedding: existingEmbedding.embedding, generated: false };
-  }
-
-  const remainingMs = getRemainingTimeMs(deadlineAt);
-  if (remainingMs <= 500) {
-    return undefined;
-  }
-  const embedding = await ensureItemEmbedding(
-    item,
-    AbortSignal.timeout(Math.min(remainingMs, LOST112_SEARCH_FETCH_TIMEOUT_MS))
-  );
-  return { embedding, generated: true };
-}
-
-async function syncLost112ItemsForSearch(params: {
-  queryText: string;
-  region?: string;
-}): Promise<Item[]> {
-  const apiKey = process.env.LOST112_API_KEY;
-  if (!apiKey) {
-    return [];
-  }
-  const terms = extractLost112SearchTerms(params.queryText);
-  if (terms.length === 0) {
-    return [];
-  }
-
-  const syncedItems: Item[] = [];
-  const seenExternalIds = new Set<string>();
-  const deadlineAt = Date.now() + LOST112_SEARCH_SYNC_TIMEOUT_MS;
-  let embeddedCount = 0;
-
-  for (const term of terms) {
-    if (!hasLost112SearchSyncBudget(deadlineAt)) {
-      console.warn("Lost112 search sync stopped after reaching time budget");
-      break;
-    }
-    try {
-      const pageData = await fetchLost112ItemsPage({
-        apiKey,
-        category: term,
-        region: params.region,
-        numOfRows: LOST112_SEARCH_SYNC_ROWS,
-        timeoutMs: Math.min(
-          LOST112_SEARCH_FETCH_TIMEOUT_MS,
-          Math.max(500, getRemainingTimeMs(deadlineAt))
-        ),
-      });
-
-      for (const lost112Item of pageData.items) {
-        if (!hasLost112SearchSyncBudget(deadlineAt)) {
-          break;
-        }
-        const externalItem = normalizeLost112ToExternalFoundItem(lost112Item);
-        if (!externalItem || seenExternalIds.has(externalItem.externalId)) {
-          continue;
-        }
-
-        seenExternalIds.add(externalItem.externalId);
-        const { item, created } = await storage.upsertExternalFoundItem(
-          externalItem
-        );
-        syncedItems.push(item);
-
-        if (embeddedCount < LOST112_SEARCH_EMBEDDING_LIMIT) {
-          try {
-            const embedding = await ensureLost112SearchItemEmbedding(
-              item,
-              created,
-              deadlineAt
-            );
-            if (embedding?.generated) {
-              embeddedCount += 1;
-            }
-          } catch (embeddingError) {
-            console.error(
-              "Failed to embed Lost112 search item:",
-              embeddingError
-            );
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`Lost112 search sync skipped for term "${term}":`, error);
-    }
-  }
-  return syncedItems;
 }
 
 function extractCompletionMessageContent(content: unknown): string | null {
@@ -3217,13 +3264,6 @@ export async function registerRoutes(
       }
 
       const queryText = queryParts.join("\n\n").trim();
-      if (req.isAuthenticated() && (!searchCoordinates || searchLocation)) {
-        await syncLost112ItemsForSearch({
-          queryText,
-          region: searchLocation,
-        });
-      }
-
       const queryEmbedding = await createEmbedding(queryText);
       const vectorMatches = await storage.searchItemsByEmbedding(
         "found",
@@ -3605,43 +3645,7 @@ export async function registerRoutes(
     }
   );
 
-  // --- Lost112 (경찰청 습득물) API 프록시 ---
-  app.get(api.lost112.items.path, async (req, res) => {
-    try {
-      const apiKey = process.env.LOST112_API_KEY;
-      if (!apiKey) {
-        return res.status(503).json({
-          message:
-            "Lost112 API 키가 설정되지 않았습니다. .env에 LOST112_API_KEY를 추가해 주세요.",
-        });
-      }
-
-      const {
-        category = "",
-        region = "",
-        startDate = "",
-        endDate = "",
-        page = 1,
-        numOfRows = 20,
-      } = api.lost112.items.input.parse(req.query);
-
-      const pageData = await fetchLost112ItemsPage({
-        apiKey,
-        category,
-        region,
-        startDate,
-        endDate,
-        page,
-        numOfRows,
-      });
-
-      return res.json(pageData);
-    } catch (err) {
-      console.error("[Lost112] 오류:", err);
-      res.status(500).json({ message: getErrorMessage(err) });
-    }
-  });
-
+  // --- Lost112 (경찰청 습득물) 수집 API ---
   app.post(api.lost112.sync.path, isAdmin, async (req, res) => {
     try {
       const apiKey = process.env.LOST112_API_KEY;
@@ -3653,84 +3657,18 @@ export async function registerRoutes(
       }
 
       const input = api.lost112.sync.input.parse(req.body ?? {}) ?? {};
-      const page = input.page ?? 1;
-      const maxPages = input.maxPages ?? 1;
-      const numOfRows = input.numOfRows ?? 50;
-      const fetchedItems: Lost112NormalizedItem[] = [];
-
-      for (let pageOffset = 0; pageOffset < maxPages; pageOffset += 1) {
-        const pageData = await fetchLost112ItemsPage({
-          apiKey,
-          category: input.category,
-          region: input.region,
-          startDate: input.startDate,
-          endDate: input.endDate,
-          page: page + pageOffset,
-          numOfRows,
-        });
-
-        fetchedItems.push(...pageData.items);
-
-        if (pageData.items.length < pageData.numOfRows) {
-          break;
-        }
-      }
-
-      let createdCount = 0;
-      let updatedCount = 0;
-      let embeddedCount = 0;
-      let embeddingFailedCount = 0;
-      let automaticMatchCount = 0;
-      const syncedItems: Item[] = [];
-
-      for (const lost112Item of fetchedItems) {
-        const externalItem = normalizeLost112ToExternalFoundItem(lost112Item);
-        if (!externalItem) {
-          continue;
-        }
-
-        const { item, created } = await storage.upsertExternalFoundItem(
-          externalItem
-        );
-        syncedItems.push(item);
-
-        if (created) {
-          createdCount += 1;
-        } else {
-          updatedCount += 1;
-        }
-
-        let itemEmbedding: number[] | undefined;
-        try {
-          itemEmbedding = await ensureItemEmbedding(item);
-          embeddedCount += 1;
-        } catch (embeddingError) {
-          embeddingFailedCount += 1;
-          console.error(
-            "Failed to store Lost112 item embedding:",
-            embeddingError
-          );
-        }
-
-        if (item.status === "active" && itemEmbedding !== undefined) {
-          queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
-          try {
-            automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
-          } catch (matchError) {
-            console.error("Failed to match Lost112 item:", matchError);
-          }
-        }
-      }
-
-      res.json({
-        fetchedCount: fetchedItems.length,
-        createdCount,
-        updatedCount,
-        embeddedCount,
-        embeddingFailedCount,
-        automaticMatchCount,
-        items: syncedItems,
+      const result = await runLost112Sync({
+        apiKey,
+        category: input.category,
+        region: input.region,
+        startDate: input.startDate,
+        endDate: input.endDate,
+        page: input.page,
+        numOfRows: input.numOfRows,
+        maxPages: input.maxPages,
       });
+
+      res.json(result);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -3743,6 +3681,8 @@ export async function registerRoutes(
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });
+
+  startLost112SyncScheduler();
 
   return httpServer;
 }

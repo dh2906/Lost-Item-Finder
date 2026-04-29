@@ -53,7 +53,6 @@ const navigation: NavigationItem[] = [
   },
   { href: "/search", label: "분실물 찾기" },
   { href: "/items?type=found", label: "물건 목록" },
-  { href: "/lost112", label: "경찰청 습득물" },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
