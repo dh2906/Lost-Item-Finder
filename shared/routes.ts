@@ -320,7 +320,7 @@ export const api = {
         endDate: z.string().optional(),
         page: z.coerce.number().int().positive().optional(),
         numOfRows: z.coerce.number().int().positive().max(100).optional(),
-        maxPages: z.coerce.number().int().positive().max(10).optional(),
+        maxPages: z.coerce.number().int().positive().max(1000).optional(),
       }).optional(),
       responses: {
         200: lost112SyncResponseSchema,
