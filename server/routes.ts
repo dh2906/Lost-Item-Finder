@@ -101,6 +101,7 @@ const LOST112_SYNC_INITIAL_DELAY_MS = Number(
 );
 const LOST112_SYNC_NUM_ROWS = Number(process.env.LOST112_SYNC_NUM_ROWS ?? 50);
 const LOST112_SYNC_MAX_PAGES = Number(process.env.LOST112_SYNC_MAX_PAGES ?? 1);
+const LOST112_SYNC_START_PAGE = Number(process.env.LOST112_SYNC_START_PAGE ?? 1);
 const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY;
 
 function getQwenClient(): OpenAI {
@@ -333,8 +334,37 @@ type Lost112SyncResult = {
   items: Item[];
 };
 
+type Lost112ActiveSyncRun = {
+  id: number;
+  trigger: string;
+  phase: "fetching" | "processing";
+  page: number;
+  numOfRows: number;
+  maxPages: number;
+  currentPage: number | null;
+  fetchedCount: number;
+  processedCount: number;
+  totalToProcess: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  embeddedCount: number;
+  embeddingFailedCount: number;
+  automaticMatchCount: number;
+  currentExternalId: string | null;
+  currentTitle: string | null;
+  recentItems: Array<{
+    externalId: string;
+    title: string | null;
+    action: "created" | "updated" | "skipped" | "failed";
+  }>;
+  startedAt: Date;
+  updatedAt: Date;
+};
+
 const LOST112_SOURCE = "lost112";
 const LOST112_NORMALIZATION_VERSION = "geocoded-location-v3";
+const activeLost112SyncRuns = new Map<number, Lost112ActiveSyncRun>();
 
 const LOST112_REGION_CODES: Record<string, string> = {
   서울특별시: "LCA000",
@@ -611,6 +641,29 @@ function createLost112PayloadHash(item: Lost112NormalizedItem): string {
   return createHash("sha256")
     .update(stableStringify({ version: LOST112_NORMALIZATION_VERSION, item }))
     .digest("hex");
+}
+
+function touchLost112ActiveSyncRun(progress: Lost112ActiveSyncRun): void {
+  progress.updatedAt = new Date();
+}
+
+function addLost112RecentSyncItem(
+  progress: Lost112ActiveSyncRun,
+  item: {
+    externalId: string;
+    title: string | null;
+    action: "created" | "updated" | "skipped" | "failed";
+  }
+): void {
+  progress.recentItems.unshift(item);
+  progress.recentItems = progress.recentItems.slice(0, 20);
+  touchLost112ActiveSyncRun(progress);
+}
+
+function getActiveLost112SyncRuns(): Lost112ActiveSyncRun[] {
+  return Array.from(activeLost112SyncRuns.values()).sort(
+    (left, right) => right.startedAt.getTime() - left.startedAt.getTime()
+  );
 }
 
 function hasLost112LocationEnrichment(item: Item): boolean {
@@ -957,6 +1010,30 @@ async function runLost112Sync({
       maxPages,
     })
     .returning();
+  const progress: Lost112ActiveSyncRun = {
+    id: syncRun.id,
+    trigger,
+    phase: "fetching",
+    page,
+    numOfRows,
+    maxPages,
+    currentPage: null,
+    fetchedCount: 0,
+    processedCount: 0,
+    totalToProcess: 0,
+    createdCount: 0,
+    updatedCount: 0,
+    skippedCount: 0,
+    embeddedCount: 0,
+    embeddingFailedCount: 0,
+    automaticMatchCount: 0,
+    currentExternalId: null,
+    currentTitle: null,
+    recentItems: [],
+    startedAt: syncRun.startedAt,
+    updatedAt: new Date(),
+  };
+  activeLost112SyncRuns.set(syncRun.id, progress);
 
   const fetchedItems: Lost112NormalizedItem[] = [];
   let createdCount = 0;
@@ -979,6 +1056,10 @@ async function runLost112Sync({
         numOfRows,
       });
 
+      progress.currentPage = pageData.pageNo;
+      progress.fetchedCount = fetchedItems.length + pageData.items.length;
+      touchLost112ActiveSyncRun(progress);
+
       console.log("[Lost112 Sync] page fetched:", {
         page: pageData.pageNo,
         rawCount: pageData.rawCount,
@@ -987,6 +1068,8 @@ async function runLost112Sync({
       });
 
       fetchedItems.push(...pageData.items);
+      progress.totalToProcess = fetchedItems.length;
+      touchLost112ActiveSyncRun(progress);
 
       if (pageData.items.length < pageData.numOfRows) {
         console.log("[Lost112 Sync] stopping page scan:", {
@@ -999,13 +1082,26 @@ async function runLost112Sync({
       }
     }
 
+    progress.phase = "processing";
+    progress.totalToProcess = fetchedItems.length;
+    touchLost112ActiveSyncRun(progress);
+
     for (const lost112Item of fetchedItems) {
       const atcId = lost112Item.atcId?.trim();
       if (!atcId) {
+        progress.processedCount += 1;
+        touchLost112ActiveSyncRun(progress);
         continue;
       }
       const fdSn = lost112Item.fdSn?.trim() || "1";
       const externalId = `${atcId}:${fdSn}`;
+      progress.currentExternalId = externalId;
+      progress.currentTitle =
+        lost112Item.fdSbjt?.trim() ||
+        lost112Item.fdPrdtNm?.trim() ||
+        lost112Item.prdtClNm?.trim() ||
+        null;
+      touchLost112ActiveSyncRun(progress);
       const payloadHash = createLost112PayloadHash(lost112Item);
       const existingState = await getLost112SyncState(externalId);
       if (
@@ -1015,6 +1111,13 @@ async function runLost112Sync({
           hasLost112LocationEnrichment(existingState.item))
       ) {
         skippedCount += 1;
+        progress.skippedCount = skippedCount;
+        progress.processedCount += 1;
+        addLost112RecentSyncItem(progress, {
+          externalId,
+          title: existingState.item.title,
+          action: "skipped",
+        });
         syncedItems.push(existingState.item);
         continue;
       }
@@ -1023,6 +1126,12 @@ async function runLost112Sync({
         lost112Item
       );
       if (!externalItem) {
+        progress.processedCount += 1;
+        addLost112RecentSyncItem(progress, {
+          externalId,
+          title: progress.currentTitle,
+          action: "failed",
+        });
         continue;
       }
 
@@ -1033,16 +1142,20 @@ async function runLost112Sync({
 
       if (created) {
         createdCount += 1;
+        progress.createdCount = createdCount;
       } else {
         updatedCount += 1;
+        progress.updatedCount = updatedCount;
       }
 
       let itemEmbedding: number[] | undefined;
       try {
         itemEmbedding = await ensureItemEmbedding(item);
         embeddedCount += 1;
+        progress.embeddedCount = embeddedCount;
       } catch (embeddingError) {
         embeddingFailedCount += 1;
+        progress.embeddingFailedCount = embeddingFailedCount;
         console.error("Failed to store Lost112 item embedding:", embeddingError);
       }
 
@@ -1050,10 +1163,18 @@ async function runLost112Sync({
         queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
         try {
           automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
+          progress.automaticMatchCount = automaticMatchCount;
         } catch (matchError) {
           console.error("Failed to match Lost112 item:", matchError);
         }
       }
+
+      progress.processedCount += 1;
+      addLost112RecentSyncItem(progress, {
+        externalId,
+        title: item.title,
+        action: created ? "created" : "updated",
+      });
     }
 
     await db
@@ -1109,6 +1230,8 @@ async function runLost112Sync({
       })
       .where(eq(lost112SyncRuns.id, syncRun.id));
     throw error;
+  } finally {
+    activeLost112SyncRuns.delete(syncRun.id);
   }
 }
 
@@ -1229,6 +1352,7 @@ function startLost112SyncScheduler(): void {
   console.log("[Lost112 Sync] scheduler started:", {
     initialDelayMs,
     intervalMs,
+    startPage: LOST112_SYNC_START_PAGE,
     numOfRows: LOST112_SYNC_NUM_ROWS,
     maxPages: LOST112_SYNC_MAX_PAGES,
   });
@@ -1243,6 +1367,7 @@ function startLost112SyncScheduler(): void {
     try {
       const result = await runLost112Sync({
         apiKey,
+        page: LOST112_SYNC_START_PAGE,
         numOfRows: LOST112_SYNC_NUM_ROWS,
         maxPages: LOST112_SYNC_MAX_PAGES,
         trigger: "scheduled",
@@ -4132,6 +4257,15 @@ export async function registerRoutes(
       res.json(latestRun ?? null);
     } catch (err) {
       console.error("[Lost112 Sync Latest] 오류:", err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get(api.lost112.activeSyncRuns.path, isAdmin, async (_req, res) => {
+    try {
+      res.json(getActiveLost112SyncRuns());
+    } catch (err) {
+      console.error("[Lost112 Sync Active] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });
