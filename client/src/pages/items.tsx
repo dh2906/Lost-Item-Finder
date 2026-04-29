@@ -191,7 +191,6 @@ export default function ItemsPage() {
     getFiltersFromSearch(window.location.search)
   );
   const [isLocating, setIsLocating] = useState(false);
-  const [isFilterExpanded, setIsFilterExpanded] = useState(false);
   const hasDraftCoordinates =
     draftFilters.latitude !== undefined && draftFilters.longitude !== undefined;
 
@@ -371,6 +370,7 @@ export default function ItemsPage() {
               className="rounded-[28px] border border-border/70 bg-white/92 p-5 shadow-[0_20px_40px_-32px_rgba(27,31,59,0.2)]"
             >
               <div className="flex flex-col gap-5">
+                <input id="items-filter-toggle" type="checkbox" className="peer sr-only" />
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -387,28 +387,19 @@ export default function ItemsPage() {
                         적용된 필터 {activeFilterCount}개
                       </div>
                     ) : null}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="rounded-full md:hidden"
-                      onClick={() => setIsFilterExpanded((current) => !current)}
+                    <label
+                      htmlFor="items-filter-toggle"
+                      className="inline-flex h-9 cursor-pointer items-center justify-center gap-2 rounded-full border border-input bg-white/92 px-3.5 text-sm font-medium text-foreground shadow-sm transition-all hover:border-primary/20 hover:bg-accent md:hidden"
                     >
-                      {isFilterExpanded ? "접기" : "필터 열기"}
-                      <ChevronDown
-                        className={cn(
-                          "ml-1 h-4 w-4 transition-transform",
-                          isFilterExpanded && "rotate-180"
-                        )}
-                      />
-                    </Button>
+                      필터
+                      <ChevronDown className="h-4 w-4" />
+                    </label>
                   </div>
                 </div>
 
                 <div
                   className={cn(
-                    "gap-4 md:grid md:grid-cols-2 xl:grid-cols-3",
-                    isFilterExpanded ? "grid" : "hidden"
+                    "filter-fields hidden gap-4 peer-checked:grid md:grid md:grid-cols-2 xl:grid-cols-3"
                   )}
                 >
                   <div className="space-y-2">
