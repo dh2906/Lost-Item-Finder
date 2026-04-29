@@ -163,6 +163,17 @@ const lost112SyncResponseSchema = z.object({
   items: z.array(itemResponseSchema),
 });
 
+const lost112ReprocessExistingResponseSchema = z.object({
+  fetchedCount: z.number(),
+  updatedCount: z.number(),
+  skippedCount: z.number(),
+  failedCount: z.number(),
+  embeddedCount: z.number(),
+  embeddingFailedCount: z.number(),
+  automaticMatchCount: z.number(),
+  items: z.array(itemResponseSchema),
+});
+
 const lost112SyncRunResponseSchema = z.object({
   id: z.number(),
   trigger: z.string(),
@@ -357,6 +368,22 @@ export const api = {
         200: lost112SyncRunResponseSchema.nullable(),
         403: errorSchemas.validation,
         500: errorSchemas.internal,
+      },
+    },
+    reprocessExisting: {
+      method: "POST" as const,
+      path: "/api/lost112/reprocess-existing" as const,
+      input: z.object({
+        limit: z.coerce.number().int().positive().max(1000).optional(),
+        offset: z.coerce.number().int().min(0).optional(),
+        onlyMissingLocation: z.boolean().optional(),
+      }).optional(),
+      responses: {
+        200: lost112ReprocessExistingResponseSchema,
+        400: errorSchemas.validation,
+        403: errorSchemas.validation,
+        500: errorSchemas.internal,
+        503: errorSchemas.internal,
       },
     },
   },

@@ -611,6 +611,28 @@ function createLost112PayloadHash(item: Lost112NormalizedItem): string {
     .digest("hex");
 }
 
+function hasLost112LocationEnrichment(item: Item): boolean {
+  return Boolean(item.latitude && item.longitude);
+}
+
+function normalizeStoredLost112Payload(
+  payload: unknown
+): Lost112NormalizedItem | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const source = payload as Record<string, unknown>;
+  const normalized = Object.fromEntries(
+    LOST112_ITEM_FIELDS.map((field) => {
+      const value = source[field];
+      return [field, typeof value === "string" ? value : ""];
+    })
+  ) as Lost112NormalizedItem;
+
+  return normalized.atcId?.trim() ? normalized : null;
+}
+
 type KakaoKeywordDocument = {
   place_name?: string;
   address_name?: string;
@@ -973,7 +995,9 @@ async function runLost112Sync({
       const existingState = await getLost112SyncState(externalId);
       if (
         existingState?.item.externalPayloadHash === payloadHash &&
-        existingState.hasEmbedding
+        existingState.hasEmbedding &&
+        (!KAKAO_REST_API_KEY ||
+          hasLost112LocationEnrichment(existingState.item))
       ) {
         skippedCount += 1;
         syncedItems.push(existingState.item);
@@ -1060,6 +1084,105 @@ async function runLost112Sync({
       .where(eq(lost112SyncRuns.id, syncRun.id));
     throw error;
   }
+}
+
+async function reprocessExistingLost112Items({
+  limit = 100,
+  offset = 0,
+  onlyMissingLocation = true,
+}: {
+  limit?: number;
+  offset?: number;
+  onlyMissingLocation?: boolean;
+}): Promise<{
+  fetchedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  embeddedCount: number;
+  embeddingFailedCount: number;
+  automaticMatchCount: number;
+  items: Item[];
+}> {
+  const conditions = [eq(items.externalSource, LOST112_SOURCE)];
+  if (onlyMissingLocation) {
+    conditions.push(or(isNull(items.latitude), isNull(items.longitude))!);
+  }
+
+  const existingItems = await db
+    .select()
+    .from(items)
+    .where(and(...conditions))
+    .orderBy(asc(items.id))
+    .limit(limit)
+    .offset(offset);
+
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+  let embeddedCount = 0;
+  let embeddingFailedCount = 0;
+  let automaticMatchCount = 0;
+  const processedItems: Item[] = [];
+
+  for (const existingItem of existingItems) {
+    const lost112Item = normalizeStoredLost112Payload(
+      existingItem.externalPayload
+    );
+    if (!lost112Item) {
+      skippedCount += 1;
+      continue;
+    }
+
+    try {
+      const externalItem = await normalizeLost112ExternalFoundItemWithAi(
+        lost112Item
+      );
+      if (!externalItem) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const { item } = await storage.upsertExternalFoundItem(externalItem);
+      processedItems.push(item);
+      updatedCount += 1;
+
+      let itemEmbedding: number[] | undefined;
+      try {
+        itemEmbedding = await ensureItemEmbedding(item);
+        embeddedCount += 1;
+      } catch (embeddingError) {
+        embeddingFailedCount += 1;
+        console.error(
+          "Failed to store reprocessed Lost112 item embedding:",
+          embeddingError
+        );
+      }
+
+      if (item.status === "active" && itemEmbedding !== undefined) {
+        queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
+        try {
+          automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
+        } catch (matchError) {
+          console.error("Failed to match reprocessed Lost112 item:", matchError);
+        }
+      }
+    } catch (error) {
+      failedCount += 1;
+      console.error("Failed to reprocess existing Lost112 item:", error);
+    }
+  }
+
+  return {
+    fetchedCount: existingItems.length,
+    updatedCount,
+    skippedCount,
+    failedCount,
+    embeddedCount,
+    embeddingFailedCount,
+    automaticMatchCount,
+    items: processedItems,
+  };
 }
 
 function startLost112SyncScheduler(): void {
@@ -3982,6 +4105,37 @@ export async function registerRoutes(
       res.json(latestRun ?? null);
     } catch (err) {
       console.error("[Lost112 Sync Latest] 오류:", err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.post(api.lost112.reprocessExisting.path, isAdmin, async (req, res) => {
+    try {
+      if (!KAKAO_REST_API_KEY) {
+        return res.status(503).json({
+          message:
+            "Kakao REST API 키가 설정되지 않았습니다. .env에 KAKAO_REST_API_KEY를 추가해 주세요.",
+        });
+      }
+
+      const input =
+        api.lost112.reprocessExisting.input.parse(req.body ?? {}) ?? {};
+      const result = await reprocessExistingLost112Items({
+        limit: input.limit,
+        offset: input.offset,
+        onlyMissingLocation: input.onlyMissingLocation,
+      });
+
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+
+      console.error("[Lost112 Reprocess Existing] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });
