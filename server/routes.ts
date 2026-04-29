@@ -128,6 +128,9 @@ function getQwenClient(): OpenAI {
 }
 
 function getLost112NormalizeClient(): OpenAI {
+  if (LOST112_NORMALIZE_PROVIDER === "none") {
+    throw new Error("Lost112 AI normalization is disabled");
+  }
   if (LOST112_NORMALIZE_PROVIDER === "qwen") {
     return getQwenClient();
   }
@@ -1032,6 +1035,13 @@ async function normalizeLost112ExternalFoundItemWithAi(
       },
     };
   };
+
+  if (LOST112_NORMALIZE_PROVIDER === "none") {
+    return applyGeocoding({
+      ...fallbackItem,
+      ...parseLocationParts(fallbackItem.location, null),
+    });
+  }
 
   try {
     const response = await getLost112NormalizeClient().chat.completions.create({

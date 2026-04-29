@@ -10,7 +10,7 @@ This project reads AI credentials from runtime environment variables.
 - Hybrid search first retrieves `VECTOR_CANDIDATE_COUNT` vector candidates, then returns up to `FINAL_RESULT_COUNT` reranked results.
 - Image analysis routes use `QWEN_API_KEY`.
 - Qwen defaults to `https://coding-intl.dashscope.aliyuncs.com/v1`, and you can override it with `QWEN_BASE_URL`.
-- Lost112 AI normalization uses Qwen by default when `QWEN_API_KEY` is configured. Override it with `LOST112_NORMALIZE_PROVIDER=openai` only when OpenAI quota is available.
+- Lost112 AI normalization can be disabled with `LOST112_NORMALIZE_PROVIDER=none` for faster bulk ingestion. Use `qwen` or `openai` only when you want LLM-normalized metadata during sync.
 - The Qwen image-analysis model defaults to `qwen3.5-plus`, and you can override it with `QWEN_VISION_MODEL`.
 
 Examples:
@@ -41,7 +41,7 @@ export QWEN_API_KEY="your-qwen-key"
 export QWEN_BASE_URL="https://coding-intl.dashscope.aliyuncs.com/v1"
 export QWEN_TEXT_MODEL="qwen3.5-plus"
 export QWEN_VISION_MODEL="qwen3.5-plus"
-export LOST112_NORMALIZE_PROVIDER="qwen"
+export LOST112_NORMALIZE_PROVIDER="none"
 export LOST112_NORMALIZE_MODEL="qwen3.5-plus"
 ```
 
