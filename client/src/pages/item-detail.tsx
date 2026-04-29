@@ -282,7 +282,7 @@ export default function ItemDetail() {
                   </div>
                   <Button asChild variant="outline" className="rounded-full border-sky-200 bg-white text-sky-700 hover:bg-sky-50">
                     <a href={item.externalUrl} target="_blank" rel="noreferrer">
-                      원문 보기
+                      경찰청 원문으로 이동
                       <ExternalLink className="ml-1.5 h-4 w-4" />
                     </a>
                   </Button>
