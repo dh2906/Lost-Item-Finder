@@ -44,16 +44,17 @@ type NavigationItem = {
 
 const navigation: NavigationItem[] = [
   { href: "/", label: "홈" },
+  { href: "/mypage", label: "내 물건" },
+  { href: "/matches", label: "내 매칭" },
+  { href: "/items?type=found", label: "습득물 찾기" },
   {
     href: "/report",
-    label: "물건 신고",
+    label: "등록",
     children: [
-      { href: "/report/found", label: "습득물 신고" },
-      { href: "/report/lost", label: "분실물 신고" },
+      { href: "/report/lost", label: "잃어버린 물건 등록" },
+      { href: "/report/found", label: "주운 물건 등록" },
     ],
   },
-  { href: "/search", label: "분실물 찾기" },
-  { href: "/items?type=found", label: "물건 목록" },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -158,7 +159,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <span className="flex flex-col leading-none">
                 <span className="text-base">Findy</span>
                 <span className="mt-1 text-[11px] font-medium text-muted-foreground">
-                  분실물 연결 게시판
+                  분실물 매칭 서비스
                 </span>
               </span>
             </Link>

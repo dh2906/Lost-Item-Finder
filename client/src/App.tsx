@@ -42,13 +42,13 @@ function DefaultReportPage() {
 function getPageTitle(location: string): string {
   const path = location.split("?")[0];
 
-  if (path === "/") return "Findy - 분실물 연결 게시판";
+  if (path === "/") return "Findy - 분실물 매칭 서비스";
   if (path === "/install") return "앱 설치 | Findy";
-  if (path === "/report/found") return "습득물 신고 | Findy";
-  if (path === "/report/lost") return "분실물 신고 | Findy";
-  if (path === "/report") return "물건 신고 | Findy";
+  if (path === "/report/found") return "주운 물건 등록 | Findy";
+  if (path === "/report/lost") return "잃어버린 물건 등록 | Findy";
+  if (path === "/report") return "물건 등록 | Findy";
   if (path === "/search") return "분실물 찾기 | Findy";
-  if (path === "/items") return "물건 목록 | Findy";
+  if (path === "/items") return "습득물 찾기 | Findy";
   if (path.startsWith("/item/") && path.endsWith("/edit")) return "게시글 수정 | Findy";
   if (path.startsWith("/item/")) return "게시글 상세 | Findy";
   if (path === "/mypage") return "마이페이지 | Findy";

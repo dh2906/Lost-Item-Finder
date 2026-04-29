@@ -55,7 +55,7 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
 export function useMyItems(filters?: {
   type?: "lost" | "found";
   status?: "active" | "resolved";
-}) {
+}, enabled = true) {
   const queryParams = new URLSearchParams();
   if (filters?.type) queryParams.set("type", filters.type);
   if (filters?.status) queryParams.set("status", filters.status);
@@ -65,6 +65,7 @@ export function useMyItems(filters?: {
 
   return useQuery<MyItemsResponse>({
     queryKey: [...MY_ITEMS_QUERY_KEY, filters],
+    enabled,
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch my items");
