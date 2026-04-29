@@ -42,10 +42,19 @@ const qwen = process.env.QWEN_API_KEY
 
 const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5.4-mini";
 const QWEN_VISION_MODEL = process.env.QWEN_VISION_MODEL ?? "qwen3.5-plus";
+const EMBEDDING_PROVIDER = (
+  process.env.EMBEDDING_PROVIDER ?? "openai"
+).toLowerCase();
 const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
-const OPENAI_EMBEDDING_DIMENSIONS = Number(
-  process.env.OPENAI_EMBEDDING_DIMENSIONS ?? 512
+const LOCAL_EMBEDDING_MODEL =
+  process.env.LOCAL_EMBEDDING_MODEL ?? "intfloat/multilingual-e5-base";
+const LOCAL_EMBEDDING_URL =
+  process.env.LOCAL_EMBEDDING_URL ?? "http://127.0.0.1:8090/embed";
+const EMBEDDING_DIMENSIONS = Number(
+  process.env.EMBEDDING_DIMENSIONS ??
+    process.env.OPENAI_EMBEDDING_DIMENSIONS ??
+    768
 );
 const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 12);
@@ -1621,14 +1630,6 @@ function parseCoordinate(value?: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function formatCoordinateForEmbedding(value?: string | null): string | null {
-  const parsed = parseCoordinate(value);
-  if (parsed === null) {
-    return null;
-  }
-  return parsed.toFixed(3);
-}
-
 function getSearchCoordinates(input: {
   latitude?: string;
   longitude?: string;
@@ -1695,33 +1696,42 @@ function buildItemSearchText(item: {
   size?: string | null;
   tags?: string[] | null;
   location?: string | null;
-  latitude?: string | null;
-  longitude?: string | null;
+  region1?: string | null;
+  region2?: string | null;
+  region3?: string | null;
+  address?: string | null;
+  placeName?: string | null;
 }): string {
   const normalizedItem = normalizeItemMetadata(item);
-  const coordinateSummary = [
-    formatCoordinateForEmbedding(item.latitude),
-    formatCoordinateForEmbedding(item.longitude),
-  ].filter((value): value is string => Boolean(value));
+  const region = [
+    normalizedItem.region1,
+    normalizedItem.region2,
+    normalizedItem.region3,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+  const description = normalizedItem.description
+    ? normalizedItem.description.slice(0, 300)
+    : null;
 
   const sections = [
-    normalizedItem.title ? `제목: ${normalizedItem.title}` : null,
+    normalizedItem.title ? `물건=${normalizedItem.title}` : null,
     normalizedItem.itemCategory
-      ? `카테고리: ${normalizedItem.itemCategory}`
+      ? `분류=${normalizedItem.itemCategory}`
       : null,
-    normalizedItem.color ? `색상: ${normalizedItem.color}` : null,
-    normalizedItem.size ? `크기: ${normalizedItem.size}` : null,
-    normalizedItem.description ? `설명: ${normalizedItem.description}` : null,
-    normalizedItem.location ? `위치: ${normalizedItem.location}` : null,
-    coordinateSummary.length === 2
-      ? `위치 좌표(근사): ${coordinateSummary.join(", ")}`
-      : null,
+    normalizedItem.color ? `색상=${normalizedItem.color}` : null,
+    normalizedItem.size ? `크기=${normalizedItem.size}` : null,
+    region ? `지역=${region}` : null,
+    normalizedItem.placeName ? `장소=${normalizedItem.placeName}` : null,
+    normalizedItem.location ? `위치=${normalizedItem.location}` : null,
+    normalizedItem.address ? `주소=${normalizedItem.address}` : null,
+    description ? `설명=${description}` : null,
     normalizedItem.tags?.length
-      ? `태그: ${normalizedItem.tags.join(", ")}`
+      ? `태그=${normalizedItem.tags.join(", ")}`
       : null,
   ].filter((value): value is string => Boolean(value));
 
-  return sections.join("\n");
+  return sections.join(". ");
 }
 
 function normalizeKoreanText(value: string): string {
@@ -1924,6 +1934,11 @@ type NormalizableItemMetadata = {
   size?: string | null;
   tags?: string[] | null;
   location?: string | null;
+  region1?: string | null;
+  region2?: string | null;
+  region3?: string | null;
+  address?: string | null;
+  placeName?: string | null;
 };
 
 function canonicalizeWithGroups(
@@ -1994,6 +2009,23 @@ function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
     normalizedItem.location = normalizePlainText(
       item.location
     ) as T["location"];
+  }
+  if (item.region1 !== undefined) {
+    normalizedItem.region1 = normalizePlainText(item.region1) as T["region1"];
+  }
+  if (item.region2 !== undefined) {
+    normalizedItem.region2 = normalizePlainText(item.region2) as T["region2"];
+  }
+  if (item.region3 !== undefined) {
+    normalizedItem.region3 = normalizePlainText(item.region3) as T["region3"];
+  }
+  if (item.address !== undefined) {
+    normalizedItem.address = normalizePlainText(item.address) as T["address"];
+  }
+  if (item.placeName !== undefined) {
+    normalizedItem.placeName = normalizePlainText(
+      item.placeName
+    ) as T["placeName"];
   }
   if (item.tags !== undefined) {
     normalizedItem.tags = normalizeMetadataTags(item.tags) as T["tags"];
@@ -2495,20 +2527,73 @@ async function normalizeAnalyzeImageMetadata(
   });
 }
 
-async function createEmbedding(
-  text: string,
-  signal?: AbortSignal
-): Promise<number[]> {
+type EmbeddingInputKind = "query" | "passage";
+
+function formatEmbeddingInput(text: string, kind: EmbeddingInputKind): string {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) {
     throw new Error("임베딩할 검색 텍스트가 없습니다");
   }
+  if (EMBEDDING_PROVIDER === "local") {
+    return normalized.startsWith("query: ") || normalized.startsWith("passage: ")
+      ? normalized
+      : `${kind}: ${normalized}`;
+  }
+  return normalized;
+}
+
+async function createEmbedding(
+  text: string,
+  kind: EmbeddingInputKind = "query",
+  signal?: AbortSignal
+): Promise<number[]> {
+  const input = formatEmbeddingInput(text, kind);
   abortIfNeeded(signal);
+  if (EMBEDDING_PROVIDER === "local") {
+    const response = await fetch(LOCAL_EMBEDDING_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input }),
+      signal,
+    });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      throw new Error(
+        `로컬 임베딩 생성에 실패했습니다 (${response.status}): ${errorText}`
+      );
+    }
+    const payload = (await response.json()) as {
+      model?: string;
+      dimensions?: number;
+      data?: unknown;
+    };
+    const embedding = Array.isArray(payload.data)
+      ? Array.isArray(payload.data[0])
+        ? payload.data[0]
+        : payload.data
+      : undefined;
+    if (
+      !Array.isArray(embedding) ||
+      !embedding.every((value) => typeof value === "number")
+    ) {
+      throw new Error("로컬 임베딩 서버 응답 형식이 올바르지 않습니다");
+    }
+    if (embedding.length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `로컬 임베딩 차원이 맞지 않습니다: expected ${EMBEDDING_DIMENSIONS}, got ${embedding.length}`
+      );
+    }
+    return embedding;
+  }
+
+  if (EMBEDDING_PROVIDER !== "openai") {
+    throw new Error(`지원하지 않는 임베딩 provider입니다: ${EMBEDDING_PROVIDER}`);
+  }
   const response = await openai.embeddings.create(
     {
       model: OPENAI_EMBEDDING_MODEL,
-      input: normalized,
-      dimensions: OPENAI_EMBEDDING_DIMENSIONS,
+      input,
+      dimensions: EMBEDDING_DIMENSIONS,
     },
     {
       signal,
@@ -2580,12 +2665,17 @@ async function ensureItemEmbedding(
     location?: string | null;
     latitude?: string | null;
     longitude?: string | null;
+    region1?: string | null;
+    region2?: string | null;
+    region3?: string | null;
+    address?: string | null;
+    placeName?: string | null;
   },
   signal?: AbortSignal
 ): Promise<number[]> {
   const normalizedItem = normalizeItemMetadata(item);
   const content = buildItemSearchText(normalizedItem);
-  const embedding = await createEmbedding(content, signal);
+  const embedding = await createEmbedding(content, "passage", signal);
   await storage.upsertItemEmbedding(item.id, content, embedding);
   return embedding;
 }

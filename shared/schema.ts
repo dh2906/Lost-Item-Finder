@@ -71,7 +71,7 @@ export const itemEmbeddings = pgTable("item_embeddings", {
     .primaryKey()
     .references(() => items.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
-  embedding: vector("embedding", { dimensions: 512 }).notNull(),
+  embedding: vector("embedding", { dimensions: 768 }).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
