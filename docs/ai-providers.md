@@ -23,6 +23,7 @@ export VECTOR_CANDIDATE_COUNT="40"
 export FINAL_RESULT_COUNT="12"
 
 export LOST112_API_KEY="your-public-data-service-key"
+export LOST112_SYNC_SECRET="your-long-random-cron-secret"
 export LOST112_SYNC_ENABLED="true"
 export LOST112_SYNC_INTERVAL_MS="1800000"
 export LOST112_SYNC_INITIAL_DELAY_MS="60000"

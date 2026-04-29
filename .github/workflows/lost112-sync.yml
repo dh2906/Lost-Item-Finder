@@ -1,0 +1,26 @@
+name: Lost112 Sync
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Lost112 sync
+        env:
+          LOST112_SYNC_URL: ${{ secrets.LOST112_SYNC_URL }}
+          LOST112_SYNC_SECRET: ${{ secrets.LOST112_SYNC_SECRET }}
+        run: |
+          if [ -z "$LOST112_SYNC_URL" ] || [ -z "$LOST112_SYNC_SECRET" ]; then
+            echo "LOST112_SYNC_URL and LOST112_SYNC_SECRET secrets are required."
+            exit 1
+          fi
+
+          curl --fail-with-body --show-error --silent \
+            --request POST "$LOST112_SYNC_URL" \
+            --header "Authorization: Bearer $LOST112_SYNC_SECRET" \
+            --header "Content-Type: application/json" \
+            --data '{"numOfRows":50,"maxPages":1}'

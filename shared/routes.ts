@@ -330,6 +330,21 @@ export const api = {
         503: errorSchemas.internal,
       },
     },
+    cronSync: {
+      method: "POST" as const,
+      path: "/api/lost112/sync/cron" as const,
+      input: z.object({
+        numOfRows: z.coerce.number().int().positive().max(100).optional(),
+        maxPages: z.coerce.number().int().positive().max(10).optional(),
+      }).optional(),
+      responses: {
+        200: lost112SyncResponseSchema,
+        400: errorSchemas.validation,
+        401: errorSchemas.validation,
+        500: errorSchemas.internal,
+        503: errorSchemas.internal,
+      },
+    },
   },
   matches: {
     list: {
