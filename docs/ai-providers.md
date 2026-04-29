@@ -10,6 +10,7 @@ This project reads AI credentials from runtime environment variables.
 - Hybrid search first retrieves `VECTOR_CANDIDATE_COUNT` vector candidates, then returns up to `FINAL_RESULT_COUNT` reranked results.
 - Image analysis routes use `QWEN_API_KEY`.
 - Qwen defaults to `https://coding-intl.dashscope.aliyuncs.com/v1`, and you can override it with `QWEN_BASE_URL`.
+- Lost112 AI normalization uses Qwen by default when `QWEN_API_KEY` is configured. Override it with `LOST112_NORMALIZE_PROVIDER=openai` only when OpenAI quota is available.
 - The Qwen image-analysis model defaults to `qwen3.5-plus`, and you can override it with `QWEN_VISION_MODEL`.
 
 Examples:
@@ -38,7 +39,10 @@ export KAKAO_REST_API_KEY="your-kakao-rest-api-key"
 
 export QWEN_API_KEY="your-qwen-key"
 export QWEN_BASE_URL="https://coding-intl.dashscope.aliyuncs.com/v1"
+export QWEN_TEXT_MODEL="qwen3.5-plus"
 export QWEN_VISION_MODEL="qwen3.5-plus"
+export LOST112_NORMALIZE_PROVIDER="qwen"
+export LOST112_NORMALIZE_MODEL="qwen3.5-plus"
 ```
 
 For a one-time Lost112 backfill, call `POST /api/lost112/sync` as an admin with `{"numOfRows":100,"maxPages":1000}`. Scheduled sync should usually keep a smaller `LOST112_SYNC_MAX_PAGES` value to avoid repeated AI/API cost.

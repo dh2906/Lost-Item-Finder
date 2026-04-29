@@ -42,6 +42,13 @@ const qwen = process.env.QWEN_API_KEY
 
 const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5.4-mini";
 const QWEN_VISION_MODEL = process.env.QWEN_VISION_MODEL ?? "qwen3.5-plus";
+const QWEN_TEXT_MODEL = process.env.QWEN_TEXT_MODEL ?? QWEN_VISION_MODEL;
+const LOST112_NORMALIZE_PROVIDER = (
+  process.env.LOST112_NORMALIZE_PROVIDER ?? (qwen ? "qwen" : "openai")
+).toLowerCase();
+const LOST112_NORMALIZE_MODEL =
+  process.env.LOST112_NORMALIZE_MODEL ??
+  (LOST112_NORMALIZE_PROVIDER === "qwen" ? QWEN_TEXT_MODEL : GPT_TEXT_MODEL);
 const EMBEDDING_PROVIDER = (
   process.env.EMBEDDING_PROVIDER ?? "openai"
 ).toLowerCase();
@@ -118,6 +125,18 @@ function getQwenClient(): OpenAI {
     throw new Error("QWEN_API_KEY is not configured");
   }
   return qwen;
+}
+
+function getLost112NormalizeClient(): OpenAI {
+  if (LOST112_NORMALIZE_PROVIDER === "qwen") {
+    return getQwenClient();
+  }
+  if (LOST112_NORMALIZE_PROVIDER === "openai") {
+    return openai;
+  }
+  throw new Error(
+    `지원하지 않는 Lost112 정규화 provider입니다: ${LOST112_NORMALIZE_PROVIDER}`
+  );
 }
 
 function getErrorMessage(error: unknown): string {
@@ -1015,8 +1034,8 @@ async function normalizeLost112ExternalFoundItemWithAi(
   };
 
   try {
-    const response = await openai.chat.completions.create({
-      model: GPT_TEXT_MODEL,
+    const response = await getLost112NormalizeClient().chat.completions.create({
+      model: LOST112_NORMALIZE_MODEL,
       messages: [
         {
           role: "system",
