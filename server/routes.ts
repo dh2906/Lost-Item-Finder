@@ -332,6 +332,7 @@ type Lost112SyncResult = {
 };
 
 const LOST112_SOURCE = "lost112";
+const LOST112_NORMALIZATION_VERSION = "location-admin-v2";
 
 const LOST112_REGION_CODES: Record<string, string> = {
   서울특별시: "LCA000",
@@ -604,7 +605,9 @@ function stableStringify(value: unknown): string {
 }
 
 function createLost112PayloadHash(item: Lost112NormalizedItem): string {
-  return createHash("sha256").update(stableStringify(item)).digest("hex");
+  return createHash("sha256")
+    .update(stableStringify({ version: LOST112_NORMALIZATION_VERSION, item }))
+    .digest("hex");
 }
 
 async function getLost112SyncState(externalId: string): Promise<{
@@ -647,8 +650,17 @@ function normalizeLost112ToExternalFoundItem(
     item.fdPrdtNm?.trim() ||
     item.prdtClNm?.trim() ||
     "Lost112 found item";
-  const location =
-    item.fdPlace?.trim() || item.depPlace?.trim() || item.orgNm?.trim() || null;
+  const location = Array.from(
+    new Set(
+      [
+        item.fdPlace ? `습득 장소: ${item.fdPlace}` : null,
+        item.depPlace ? `보관 장소: ${item.depPlace}` : null,
+        item.orgNm ? `담당 기관: ${item.orgNm}` : null,
+      ]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  ).join(" / ") || null;
   const contactInfo = [item.orgNm, item.tel]
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value))
@@ -719,6 +731,9 @@ async function normalizeLost112ExternalFoundItemWithAi(
             "원천 데이터에 없는 사실을 만들어내지 말고, 불확실하면 '알 수 없음' 또는 원천 표현을 보존해라.",
             "title은 사용자가 물건을 바로 알아볼 수 있는 짧은 한국어 명사구로 작성해라.",
             "description은 물품명, 색상, 습득 장소, 보관 장소, 담당 기관, 습득일처럼 매칭에 필요한 사실을 자연스러운 한국어 문장으로 정리해라.",
+            "location은 반드시 행정구역 정보를 우선 포함해라. 가능한 경우 '시/도 시/군/구 읍/면/동 - 시설명/보관장소' 형식으로 작성해라.",
+            "fdPlace, depPlace, orgNm에 행정구역이 일부만 있으면 추론 가능한 시/도·시/군/구까지만 포함하고, 확실하지 않은 세부 행정동은 만들지 마라.",
+            "행정구역을 전혀 알 수 없으면 시설명과 보관장소를 함께 보존해라.",
           ].join("\n"),
         },
         {
@@ -727,6 +742,7 @@ async function normalizeLost112ExternalFoundItemWithAi(
             `Lost112 원천 JSON:\n${JSON.stringify(item, null, 2)}`,
             `현재 fallback JSON:\n${JSON.stringify(fallbackItem, null, 2)}`,
             "fallback의 externalSource, externalId, externalUrl, externalPayload, imageUrl, imageUrls, date, contactInfo는 유지한다. 검색/매칭 품질에 필요한 텍스트 메타데이터만 더 정확하게 정규화해라.",
+            "특히 location은 시설명만 쓰지 말고 행정구역과 시설/보관장소를 같이 포함해라.",
           ].join("\n\n"),
         },
       ],
