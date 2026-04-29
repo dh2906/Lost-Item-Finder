@@ -180,13 +180,6 @@ function Lost112ItemCard({
             </div>
           )}
         </div>
-
-        {/* <div className="mt-auto pt-2">
-          <div className="flex w-full items-center justify-center gap-2 rounded-xl bg-[hsl(var(--primary-light))] py-2.5 text-xs font-semibold text-primary transition-colors group-hover:bg-primary/15">
-            <ExternalLink className="h-4 w-4" />
-            경찰청에서 상세 확인
-          </div>
-        </div> */}
       </div>
     </a>
   );
@@ -277,7 +270,6 @@ export default function Lost112Page() {
 
   return (
     <Layout>
-      {/* 헤더 섹션 (ItemsPage와 동일) */}
       <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-10 pt-14">
         <div className="container mx-auto max-w-6xl px-5">
           <div className="space-y-5">
@@ -309,11 +301,9 @@ export default function Lost112Page() {
         </div>
       </section>
 
-      {/* 메인 컨텐츠 섹션 */}
       <section className="pb-16 pt-10">
         <div className="container mx-auto max-w-6xl px-5">
           <div className="space-y-6">
-            {/* 필터 섹션 */}
             <div className="rounded-[28px] border border-border/70 bg-white/92 p-5 shadow-[0_20px_40px_-32px_rgba(27,31,59,0.2)]">
               <div className="flex flex-col gap-5">
                 <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -422,7 +412,6 @@ export default function Lost112Page() {
               </div>
             </div>
 
-            {/* 에러 상태 */}
             {isError && (
               <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
                 <div className="mb-4 rounded-full border border-border/70 bg-white p-4 shadow-sm">
@@ -439,7 +428,6 @@ export default function Lost112Page() {
               </div>
             )}
 
-            {/* 정상 리스트 렌더링 영역 */}
             {!isError && (
               <div className="space-y-6">
                 <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -458,7 +446,6 @@ export default function Lost112Page() {
                   </div>
                 </div>
 
-                {/* 로딩 스켈레톤 */}
                 {isLoading ? (
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {Array.from({ length: 8 }).map((_, i) => (
@@ -466,7 +453,6 @@ export default function Lost112Page() {
                     ))}
                   </div>
                 ) : data?.items.length === 0 ? (
-                  /* 빈 결과 상태 */
                   <div className="flex flex-col items-center justify-center rounded-[28px] border border-dashed border-border/80 bg-secondary/35 py-20 text-center">
                     <div className="mb-4 rounded-full border border-border/70 bg-white p-4 shadow-sm">
                       <SearchIcon className="h-8 w-8 text-muted-foreground/55" />
@@ -490,7 +476,6 @@ export default function Lost112Page() {
                     </div>
                   </div>
                 ) : (
-                  /* 카드 그리드 */
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {data?.items.map((item) => (
                       <Lost112ItemCard key={item.atcId} item={item} />
@@ -498,7 +483,6 @@ export default function Lost112Page() {
                   </div>
                 )}
 
-                {/* 페이지네이션 */}
                 {!isLoading && totalPages > 1 && (
                   <div className="mt-10 flex items-center justify-center gap-2">
                     <Button

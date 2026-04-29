@@ -26,13 +26,18 @@ export const items = pgTable(
   "items",
   {
     id: serial("id").primaryKey(),
-    userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+    userId: integer("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     reportType: text("report_type").notNull(),
     status: text("status").notNull().default("active"),
     title: text("title").notNull(),
     description: text("description"),
     imageUrl: text("image_url"),
-    imageUrls: jsonb("image_urls").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+    imageUrls: jsonb("image_urls")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     itemCategory: text("item_category"),
     color: text("color"),
     size: text("size"),
@@ -96,7 +101,10 @@ const itemBaseSchema = createInsertSchema(items, {
   reportType: z.enum(reportTypes),
   status: z.enum(itemStatuses),
   imageUrl: z.string().trim().min(1).optional(),
-  imageUrls: z.array(z.string().trim().min(1)).max(MAX_ITEM_IMAGE_COUNT).optional(),
+  imageUrls: z
+    .array(z.string().trim().min(1))
+    .max(MAX_ITEM_IMAGE_COUNT)
+    .optional(),
 }).omit({
   id: true,
   userId: true,
@@ -129,7 +137,12 @@ export type UpdateItem = z.infer<typeof updateItemSchema>;
 export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
 export type ItemMatch = typeof itemMatches.$inferSelect;
 
-export const itemMatchStatuses = ["new", "viewed", "dismissed", "confirmed"] as const;
+export const itemMatchStatuses = [
+  "new",
+  "viewed",
+  "dismissed",
+  "confirmed",
+] as const;
 export type ItemMatchStatus = (typeof itemMatchStatuses)[number];
 
 export const insertItemMatchSchema = createInsertSchema(itemMatches).omit({
@@ -160,6 +173,12 @@ export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
 });
 
+export const sessions = pgTable("sessions", {
+  sid: text("sid").primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire").notNull(),
+});
+
 export const matchNotifications = pgTable(
   "match_notifications",
   {
@@ -181,27 +200,35 @@ export const matchNotifications = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    userLostFoundUnique: uniqueIndex("match_notifications_user_lost_found_unique").on(
-      table.userId,
-      table.lostItemId,
-      table.foundItemId
-    ),
+    userLostFoundUnique: uniqueIndex(
+      "match_notifications_user_lost_found_unique"
+    ).on(table.userId, table.lostItemId, table.foundItemId),
   })
 );
 
 export const chatRooms = pgTable("chat_rooms", {
   id: serial("id").primaryKey(),
-  itemId: integer("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
-  senderId: integer("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  receiverId: integer("receiver_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  itemId: integer("item_id")
+    .notNull()
+    .references(() => items.id, { onDelete: "cascade" }),
+  senderId: integer("sender_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  receiverId: integer("receiver_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const chatMessages = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
-  roomId: integer("room_id").notNull().references(() => chatRooms.id, { onDelete: "cascade" }),
-  senderId: integer("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  roomId: integer("room_id")
+    .notNull()
+    .references(() => chatRooms.id, { onDelete: "cascade" }),
+  senderId: integer("sender_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   isRead: integer("is_read").default(0),
   createdAt: timestamp("created_at").defaultNow(),
