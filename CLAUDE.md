@@ -81,7 +81,7 @@ Lost-Item-Finder/
 | Backend | Node.js, Express.js |
 | ORM | Drizzle ORM |
 | DB | PostgreSQL + pgvector (벡터 검색) |
-| AI — 임베딩 | OpenAI text-embedding-3-small (1536차원) |
+| AI — 임베딩 | OpenAI text-embedding-3-small (512차원) |
 | AI — 이미지 분석 | Qwen Vision (qwen3.5-plus) |
 | AI — 재랭킹 | GPT-4o-mini |
 | 인증 | Passport.js (Local Strategy) |
@@ -137,7 +137,7 @@ Lost-Item-Finder/
         ↓
 [텍스트 + 이미지 요약 합산] → queryText 구성
         ↓
-[OpenAI Embeddings] → createEmbedding() → 1536차원 벡터
+[OpenAI Embeddings] → createEmbedding() → 512차원 벡터
         ↓
 [pgvector 코사인 유사도 검색] → searchFoundItemsByEmbedding()
   → 상위 VECTOR_CANDIDATE_COUNT(기본 20)개 후보 (score > 0.15 필터)

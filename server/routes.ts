@@ -40,6 +40,9 @@ const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5.4-mini";
 const QWEN_VISION_MODEL = process.env.QWEN_VISION_MODEL ?? "qwen3.5-plus";
 const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
+const OPENAI_EMBEDDING_DIMENSIONS = Number(
+  process.env.OPENAI_EMBEDDING_DIMENSIONS ?? 512
+);
 const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 12);
 const AUTO_MATCH_RESULT_COUNT = Number(
@@ -1797,6 +1800,7 @@ async function createEmbedding(
     {
       model: OPENAI_EMBEDDING_MODEL,
       input: normalized,
+      dimensions: OPENAI_EMBEDDING_DIMENSIONS,
     },
     {
       signal,
