@@ -75,7 +75,7 @@ const config = {
     title: "주운 물건 등록",
     description:
       "사진과 위치를 함께 등록하면 잃어버린 사람이 더 빨리 확인할 수 있어요.",
-    gradient: "from-primary to-[hsl(270_68%_61%)]",
+    gradient: "from-primary to-primary/80",
     badge: "bg-emerald-100 text-emerald-700",
   },
   lost: {
@@ -85,7 +85,7 @@ const config = {
     requireImage: false,
     title: "잃어버린 물건 등록",
     description: "찾고 싶은 물건의 특징과 잃어버린 위치를 자세히 적어 주세요.",
-    gradient: "from-primary to-[hsl(270_68%_61%)]",
+    gradient: "from-primary to-primary/80",
     badge: "bg-accent text-primary",
   },
 } satisfies Record<
@@ -151,7 +151,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     getInitialReportType(forcedType)
   );
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const form = useForm<FormValues>({
@@ -194,7 +193,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     const nextImageUrls = normalizeItemImageUrls(existingItem);
     setReportType(nextType);
     setImagePreviews(nextImageUrls);
-    setActiveImageIndex(0);
     form.reset({
       reportType: nextType,
       title: existingItem.title,
@@ -231,22 +229,11 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     form.setValue("longitude", nextLocation.longitude);
   };
 
-  const syncImagePreviews = (nextImages: string[], preferredIndex?: number) => {
+  const syncImagePreviews = (nextImages: string[]) => {
     setImagePreviews(nextImages);
     form.setValue("imageUrls", nextImages, {
       shouldDirty: true,
       shouldTouch: true,
-    });
-    setActiveImageIndex((currentIndex) => {
-      if (nextImages.length === 0) {
-        return 0;
-      }
-
-      if (typeof preferredIndex === "number") {
-        return Math.min(preferredIndex, nextImages.length - 1);
-      }
-
-      return Math.min(currentIndex, nextImages.length - 1);
     });
   };
 
@@ -303,7 +290,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
         filesToAdd.map((file) => optimizeImageForUpload(file))
       );
       let nextImages = [...currentImages, ...optimizedImages];
-      syncImagePreviews(nextImages, firstAddedIndex);
+      syncImagePreviews(nextImages);
 
       const analysis = await analyzeMutation.mutateAsync({
         imageUrl: optimizedImages[0],
@@ -313,7 +300,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
         nextImages = nextImages.map((imageUrl, index) =>
           index === firstAddedIndex ? analysis.maskedImage! : imageUrl
         );
-        syncImagePreviews(nextImages, firstAddedIndex);
+        syncImagePreviews(nextImages);
       }
 
       setFieldIfEmpty("itemCategory", analysis.itemCategory);
@@ -365,7 +352,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     const nextImages = imagePreviews.filter(
       (_, index) => index !== indexToRemove
     );
-    syncImagePreviews(nextImages, Math.max(0, indexToRemove - 1));
+    syncImagePreviews(nextImages);
   };
 
   const handleSetPrimaryImage = (indexToPromote: number) => {
@@ -511,7 +498,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
 
   return (
     <Layout>
-      <div className="container py-6 xl:max-w-[1440px]">
+      <div className="container pb-28 pt-6 sm:pb-6 xl:max-w-[1440px]">
         <Button
           variant="ghost"
           size="sm"
@@ -558,25 +545,25 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
 
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="grid gap-5 min-w-0 xl:grid-cols-[380px_minmax(0,1fr)] xl:items-start"
+          className="grid gap-5 min-w-0 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start"
         >
-          <div className="space-y-4 min-w-0 xl:sticky xl:top-24">
+          <div className="order-2 space-y-4 min-w-0 lg:sticky lg:top-24">
             <Card className="overflow-hidden">
               <CardHeader
                 className={cn(
-                  "border-b bg-gradient-to-br px-5 py-1.5 text-white",
+                  "border-b bg-gradient-to-br px-5 py-3 text-white",
                   currentConfig.gradient
                 )}
               >
                 <div className="mb-1 inline-flex w-fit rounded-full border border-white/15 bg-white/12 px-2.5 py-1 text-[11px] font-semibold text-white/88">
-                  1단계
+                  2단계
                 </div>
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Upload className="h-4 w-4" />
                   사진 업로드
                 </CardTitle>
                 <CardDescription className="text-white/64">
-                  사진을 올리면 AI가 물건 특징을 먼저 분석해 줍니다.
+                  사진을 올리면 카테고리와 색상을 자동으로 채울 수 있어요.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-4">
@@ -597,10 +584,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                       </div>
                       <p className="text-sm font-semibold text-foreground">
                         첫 번째 사진이 대표 이미지로 사용돼요.
-                      </p>
-                      <p className="text-xs leading-5 text-muted-foreground">
-                        정면이 잘 보이는 사진을 먼저 올리고, 다른 썸네일을
-                        누르면 대표 이미지를 바로 바꿀 수 있어요.
                       </p>
                     </div>
                   </div>
@@ -634,7 +617,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                         </p>
                         <p className="mt-1 text-xs leading-5 text-muted-foreground">
                           {imagePreviews.length === 0
-                            ? "큰 빈 영역 없이 썸네일 카드로 정리돼요."
+                            ? "정면이 잘 보이는 사진을 추천해요."
                             : "최대 10장까지 업로드할 수 있어요."}
                         </p>
                       </div>
@@ -687,12 +670,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                       </div>
                     ))}
                   </div>
-
-                  <p className="text-xs leading-5 text-muted-foreground">
-                    이미지 비율은 썸네일 카드로 정리되고, 상세 보기에서는 원본
-                    비율에 맞춰 표시돼요.
-                  </p>
-
                   {isAnalyzing ? (
                     <div className="rounded-[22px] border border-primary/15 bg-background/90 px-4 py-6 text-center shadow-sm backdrop-blur-sm">
                       <Loader2 className="mx-auto mb-3 h-8 w-8 animate-spin text-primary" />
@@ -705,115 +682,20 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                     </div>
                   ) : null}
                 </div>
-                <div className="hidden">
-                  {imagePreviews.length > 0 ? (
-                    <div className="flex h-full flex-col">
-                      <div className="relative flex-1 overflow-hidden">
-                        <img
-                          src={imagePreviews[activeImageIndex]}
-                          alt={`업로드 미리보기 ${activeImageIndex + 1}`}
-                          className="absolute inset-0 h-full w-full object-cover"
-                        />
-                        <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-3 py-1 text-xs font-medium text-white">
-                          <Images className="h-3.5 w-3.5" />
-                          {imagePreviews.length} / {MAX_ITEM_IMAGE_COUNT}
-                        </div>
-                        <div className="absolute bottom-3 right-3 rounded-full bg-black/65 px-3 py-1 text-xs font-medium text-white">
-                          대표 사진은 첫 번째 이미지예요
-                        </div>
-                      </div>
-
-                      <div
-                        className="flex gap-2 overflow-x-auto border-t border-white/30 bg-black/15 p-3 backdrop-blur-sm"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        {imagePreviews.map((imageUrl, index) => (
-                          <div
-                            key={`${imageUrl}-${index}`}
-                            className="relative shrink-0"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => setActiveImageIndex(index)}
-                              className={cn(
-                                "overflow-hidden rounded-2xl border-2 transition-all",
-                                index === activeImageIndex
-                                  ? "border-white shadow-lg"
-                                  : "border-white/35 hover:border-white/70"
-                              )}
-                              aria-label={`${index + 1}번째 이미지 선택`}
-                            >
-                              <img
-                                src={imageUrl}
-                                alt={`썸네일 ${index + 1}`}
-                                className="h-16 w-16 object-cover"
-                              />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveImage(index)}
-                              className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border border-white/60 bg-white/95 text-foreground shadow-sm hover:bg-white"
-                              aria-label={`${index + 1}번째 이미지 삭제`}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                            {index === 0 ? (
-                              <span className="absolute bottom-1 left-1 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                대표
-                              </span>
-                            ) : null}
-                          </div>
-                        ))}
-
-                        {imagePreviews.length < MAX_ITEM_IMAGE_COUNT ? (
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-dashed border-white/60 bg-white/20 text-white transition-colors hover:bg-white/30"
-                            aria-label="이미지 추가"
-                          >
-                            <Upload className="h-5 w-5" />
-                          </button>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex h-full flex-col items-center justify-center py-7 text-center">
-                      <div className="mb-1.5 rounded-full bg-background p-3 shadow-sm">
-                        <Upload className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                      <p className="text-sm font-semibold leading-none">
-                        클릭해서 사진 업로드
-                      </p>
-                      <p className="mt-0.5 text-xs leading-[1.4] text-muted-foreground">
-                        정면이 잘 보이는 사진일수록 분석이 더 정확해져요.
-                      </p>
-                    </div>
-                  )}
-                  {isAnalyzing && (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/90 backdrop-blur-sm">
-                      <Loader2 className="mb-3 h-10 w-10 animate-spin text-primary" />
-                      <p className="text-sm font-semibold">AI 분석 중...</p>
-                      <p className="text-xs text-muted-foreground">
-                        사진을 읽고 있어요.
-                      </p>
-                    </div>
-                  )}
-                </div>
               </CardContent>
             </Card>
 
             <Card className="overflow-hidden">
               <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
                 <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
-                  2단계
+                  3단계
                 </div>
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <MapPinned className="h-4 w-4 text-primary" />
                   위치 지정
                 </CardTitle>
                 <CardDescription>
-                  지도에서 위치를 찍어 두면 AI 매칭에 도움이 됩니다.
+                  지도에서 위치를 찍어 두면 가까운 후보를 더 잘 찾습니다.
                 </CardDescription>
               </CardHeader>
               <CardContent className="p-5">
@@ -835,11 +717,11 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
             </Card>
           </div>
 
-          <div className="space-y-5 min-w-0">
+          <div className="order-1 space-y-5 min-w-0">
             <Card className="border-primary/10 shadow-[0_18px_34px_-28px_rgba(27,31,59,0.16)]">
               <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
                 <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
-                  3단계
+                  1단계
                 </div>
                 <CardTitle className="text-base font-semibold">
                   물건 정보 입력
@@ -917,7 +799,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
 
                 <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 px-4 pb-3.5 pt-4">
                   <p className="text-sm font-semibold text-foreground">
-                    발견 정보
+                    {reportType === "found" ? "습득 정보" : "분실 정보"}
                   </p>
 
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -940,7 +822,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                         htmlFor="contactInfo"
                         className="text-sm font-semibold"
                       >
-                        연락처
+                        연락처 <span className="text-muted-foreground">(선택)</span>
                       </Label>
                       <Input
                         id="contactInfo"
@@ -952,7 +834,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                         onChange={handlePhoneChange}
                       />
                       <p className="mt-1.5 pl-0.5 text-[12px] leading-5 text-muted-foreground">
-                        연락 가능한 번호를 남겨 주세요.
+                        기본 연락은 채팅으로 이어지고, 전화번호는 필요할 때만 남겨 주세요.
                       </p>
                     </div>
                   </div>
@@ -960,39 +842,60 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
               </CardContent>
             </Card>
 
-            <Card className="border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)]">
-              <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-                <div className="max-w-lg space-y-1">
-                  <div className="mb-2 inline-flex w-fit rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
-                    4단계
-                  </div>
-                  <p className="text-base font-semibold text-foreground">
-                    입력 내용을 확인해 주세요.
-                  </p>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    저장하면 마이페이지와 상세 페이지에서 바로 확인할 수 있어요.
-                  </p>
+          </div>
+
+          <Card className="order-3 border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)] lg:col-span-2">
+            <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+              <div className="max-w-lg space-y-1">
+                <div className="mb-2 inline-flex w-fit rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
+                  4단계
                 </div>
-                <Button
-                  type="submit"
-                  className="h-[3.2rem] rounded-full px-9 text-base font-semibold shadow-[0_22px_32px_-18px_hsl(var(--primary)/0.54)] transition-all hover:-translate-y-0.5 hover:shadow-[0_26px_38px_-18px_hsl(var(--primary)/0.6)] disabled:translate-y-0 disabled:shadow-none disabled:opacity-60 sm:ml-6 sm:min-w-[240px]"
-                  size="lg"
-                  disabled={isSubmitting}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      처리 중...
-                    </>
-                  ) : (
-                    <>
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      {submitLabel}
-                    </>
-                  )}
-                </Button>
-              </CardContent>
-            </Card>
+                <p className="text-base font-semibold text-foreground">
+                  입력 내용을 확인해 주세요.
+                </p>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  저장하면 마이페이지와 상세 페이지에서 바로 확인할 수 있어요.
+                </p>
+              </div>
+              <Button
+                type="submit"
+                className="hidden h-[3.2rem] rounded-full px-9 text-base font-semibold shadow-[0_22px_32px_-18px_hsl(var(--primary)/0.54)] transition-all hover:-translate-y-0.5 hover:shadow-[0_26px_38px_-18px_hsl(var(--primary)/0.6)] disabled:translate-y-0 disabled:shadow-none disabled:opacity-60 sm:ml-6 sm:inline-flex sm:min-w-[240px]"
+                size="lg"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    처리 중...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    {submitLabel}
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 p-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur sm:hidden">
+            <Button
+              type="submit"
+              className="h-12 w-full rounded-lg text-base font-semibold"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  처리 중...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  {submitLabel}
+                </>
+              )}
+            </Button>
           </div>
         </form>
       </div>
