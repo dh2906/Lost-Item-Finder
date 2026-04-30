@@ -61,6 +61,7 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 type ReportType = "found" | "lost";
+type ReportStep = 1 | 2 | 3 | 4;
 type ReportPageProps = {
   forcedType?: ReportType;
   itemId?: number;
@@ -150,6 +151,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const [reportType, setReportType] = useState<ReportType>(() =>
     getInitialReportType(forcedType)
   );
+  const [currentStep, setCurrentStep] = useState<ReportStep>(1);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -258,6 +260,63 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     }
   };
 
+  const analyzeUploadedImage = async (
+    imageUrl: string,
+    imageIndex: number,
+    skippedCount: number,
+    truncatedCount: number
+  ) => {
+    try {
+      setIsAnalyzing(true);
+      const analysis = await analyzeMutation.mutateAsync({ imageUrl });
+
+      if (analysis.maskedImage) {
+        const currentImages = form.getValues("imageUrls") ?? [];
+        const nextImages = currentImages.map((currentImage, index) =>
+          index === imageIndex ? analysis.maskedImage! : currentImage
+        );
+        syncImagePreviews(nextImages);
+      }
+
+      setFieldIfEmpty("itemCategory", analysis.itemCategory);
+      setFieldIfEmpty("color", analysis.color);
+      setFieldIfEmpty("size", analysis.size);
+      setFieldIfEmpty("description", analysis.description);
+      setFieldIfEmpty("tags", analysis.tags);
+
+      if (!form.getValues("title")) {
+        form.setValue(
+          "title",
+          `${analysis.color} ${analysis.itemCategory}`.trim(),
+          { shouldDirty: true, shouldTouch: true }
+        );
+      }
+
+      toast({
+        title: "AI 분석 완료",
+        description: "입력 가능한 정보를 먼저 채워 두었어요.",
+      });
+
+      if (skippedCount > 0 || truncatedCount > 0) {
+        toast({
+          title: "사진 업로드 일부가 제외됐어요.",
+          description:
+            skippedCount > 0
+              ? "이미지가 아닌 파일은 제외했어요."
+              : `최대 ${MAX_ITEM_IMAGE_COUNT}장까지만 등록할 수 있어요.`,
+        });
+      }
+    } catch {
+      toast({
+        title: "이미지 분석에 실패했어요.",
+        description: "필드는 직접 수정해도 괜찮아요.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const processSelectedFiles = async (files: File[]) => {
     const imageFiles = files.filter((file) => file.type.startsWith("image/"));
     const skippedCount = files.length - imageFiles.length;
@@ -283,61 +342,32 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
 
     const filesToAdd = imageFiles.slice(0, remainingSlots);
     const firstAddedIndex = currentImages.length;
+    const truncatedCount = imageFiles.length - filesToAdd.length;
 
     try {
-      setIsAnalyzing(true);
       const optimizedImages = await Promise.all(
         filesToAdd.map((file) => optimizeImageForUpload(file))
       );
-      let nextImages = [...currentImages, ...optimizedImages];
+      const nextImages = [...currentImages, ...optimizedImages];
       syncImagePreviews(nextImages);
 
-      const analysis = await analyzeMutation.mutateAsync({
-        imageUrl: optimizedImages[0],
-      });
-
-      if (analysis.maskedImage) {
-        nextImages = nextImages.map((imageUrl, index) =>
-          index === firstAddedIndex ? analysis.maskedImage! : imageUrl
-        );
-        syncImagePreviews(nextImages);
-      }
-
-      setFieldIfEmpty("itemCategory", analysis.itemCategory);
-      setFieldIfEmpty("color", analysis.color);
-      setFieldIfEmpty("size", analysis.size);
-      setFieldIfEmpty("description", analysis.description);
-      setFieldIfEmpty("tags", analysis.tags);
-
-      if (!form.getValues("title")) {
-        form.setValue(
-          "title",
-          `${analysis.color} ${analysis.itemCategory}`.trim()
-        );
-      }
-
       toast({
-        title: "AI 분석 완료",
-        description: "입력 가능한 정보를 먼저 채워 두었어요.",
+        title: "사진을 추가했어요.",
+        description: "다음 단계로 이동해도 AI 분석은 계속 진행됩니다.",
       });
 
-      if (skippedCount > 0 || filesToAdd.length < imageFiles.length) {
-        toast({
-          title: `${nextImages.length}장의 사진을 저장했어요.`,
-          description:
-            skippedCount > 0
-              ? "이미지가 아닌 파일은 제외했어요."
-              : `최대 ${MAX_ITEM_IMAGE_COUNT}장까지만 등록할 수 있어요.`,
-        });
-      }
+      void analyzeUploadedImage(
+        optimizedImages[0],
+        firstAddedIndex,
+        skippedCount,
+        truncatedCount
+      );
     } catch {
       toast({
-        title: "이미지 분석에 실패했어요.",
-        description: "필드는 직접 수정해도 괜찮아요.",
+        title: "이미지 처리에 실패했어요.",
+        description: "다른 사진으로 다시 시도해 주세요.",
         variant: "destructive",
       });
-    } finally {
-      setIsAnalyzing(false);
     }
   };
 
@@ -427,6 +457,38 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     }
   };
 
+  const goToNextStep = async () => {
+    if (currentStep === 1) {
+      if (reportType === "found" && imagePreviews.length === 0) {
+        toast({
+          title: "습득물 등록에는 사진이 필요해요.",
+          description: "사진을 먼저 올린 뒤 다음 단계로 이동해 주세요.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setCurrentStep(2);
+      return;
+    }
+
+    if (currentStep === 2) {
+      const isValid = await form.trigger("title");
+      if (!isValid) {
+        return;
+      }
+      setCurrentStep(3);
+      return;
+    }
+
+    if (currentStep === 3) {
+      setCurrentStep(4);
+    }
+  };
+
+  const goToPreviousStep = () => {
+    setCurrentStep((step) => Math.max(1, step - 1) as ReportStep);
+  };
+
   if (isEditMode && isItemLoading) {
     return <LoadingState />;
   }
@@ -495,6 +557,13 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const submitLabel = isEditMode
     ? "수정 내용 저장하기"
     : currentConfig.submitText;
+  const stepItems = [
+    { step: 1 as const, label: "사진 업로드" },
+    { step: 2 as const, label: "정보 입력" },
+    { step: 3 as const, label: "위치 지정" },
+    { step: 4 as const, label: "확인" },
+  ];
+  const currentStepLabel = stepItems.find((item) => item.step === currentStep)?.label;
 
   return (
     <Layout>
@@ -545,9 +614,33 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
 
         <form
           onSubmit={form.handleSubmit(onSubmit)}
-          className="grid gap-5 min-w-0 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start"
+          className="space-y-5"
         >
-          <div className="order-2 space-y-4 min-w-0 lg:sticky lg:top-24">
+          <div className="rounded-xl border border-border bg-white p-2 shadow-sm">
+            <div className="grid grid-cols-4 gap-2">
+              {stepItems.map((item) => (
+                <button
+                  key={item.step}
+                  type="button"
+                  onClick={() => setCurrentStep(item.step)}
+                  className={cn(
+                    "min-h-11 rounded-lg px-2 text-xs font-semibold transition-colors sm:text-sm",
+                    currentStep === item.step
+                      ? "bg-primary text-primary-foreground"
+                      : item.step < currentStep
+                        ? "bg-accent text-primary"
+                        : "bg-secondary/60 text-muted-foreground"
+                  )}
+                >
+                  <span className="block">STEP {item.step}</span>
+                  <span className="mt-0.5 block truncate">{item.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {currentStep === 1 ? (
+            <div className="mx-auto max-w-3xl min-w-0">
             <Card className="overflow-hidden">
               <CardHeader
                 className={cn(
@@ -556,7 +649,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                 )}
               >
                 <div className="mb-1 inline-flex w-fit rounded-full border border-white/15 bg-white/12 px-2.5 py-1 text-[11px] font-semibold text-white/88">
-                  2단계
+                  1단계
                 </div>
                 <CardTitle className="flex items-center gap-2 text-base font-semibold">
                   <Upload className="h-4 w-4" />
@@ -684,7 +777,11 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                 </div>
               </CardContent>
             </Card>
+            </div>
+          ) : null}
 
+          {currentStep === 3 ? (
+            <div className="mx-auto max-w-4xl min-w-0">
             <Card className="overflow-hidden">
               <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
                 <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
@@ -715,17 +812,25 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                 </div>
               </CardContent>
             </Card>
-          </div>
+            </div>
+          ) : null}
 
-          <div className="order-1 space-y-5 min-w-0">
+          {currentStep === 2 ? (
+          <div className="mx-auto max-w-4xl space-y-5 min-w-0">
             <Card className="border-primary/10 shadow-[0_18px_34px_-28px_rgba(27,31,59,0.16)]">
               <CardHeader className="border-b bg-secondary/45 px-5 py-2.5">
                 <div className="mb-1 inline-flex w-fit rounded-full border border-primary/10 bg-accent px-2.5 py-1 text-[11px] font-semibold text-primary">
-                  1단계
+                  2단계
                 </div>
                 <CardTitle className="text-base font-semibold">
                   물건 정보 입력
                 </CardTitle>
+                {isAnalyzing ? (
+                  <CardDescription className="flex items-center gap-2 text-primary">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    사진 분석 중이에요. 입력하는 동안 자동으로 채워집니다.
+                  </CardDescription>
+                ) : null}
               </CardHeader>
               <CardContent className="space-y-4 p-5 pt-3">
                 <section className="space-y-4 rounded-[22px] border border-border/60 bg-white/72 p-4">
@@ -843,8 +948,10 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
             </Card>
 
           </div>
+          ) : null}
 
-          <Card className="order-3 border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)] lg:col-span-2">
+          {currentStep === 4 ? (
+          <Card className="mx-auto max-w-4xl border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)]">
             <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
               <div className="max-w-lg space-y-1">
                 <div className="mb-2 inline-flex w-fit rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
@@ -877,25 +984,50 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
               </Button>
             </CardContent>
           </Card>
+          ) : null}
 
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 p-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur sm:hidden">
+          <div className="mx-auto flex max-w-4xl flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
             <Button
-              type="submit"
-              className="h-12 w-full rounded-lg text-base font-semibold"
-              disabled={isSubmitting}
+              type="button"
+              variant="outline"
+              className="h-11 rounded-lg px-5"
+              onClick={goToPreviousStep}
+              disabled={currentStep === 1 || isSubmitting}
             >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  처리 중...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                  {submitLabel}
-                </>
-              )}
+              이전
             </Button>
+            <div className="flex items-center justify-end gap-3">
+              <span className="hidden text-sm text-muted-foreground sm:inline">
+                {currentStep}단계: {currentStepLabel}
+              </span>
+              {currentStep < 4 ? (
+                <Button
+                  type="button"
+                  className="h-11 min-w-[140px] rounded-lg px-5 font-semibold"
+                  onClick={() => void goToNextStep()}
+                >
+                  다음
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  className="h-11 min-w-[180px] rounded-lg px-5 font-semibold"
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      처리 중...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                      {submitLabel}
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
           </div>
         </form>
       </div>
