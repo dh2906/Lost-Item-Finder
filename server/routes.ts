@@ -115,8 +115,8 @@ const LOST112_SYNC_INTERVAL_MS = Number(
 const LOST112_SYNC_INITIAL_DELAY_MS = Number(
   process.env.LOST112_SYNC_INITIAL_DELAY_MS ?? 1000 * 60
 );
-const LOST112_SYNC_NUM_ROWS = Number(process.env.LOST112_SYNC_NUM_ROWS ?? 50);
-const LOST112_SYNC_MAX_PAGES = Number(process.env.LOST112_SYNC_MAX_PAGES ?? 1);
+const LOST112_SYNC_NUM_ROWS = Number(process.env.LOST112_SYNC_NUM_ROWS ?? 100);
+const LOST112_SYNC_MAX_PAGES = Number(process.env.LOST112_SYNC_MAX_PAGES ?? 10);
 const LOST112_SYNC_START_PAGE = Number(process.env.LOST112_SYNC_START_PAGE ?? 1);
 const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY;
 
@@ -125,6 +125,17 @@ function getQwenClient(): OpenAI {
     throw new Error("QWEN_API_KEY is not configured");
   }
   return qwen;
+}
+
+function getLost112TodayYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .replace(/-/g, "");
 }
 
 function getLost112NormalizeClient(): OpenAI {
@@ -1119,8 +1130,8 @@ async function runLost112Sync({
   startDate,
   endDate,
   page = 1,
-  numOfRows = 50,
-  maxPages = 1,
+  numOfRows = LOST112_SYNC_NUM_ROWS,
+  maxPages = LOST112_SYNC_MAX_PAGES,
   trigger = "manual",
 }: Lost112SyncOptions): Promise<Lost112SyncResult> {
   const [syncRun] = await db
@@ -1491,6 +1502,7 @@ function startLost112SyncScheduler(): void {
     startPage: LOST112_SYNC_START_PAGE,
     numOfRows: LOST112_SYNC_NUM_ROWS,
     maxPages: LOST112_SYNC_MAX_PAGES,
+    dateRange: "today",
   });
 
   const runScheduledSync = async () => {
@@ -1501,14 +1513,19 @@ function startLost112SyncScheduler(): void {
 
     isRunning = true;
     try {
+      const todayYmd = getLost112TodayYmd();
       const result = await runLost112Sync({
         apiKey,
+        startDate: todayYmd,
+        endDate: todayYmd,
         page: LOST112_SYNC_START_PAGE,
         numOfRows: LOST112_SYNC_NUM_ROWS,
         maxPages: LOST112_SYNC_MAX_PAGES,
         trigger: "scheduled",
       });
       console.log("[Lost112 Sync] scheduled job completed:", {
+        startDate: todayYmd,
+        endDate: todayYmd,
         fetchedCount: result.fetchedCount,
         createdCount: result.createdCount,
         updatedCount: result.updatedCount,
@@ -4444,15 +4461,18 @@ export async function registerRoutes(
       }
 
       const input = api.lost112.sync.input.parse(req.body ?? {}) ?? {};
+      const defaultSyncDate = getLost112TodayYmd();
+      const startDate = input.startDate ?? input.endDate ?? defaultSyncDate;
+      const endDate = input.endDate ?? input.startDate ?? defaultSyncDate;
       const result = await runLost112Sync({
         apiKey,
         category: input.category,
         region: input.region,
-        startDate: input.startDate,
-        endDate: input.endDate,
-        page: input.page,
-        numOfRows: input.numOfRows,
-        maxPages: input.maxPages,
+        startDate,
+        endDate,
+        page: input.page ?? LOST112_SYNC_START_PAGE,
+        numOfRows: input.numOfRows ?? LOST112_SYNC_NUM_ROWS,
+        maxPages: input.maxPages ?? LOST112_SYNC_MAX_PAGES,
       });
 
       res.json(result);
