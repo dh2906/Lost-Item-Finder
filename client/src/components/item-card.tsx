@@ -113,7 +113,6 @@ export function ItemCard({
   const primaryImageUrl = getPrimaryItemImageUrl(item);
   const shouldShowImage =
     primaryImageUrl && !(isLost112Item && isPlaceholderImageUrl(primaryImageUrl));
-  const hasVisualImage = Boolean(shouldShowImage);
   const displayLocation = splitLocation(item.location);
   const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
 
@@ -159,14 +158,8 @@ export function ItemCard({
         <Card className="h-full overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-all duration-200 group-hover:border-primary/30 group-hover:shadow-md group-active:translate-y-0.5">
           <div
             className={cn(
-              "relative overflow-hidden bg-[hsl(var(--primary-light))]",
-              isCompact
-                ? hasVisualImage
-                  ? "aspect-[5/4]"
-                  : "aspect-[4/3]"
-                : hasVisualImage
-                  ? "aspect-[4/3]"
-                  : "aspect-[16/9]"
+              "relative overflow-hidden bg-secondary/45",
+              isCompact ? "aspect-[5/4]" : "aspect-[4/3]"
             )}
           >
             {shouldShowImage ? (
@@ -178,19 +171,26 @@ export function ItemCard({
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
               />
             ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-secondary text-center">
-                <div className="rounded-xl border border-border bg-white p-3">
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 border-b border-dashed border-border bg-[linear-gradient(180deg,hsl(var(--secondary))_0%,white_100%)] px-4 text-center">
+                <div className="rounded-xl border border-border bg-white p-3 shadow-sm">
                   {isLost112Item ? (
                     <ShieldCheck className="h-7 w-7 text-primary/70" />
                   ) : (
                     <TagIcon className="h-7 w-7 text-primary/45" />
                   )}
                 </div>
-                {!isCompact ? (
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {isLost112Item ? "경찰청 등록 데이터" : "사진 없음"}
+                <div className="space-y-1">
+                  <span className="block text-xs font-semibold text-foreground/75">
+                    {isLost112Item ? "제공된 사진 없음" : "사진 없음"}
                   </span>
-                ) : null}
+                  {!isCompact ? (
+                    <span className="block text-[11px] leading-4 text-muted-foreground">
+                      {isLost112Item
+                        ? "경찰청 원문에서 사진을 제공하지 않았어요."
+                        : "등록된 이미지가 없어요."}
+                    </span>
+                  ) : null}
+                </div>
               </div>
             )}
 

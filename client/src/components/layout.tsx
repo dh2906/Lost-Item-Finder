@@ -39,6 +39,7 @@ type NavigationItem = {
   children?: Array<{
     href: string;
     label: string;
+    description?: string;
   }>;
 };
 
@@ -46,7 +47,22 @@ const navigation: NavigationItem[] = [
   { href: "/", label: "홈" },
   { href: "/mypage", label: "내 물건" },
   { href: "/matches", label: "매칭 후보" },
-  { href: "/items?type=found", label: "습득물 찾기" },
+  {
+    href: "/items?type=found",
+    label: "습득물 찾기",
+    children: [
+      {
+        href: "/items?type=found",
+        label: "전체 습득물",
+        description: "경찰청과 사용자 등록 습득물",
+      },
+      {
+        href: "/search",
+        label: "AI로 찾기",
+        description: "사진이나 설명으로 유사 후보 검색",
+      },
+    ],
+  },
   {
     href: "/report",
     label: "등록",
@@ -62,7 +78,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { user, isAuthenticated, logout } = useAuth();
   const { data: chatRooms = [] } = useChatRooms(isAuthenticated);
   const { data: notifications = [] } = useMatchNotifications();
-  const [reportMenuOpen, setReportMenuOpen] = useState(false);
+  const [openNavMenu, setOpenNavMenu] = useState<string | null>(null);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -71,8 +87,8 @@ export function Layout({ children }: { children: ReactNode }) {
     (notification) => !notification.isRead
   ).length;
 
-  const handleReportMenuNavigate = (href: string) => {
-    setReportMenuOpen(false);
+  const handleMenuNavigate = (href: string) => {
+    setOpenNavMenu(null);
     setMobileMenuOpen(false);
     void setLocation(href);
   };
@@ -115,19 +131,24 @@ export function Layout({ children }: { children: ReactNode }) {
                             {item.children.map((child) => (
                               <button
                                 key={child.href}
-                                onClick={() =>
-                                  handleReportMenuNavigate(child.href)
-                                }
+                                onClick={() => handleMenuNavigate(child.href)}
                                 className="min-h-11 rounded-xl px-3 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-primary"
                               >
-                                {child.label}
+                                <span className="block font-semibold text-foreground">
+                                  {child.label}
+                                </span>
+                                {child.description ? (
+                                  <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                                    {child.description}
+                                  </span>
+                                ) : null}
                               </button>
                             ))}
                           </div>
                         </>
                       ) : (
                         <button
-                          onClick={() => handleReportMenuNavigate(item.href)}
+                          onClick={() => handleMenuNavigate(item.href)}
                           className="min-h-11 rounded-xl px-3 text-left text-base font-semibold text-foreground transition-colors hover:bg-secondary hover:text-primary"
                         >
                           {item.label}
@@ -138,7 +159,7 @@ export function Layout({ children }: { children: ReactNode }) {
                   {user?.role === "admin" && (
                     <div className="flex flex-col gap-2 border-t border-border pt-4">
                       <button
-                        onClick={() => handleReportMenuNavigate("/admin")}
+                        onClick={() => handleMenuNavigate("/admin")}
                         className="min-h-11 rounded-xl px-3 text-left text-base font-semibold text-amber-700 transition-colors hover:bg-amber-50 hover:text-amber-800"
                       >
                         관리자 대시보드
@@ -167,26 +188,41 @@ export function Layout({ children }: { children: ReactNode }) {
             <nav className="hidden items-center gap-1 lg:flex">
               {navigation.map((item) => {
                 const itemPath = item.href.split("?")[0];
+                const childActive = item.children?.some((child) => {
+                  const childPath = child.href.split("?")[0];
+                  return childPath === "/"
+                    ? location === childPath
+                    : location === childPath ||
+                        location.startsWith(`${childPath}?`) ||
+                        location.startsWith(`${childPath}/`);
+                });
                 const active =
-                  itemPath === "/"
+                  childActive ||
+                  (itemPath === "/"
                     ? location === itemPath
                     : location === itemPath ||
                       location.startsWith(`${itemPath}?`) ||
-                      location.startsWith(`${itemPath}/`);
+                      location.startsWith(`${itemPath}/`));
 
                 if (item.children?.length) {
+                  const isOpen = openNavMenu === item.href;
                   return (
                     <div
                       key={item.href}
                       className="relative"
-                      onMouseEnter={() => setReportMenuOpen(true)}
-                      onMouseLeave={() => setReportMenuOpen(false)}
+                      onMouseEnter={() => setOpenNavMenu(item.href)}
+                      onMouseLeave={() => setOpenNavMenu(null)}
                     >
                       <button
                         type="button"
+                        onClick={() =>
+                          setOpenNavMenu((current) =>
+                            current === item.href ? null : item.href
+                          )
+                        }
                         className={cn(
                           "relative inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200",
-                          active || reportMenuOpen
+                          active || isOpen
                             ? "bg-primary text-primary-foreground"
                             : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                         )}
@@ -195,31 +231,40 @@ export function Layout({ children }: { children: ReactNode }) {
                         <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
                       </button>
 
-                      {reportMenuOpen && (
+                      {isOpen && (
                         <>
                           <div
                             className="absolute inset-x-0 top-full h-4"
                             aria-hidden="true"
                           />
-                          <div className="absolute left-1/2 top-full z-50 mt-3 w-44 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_12px_rgba(0,0,0,0.10)]">
+                          <div className="absolute left-1/2 top-full z-50 mt-3 w-64 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_12px_rgba(0,0,0,0.10)]">
                             {item.children.map((child) => {
-                              const childActive = location === child.href;
+                              const childPath = child.href.split("?")[0];
+                              const isChildActive =
+                                location === childPath ||
+                                location.startsWith(`${childPath}?`) ||
+                                location.startsWith(`${childPath}/`);
 
                               return (
                                 <button
                                   key={child.href}
                                   type="button"
-                                  onClick={() =>
-                                    handleReportMenuNavigate(child.href)
-                                  }
+                                  onClick={() => handleMenuNavigate(child.href)}
                                   className={cn(
-                                    "block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                                    childActive
+                                    "block w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
+                                    isChildActive
                                       ? "bg-accent text-accent-foreground"
                                       : "text-foreground hover:bg-accent hover:text-accent-foreground"
                                   )}
                                 >
-                                  {child.label}
+                                  <span className="block font-semibold">
+                                    {child.label}
+                                  </span>
+                                  {child.description ? (
+                                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                                      {child.description}
+                                    </span>
+                                  ) : null}
                                 </button>
                               );
                             })}

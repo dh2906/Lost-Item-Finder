@@ -14,6 +14,7 @@ import {
   UserRound,
   Download,
   Smartphone,
+  X,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -55,6 +56,7 @@ export default function MyPage() {
   const { isInstalled } = usePWAInstall();
 
   const [filter, setFilter] = useState<FilterType>("all");
+  const [showInstallPanel, setShowInstallPanel] = useState(true);
 
   const filteredMyItems = useMemo(
     () =>
@@ -153,10 +155,10 @@ export default function MyPage() {
 
   return (
     <Layout>
-      <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-10 pt-14">
+      <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-8 pt-8">
         <div className="container mx-auto max-w-6xl px-5">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,360px)]">
-            <div className="space-y-5">
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,360px)]">
+            <div className="space-y-4">
               <Badge className="rounded-full border border-primary/15 bg-white/90 px-4 py-1.5 text-sm font-semibold text-primary shadow-sm hover:bg-white/90">
                 마이페이지
               </Badge>
@@ -173,7 +175,6 @@ export default function MyPage() {
               </div>
             </div>
 
-            {/* 우측 사이드바 패널 */}
             <div className="space-y-4">
               <Card className="border-border/70 bg-white/92 shadow-sm">
                 <CardHeader className="pb-4">
@@ -224,51 +225,6 @@ export default function MyPage() {
                         {lostCount}
                       </p>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="border-border/70 bg-white/92 shadow-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Smartphone className="h-5 w-5 text-primary" />앱 설정
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between rounded-[20px] border border-border/70 bg-secondary/40 p-4">
-                    <div>
-                      <p className="font-semibold text-sm text-foreground">
-                        Findy 앱 설치
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        바탕화면에 바로가기 추가
-                      </p>
-                    </div>
-
-                    {/* 🚀 설치 상태에 따른 깔끔한 분기 처리 */}
-                    {isInstalled ? (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled
-                        className="gap-1.5 rounded-full px-4"
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                        설치됨
-                      </Button>
-                    ) : (
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 rounded-full px-4 border-primary/50 text-primary hover:bg-primary/5"
-                      >
-                        <Link href="/install">
-                          <Download className="w-4 h-4" />
-                          설치 안내 보기
-                        </Link>
-                      </Button>
-                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -510,9 +466,9 @@ export default function MyPage() {
                 <h3 className="text-xl font-semibold text-foreground">
                   아직 등록한 물건이 없어요
                 </h3>
-                <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-                  잃어버린 물건이나 주운 물건을 등록하면 여기에서 수정, 삭제, 해결
-                  처리까지 한 번에 관리할 수 있어요.
+                <p className="mt-3 max-w-md break-keep text-sm leading-6 text-muted-foreground [word-break:keep-all]">
+                  등록한 물건은 여기에서 수정, 삭제, 해결 처리까지 한 번에
+                  관리할 수 있어요.
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <Button asChild className="rounded-full px-5">
@@ -708,6 +664,40 @@ export default function MyPage() {
           </div>
         </div>
       </section>
+
+      {!isInstalled && showInstallPanel ? (
+        <aside className="fixed bottom-5 right-5 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-border bg-white p-4 shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 gap-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--primary-light))] text-primary">
+                <Smartphone className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-foreground">
+                  Findy 앱 설치
+                </h2>
+                <p className="mt-1 break-keep text-xs leading-5 text-muted-foreground [word-break:keep-all]">
+                  자주 쓰는 기기 바탕화면에 바로가기를 추가할 수 있어요.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowInstallPanel(false)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+              aria-label="앱 설치 안내 닫기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <Button asChild variant="outline" size="sm" className="mt-4 w-full">
+            <Link href="/install">
+              <Download className="mr-2 h-4 w-4" />
+              설치 안내 보기
+            </Link>
+          </Button>
+        </aside>
+      ) : null}
     </Layout>
   );
 }
