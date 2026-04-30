@@ -4,10 +4,10 @@ import { ko } from "date-fns/locale";
 import {
   MapPin,
   Calendar,
-  Tag as TagIcon,
   Sparkles,
   ChevronDown,
   ChevronUp,
+  ImageOff,
   ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -172,24 +172,16 @@ export function ItemCard({
               />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center gap-2 border-b border-dashed border-border bg-[linear-gradient(180deg,hsl(var(--secondary))_0%,white_100%)] px-4 text-center">
-                <div className="rounded-xl border border-border bg-white p-3 shadow-sm">
-                  {isLost112Item ? (
-                    <ShieldCheck className="h-7 w-7 text-primary/70" />
-                  ) : (
-                    <TagIcon className="h-7 w-7 text-primary/45" />
-                  )}
-                </div>
+                <ImageOff className="h-8 w-8 text-primary/55" />
                 <div className="space-y-1">
                   <span className="block text-xs font-semibold text-foreground/75">
                     {isLost112Item ? "제공된 사진 없음" : "사진 없음"}
                   </span>
-                  {!isCompact ? (
-                    <span className="block text-[11px] leading-4 text-muted-foreground">
-                      {isLost112Item
-                        ? "경찰청 원문에서 사진을 제공하지 않았어요."
-                        : "등록된 이미지가 없어요."}
-                    </span>
-                  ) : null}
+                  <span className="block break-keep text-[11px] leading-4 text-muted-foreground [word-break:keep-all]">
+                    {isLost112Item
+                      ? "경찰청 원문에서 사진을 제공하지 않았어요."
+                      : "등록된 이미지가 없어요."}
+                  </span>
                 </div>
               </div>
             )}

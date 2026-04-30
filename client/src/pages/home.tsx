@@ -7,6 +7,7 @@ import {
   PackageSearch,
   Plus,
   Search,
+  ShieldCheck,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -33,53 +34,64 @@ export default function Home() {
     <Layout>
       <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,hsl(var(--background))_58%,hsl(var(--background))_100%)]">
         <div className="container py-8 sm:py-10 lg:py-12 xl:max-w-[1440px]">
-          <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <Link
-              href="/report/lost"
-              className="group flex min-h-[176px] flex-col rounded-xl border border-primary/20 bg-primary p-5 text-primary-foreground shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-all hover:-translate-y-0.5"
-            >
-              <PackageSearch className="h-6 w-6" />
-              <h2 className="mt-3 text-lg font-bold">잃어버린 물건 등록</h2>
-              <p className="mt-2 text-sm leading-6 text-primary-foreground/82">
-                찾고 싶은 물건 정보를 만들고 새 습득물과 비교합니다.
-              </p>
-              <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold">
-                등록 시작
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </span>
-            </Link>
+          <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <div className="flex min-w-0 flex-col gap-3">
+              <div className="grid items-stretch gap-3 md:grid-cols-3">
+                <Link
+                  href="/report/lost"
+                  className="group flex min-h-[176px] flex-col rounded-xl border border-primary/20 bg-primary p-5 text-primary-foreground shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-all hover:-translate-y-0.5"
+                >
+                  <PackageSearch className="h-6 w-6" />
+                  <h2 className="mt-3 text-lg font-bold">잃어버린 물건 등록</h2>
+                  <p className="mt-2 min-h-[3rem] text-sm leading-6 text-primary-foreground/82">
+                    찾고 싶은 물건 정보를 만들고 새 습득물과 비교합니다.
+                  </p>
+                  <span className="mt-auto inline-flex items-center gap-2 pt-5 text-sm font-semibold">
+                    등록 시작
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
 
-            <Link
-              href="/matches"
-              className="group flex min-h-[176px] flex-col rounded-xl border border-border bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-0.5 hover:border-primary/25"
-            >
-              <BellRing className="h-6 w-6 text-primary" />
-              <h2 className="mt-3 text-lg font-bold text-foreground">매칭 후보</h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                내 분실물 기준으로 가까운 습득물 후보를 확인합니다.
-              </p>
-              <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
-                {activeMatchCount > 0 ? `${activeMatchCount}건 확인` : "후보 보기"}
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </span>
-            </Link>
+                <Link
+                  href="/matches"
+                  className="group flex min-h-[176px] flex-col rounded-xl border border-border bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-0.5 hover:border-primary/25"
+                >
+                  <BellRing className="h-6 w-6 text-primary" />
+                  <h2 className="mt-3 text-lg font-bold text-foreground">매칭 후보</h2>
+                  <p className="mt-2 min-h-[3rem] text-sm leading-6 text-muted-foreground">
+                    내 분실물 기준으로 가까운 습득물 후보를 확인합니다.
+                  </p>
+                  <span className="mt-auto inline-flex items-center gap-2 pt-5 text-sm font-semibold text-primary">
+                    {activeMatchCount > 0 ? `${activeMatchCount}건 확인` : "후보 보기"}
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
 
-            <Link
-              href="/items?type=found"
-              className="group flex min-h-[176px] flex-col rounded-xl border border-border bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-0.5 hover:border-primary/25"
-            >
-              <Search className="h-6 w-6 text-primary" />
-              <h2 className="mt-3 text-lg font-bold text-foreground">습득물 찾기</h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                물건명, 지역, 출처, 기간으로 경찰청과 사용자 습득물을 검색합니다.
-              </p>
-              <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-primary">
-                탐색하기
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </span>
-            </Link>
+                <Link
+                  href="/items?type=found"
+                  className="group flex min-h-[176px] flex-col rounded-xl border border-border bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-0.5 hover:border-primary/25"
+                >
+                  <Search className="h-6 w-6 text-primary" />
+                  <h2 className="mt-3 text-lg font-bold text-foreground">습득물 찾기</h2>
+                  <p className="mt-2 min-h-[3rem] text-sm leading-6 text-muted-foreground">
+                    물건명, 지역, 출처, 기간으로 경찰청과 사용자 습득물을 검색합니다.
+                  </p>
+                  <span className="mt-auto inline-flex items-center gap-2 pt-5 text-sm font-semibold text-primary">
+                    탐색하기
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
+              </div>
 
-            <Card className="min-h-[176px] border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+              <div className="flex min-h-[72px] items-center gap-3 rounded-xl border border-primary/15 bg-white/82 px-5 py-4 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                <ShieldCheck className="h-5 w-5 shrink-0 text-primary" />
+                <p className="break-keep text-sm leading-6 text-muted-foreground [word-break:keep-all]">
+                  경찰청 데이터와 사용자 등록 습득물을 통합해서 보고, 출처 뱃지로 구분합니다.
+                </p>
+              </div>
+            </div>
+
+            <Card className="h-full min-h-[176px] border-border bg-white shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
               <CardContent className="flex h-full flex-col space-y-4 p-5">
                   <div>
                     <p className="text-sm font-semibold text-primary">내 진행 상태</p>
