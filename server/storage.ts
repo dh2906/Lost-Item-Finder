@@ -396,7 +396,21 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (search) {
-      conditions.push(ilike(items.title, `%${search}%`));
+      const searchPattern = `%${search}%`;
+      conditions.push(
+        or(
+          ilike(items.title, searchPattern),
+          ilike(items.description, searchPattern),
+          ilike(items.itemCategory, searchPattern),
+          ilike(items.color, searchPattern),
+          ilike(items.location, searchPattern),
+          ilike(items.region1, searchPattern),
+          ilike(items.region2, searchPattern),
+          ilike(items.region3, searchPattern),
+          ilike(items.address, searchPattern),
+          ilike(items.placeName, searchPattern)
+        )!
+      );
     }
 
     if (category) {

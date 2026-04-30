@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation, Redirect } from "wouter";
+import { Link, Redirect } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,6 @@ import { AUTH_QUERY_KEY } from "@/lib/query-keys";
 import { sanitizeRedirect } from "@/lib/redirect";
 
 export function LoginPage() {
-  const [location] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { isAuthenticated, isLoading } = useAuth();
@@ -22,8 +21,13 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  const params = new URLSearchParams(location.split("?")[1] ?? "");
+  const params = new URLSearchParams(window.location.search);
   const redirectTo = sanitizeRedirect(params.get("redirect"));
+  const redirectPurpose = redirectTo.startsWith("/report/lost")
+    ? "잃어버린 물건 등록을 계속하려면 로그인하세요."
+    : redirectTo.startsWith("/report/found")
+      ? "주운 물건 등록을 계속하려면 로그인하세요."
+      : null;
   const registerHref =
     redirectTo === "/" ? "/register" : `/register?redirect=${encodeURIComponent(redirectTo)}`;
 
@@ -81,7 +85,7 @@ export function LoginPage() {
             <div className="space-y-2">
               <h1 className="text-2xl font-bold">로그인</h1>
               <CardDescription className="text-base">
-                계정에 로그인하여 서비스를 이용하세요.
+                {redirectPurpose ?? "계정에 로그인하여 서비스를 이용하세요."}
               </CardDescription>
             </div>
           </CardHeader>

@@ -36,6 +36,7 @@ const ITEMS_PAGE_SIZE = 24;
 
 type ItemsPageFilters = {
   type: ItemTab;
+  search: string;
   category: string;
   color: string;
   location: string;
@@ -49,6 +50,7 @@ type ItemsPageFilters = {
 };
 
 const DEFAULT_FILTERS = {
+  search: "",
   category: "",
   color: "",
   location: "",
@@ -271,6 +273,7 @@ function getFiltersFromSearch(search: string): ItemsPageFilters {
 
   return {
     type: params.get("type") === "lost" ? "lost" : "found",
+    search: params.get("search")?.trim() ?? "",
     category: params.get("category")?.trim() ?? "",
     color: params.get("color")?.trim() ?? "",
     location: hasCoordinates ? "" : location,
@@ -300,6 +303,10 @@ function buildItemsUrl(filters: ItemsPageFilters): string {
 
   if (filters.category) {
     params.set("category", filters.category);
+  }
+
+  if (filters.search) {
+    params.set("search", filters.search);
   }
 
   if (filters.color) {
@@ -340,6 +347,7 @@ function buildItemsUrl(filters: ItemsPageFilters): string {
 
 function getActiveFilterCount(filters: ItemsPageFilters): number {
   return [
+    Boolean(filters.search),
     Boolean(filters.category),
     Boolean(filters.color),
     Boolean(filters.location) ||
@@ -361,6 +369,7 @@ function getSourceFilterLabel(source: ItemSourceFilter): string | null {
 function getActiveFilterLabels(filters: ItemsPageFilters): string[] {
   return [
     getSourceFilterLabel(filters.source),
+    filters.search ? `검색: ${filters.search}` : null,
     filters.category ? `카테고리: ${filters.category}` : null,
     filters.color ? `색상: ${filters.color}` : null,
     filters.location ? `지역: ${filters.location}` : null,
@@ -400,6 +409,7 @@ export default function ItemsPage() {
 
   const { data: itemsResult, isLoading, isFetching } = useItems({
     type: filters.type,
+    search: filters.search || undefined,
     category: filters.category || undefined,
     color: filters.color || undefined,
     location: filters.location || undefined,
@@ -459,6 +469,7 @@ export default function ItemsPage() {
   const applyFilters = (nextFilters: ItemsPageFilters) => {
     const normalizedFilters = {
       ...nextFilters,
+      search: nextFilters.search.trim(),
       category: nextFilters.category.trim(),
       color: nextFilters.color.trim(),
       location: nextFilters.location.trim(),
@@ -488,7 +499,7 @@ export default function ItemsPage() {
     });
   };
 
-  const handleFilterSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSearchSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     applyFilters({
       ...draftFilters,
@@ -665,10 +676,44 @@ export default function ItemsPage() {
         <div className="container mx-auto max-w-6xl px-5">
           <div className="space-y-6">
             <form
-              onSubmit={handleFilterSubmit}
+              onSubmit={handleSearchSubmit}
               className="rounded-xl border border-border bg-white p-4 shadow-sm md:p-5"
             >
               <div className="flex flex-col gap-4">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto] lg:items-end">
+                  <div className="space-y-2">
+                    <label htmlFor="items-search" className="text-sm font-semibold text-foreground">
+                      물건명, 설명, 지역으로 찾기
+                    </label>
+                    <div className="relative">
+                      <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="items-search"
+                        value={draftFilters.search}
+                        onChange={(event) =>
+                          setDraftFilters((current) => ({
+                            ...current,
+                            search: event.target.value,
+                          }))
+                        }
+                        placeholder="예: 검은 지갑, 에어팟, 마곡동"
+                        className="h-11 bg-white pl-10 shadow-none"
+                      />
+                    </div>
+                  </div>
+                  <Button type="submit" className="h-11 px-5">
+                    검색
+                  </Button>
+                  {filters.type === "found" ? (
+                    <Button asChild variant="outline" className="h-11 px-5">
+                      <Link href="/search">
+                        <SearchIcon className="mr-2 h-4 w-4" />
+                        AI 찾기
+                      </Link>
+                    </Button>
+                  ) : null}
+                </div>
+
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -706,7 +751,7 @@ export default function ItemsPage() {
                 <div
                   id="items-filter-fields"
                   className={cn(
-                    "grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4",
+                    "grid-cols-1 gap-4 border-t border-border pt-4 md:grid-cols-2 lg:grid-cols-4",
                     isFilterOpen ? "grid" : "hidden"
                   )}
                 >
@@ -1048,14 +1093,6 @@ export default function ItemsPage() {
                       <span className="inline-flex items-center rounded-lg border border-primary/15 bg-[hsl(var(--primary-light))] px-3 py-1 text-xs font-semibold text-primary">
                         필터 적용 중
                       </span>
-                    ) : null}
-                    {filters.type === "found" ? (
-                      <Button asChild variant="outline" className="rounded-lg px-4">
-                        <Link href="/search">
-                          <SearchIcon className="mr-2 h-4 w-4" />
-                          사진/설명으로 찾기
-                        </Link>
-                      </Button>
                     ) : null}
                   </div>
                 </div>

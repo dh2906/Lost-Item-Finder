@@ -45,7 +45,7 @@ type NavigationItem = {
 const navigation: NavigationItem[] = [
   { href: "/", label: "홈" },
   { href: "/mypage", label: "내 물건" },
-  { href: "/matches", label: "내 매칭" },
+  { href: "/matches", label: "매칭 후보" },
   { href: "/items?type=found", label: "습득물 찾기" },
   {
     href: "/report",
@@ -335,7 +335,7 @@ export function Layout({ children }: { children: ReactNode }) {
                     <DropdownMenuItem
                       onClick={() => void setLocation("/matches")}
                     >
-                      내 매칭
+                      매칭 후보
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => void setLocation("/chats")}

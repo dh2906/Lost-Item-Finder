@@ -38,6 +38,19 @@ export function getDisplayTitle(item: Item) {
     .trim();
 
   if (strippedTitle.length > 0) {
+    if (item.externalSource === "lost112") {
+      const compactTitle = strippedTitle
+        .replace(/\s*색\)을\s*습득.*$/i, "색)")
+        .replace(/\s*을\s*습득.*$/i, "")
+        .replace(/\s*를\s*습득.*$/i, "")
+        .replace(/\s*하여\s*보관.*$/i, "")
+        .trim();
+
+      if (compactTitle.length > 0) {
+        return compactTitle.replace(/\s+/g, " ");
+      }
+    }
+
     return strippedTitle
       .replace(/^black cap$/i, "검은색 모자")
       .replace(/^담요주웠어요$/i, "파란색 별무늬 담요")
@@ -92,6 +105,11 @@ export function ItemCard({
   const isCompact = variant === "compact" || variant === "list";
   const displayTitle = getDisplayTitle(item);
   const isLost112Item = item.externalSource === "lost112";
+  const itemActionLabel = isLost112Item
+    ? "경찰청 원문 보기"
+    : item.reportType === "found"
+      ? "채팅으로 문의"
+      : "상세 보기";
   const primaryImageUrl = getPrimaryItemImageUrl(item);
   const shouldShowImage =
     primaryImageUrl && !(isLost112Item && isPlaceholderImageUrl(primaryImageUrl));
@@ -280,7 +298,7 @@ export function ItemCard({
 
             {!isCompact && visibleTags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {visibleTags.slice(0, 2).map((tag) => (
+                {visibleTags.slice(0, 1).map((tag) => (
                   <span
                     key={tag}
                     className="inline-flex items-center rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-primary"
@@ -288,12 +306,18 @@ export function ItemCard({
                     {tag}
                   </span>
                 ))}
-                {visibleTags.length > 2 ? (
+                {visibleTags.length > 1 ? (
                   <span className="inline-flex items-center rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-primary">
-                    +{visibleTags.length - 2}
+                    +{visibleTags.length - 1}
                   </span>
                 ) : null}
               </div>
+            ) : null}
+
+            {!isCompact ? (
+              <span className="mt-auto inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-3 py-2 text-sm font-semibold text-primary transition-colors group-hover:bg-accent">
+                {itemActionLabel}
+              </span>
             ) : null}
 
             {!isCompact && reasoning ? (

@@ -53,7 +53,7 @@ function getPageTitle(location: string): string {
   if (path.startsWith("/item/")) return "게시글 상세 | Findy";
   if (path === "/mypage") return "마이페이지 | Findy";
   if (path === "/admin") return "관리자 | Findy";
-  if (path === "/matches") return "내 매칭 | Findy";
+  if (path === "/matches") return "매칭 후보 | Findy";
   if (path === "/chats") return "채팅 목록 | Findy";
   if (path.startsWith("/chat/")) return "채팅 | Findy";
   if (path === "/login") return "로그인 | Findy";
