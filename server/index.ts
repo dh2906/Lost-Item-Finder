@@ -2,8 +2,10 @@ import "dotenv/config";
 import express, { type Request, Response, NextFunction } from "express";
 import {
   ensureChatSchema,
+  ensureExternalItemSchema,
   ensureItemImageSchema,
   ensureItemMatchSchema,
+  ensureLost112SyncRunSchema,
   ensureVectorExtension,
 } from "./db";
 import { registerRoutes } from "./routes";
@@ -16,6 +18,7 @@ const httpServer = createServer(app);
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
 
 app.set("trust proxy", 1);
+app.set("etag", false);
 
 declare module "http" {
   interface IncomingMessage {
@@ -67,6 +70,11 @@ app.use(express.urlencoded({ extended: false, limit: requestBodyLimit }));
 // ngrok 인터스티셜 페이지 bypass: 크롤러(PWABuilder 등)도 실제 앱에 바로 접근 가능
 app.use((_req, res, next) => {
   res.setHeader("ngrok-skip-browser-warning", "true");
+  next();
+});
+
+app.use("/api", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
   next();
 });
 
@@ -130,12 +138,19 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  log("initializing database schema");
   await ensureVectorExtension();
   await ensureItemImageSchema();
   await ensureChatSchema();
   await ensureItemMatchSchema();
+  await ensureExternalItemSchema();
+  await ensureLost112SyncRunSchema();
+  log("database schema ready");
+
   setupAuth(app);
+  log("registering routes");
   await registerRoutes(httpServer, app);
+  log("routes registered");
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

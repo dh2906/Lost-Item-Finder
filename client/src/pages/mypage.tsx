@@ -4,6 +4,7 @@ import { ko } from "date-fns/locale";
 import { Link } from "wouter";
 import {
   BellRing,
+  BookmarkCheck,
   CheckCircle2,
   MapPin,
   PackageSearch,
@@ -14,6 +15,7 @@ import {
   UserRound,
   Download,
   Smartphone,
+  X,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
@@ -22,6 +24,7 @@ import {
   useMatchNotifications,
 } from "@/hooks/use-notifications";
 import { useDeleteItem, useMyItems, useUpdateItem } from "@/hooks/use-items";
+import { useMatches } from "@/hooks/use-matches";
 import { useToast } from "@/hooks/use-toast";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +51,7 @@ export default function MyPage() {
   const { data: myItems = [], isLoading: isMyItemsLoading } = useMyItems();
   const { data: notifications = [], isLoading: isNotificationsLoading } =
     useMatchNotifications();
+  const { data: matches = [], isLoading: isMatchesLoading } = useMatches();
   const markNotificationAsReadMutation = useMarkMatchNotificationAsRead();
   const updateItemMutation = useUpdateItem();
   const deleteItemMutation = useDeleteItem();
@@ -55,6 +59,7 @@ export default function MyPage() {
   const { isInstalled } = usePWAInstall();
 
   const [filter, setFilter] = useState<FilterType>("all");
+  const [showInstallPanel, setShowInstallPanel] = useState(true);
 
   const filteredMyItems = useMemo(
     () =>
@@ -75,6 +80,21 @@ export default function MyPage() {
   const unreadNotificationCount = notifications.filter(
     (notification) => !notification.isRead
   ).length;
+  const savedMatches = useMemo(
+    () =>
+      matches
+        .filter((match) => match.status === "confirmed")
+        .sort((left, right) => {
+          if (right.score !== left.score) {
+            return right.score - left.score;
+          }
+          return (
+            new Date(right.updatedAt).getTime() -
+            new Date(left.updatedAt).getTime()
+          );
+        }),
+    [matches]
+  );
 
   const handleStatusToggle = async (item: Item) => {
     const nextStatus = item.status === "active" ? "resolved" : "active";
@@ -153,10 +173,10 @@ export default function MyPage() {
 
   return (
     <Layout>
-      <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-10 pt-14">
+      <section className="border-b border-border/70 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,transparent_100%)] pb-8 pt-8">
         <div className="container mx-auto max-w-6xl px-5">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,360px)]">
-            <div className="space-y-5">
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,360px)]">
+            <div className="space-y-4">
               <Badge className="rounded-full border border-primary/15 bg-white/90 px-4 py-1.5 text-sm font-semibold text-primary shadow-sm hover:bg-white/90">
                 마이페이지
               </Badge>
@@ -167,13 +187,12 @@ export default function MyPage() {
                   한곳에서 관리해요
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-muted-foreground">
-                  게시글 상태 변경과 자동 매칭 알림 확인을 한 번에 살펴볼 수
+                  내 물건 상태 변경과 자동 매칭 알림 확인을 한 번에 살펴볼 수
                   있어요.
                 </p>
               </div>
             </div>
 
-            {/* 우측 사이드바 패널 */}
             <div className="space-y-4">
               <Card className="border-border/70 bg-white/92 shadow-sm">
                 <CardHeader className="pb-4">
@@ -227,53 +246,86 @@ export default function MyPage() {
                   </div>
                 </CardContent>
               </Card>
-
-              <Card className="border-border/70 bg-white/92 shadow-sm">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <Smartphone className="h-5 w-5 text-primary" />앱 설정
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between rounded-[20px] border border-border/70 bg-secondary/40 p-4">
-                    <div>
-                      <p className="font-semibold text-sm text-foreground">
-                        Findy 앱 설치
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        바탕화면에 바로가기 추가
-                      </p>
-                    </div>
-
-                    {/* 🚀 설치 상태에 따른 깔끔한 분기 처리 */}
-                    {isInstalled ? (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled
-                        className="gap-1.5 rounded-full px-4"
-                      >
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                        설치됨
-                      </Button>
-                    ) : (
-                      <Button
-                        asChild
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5 rounded-full px-4 border-primary/50 text-primary hover:bg-primary/5"
-                      >
-                        <Link href="/install">
-                          <Download className="w-4 h-4" />
-                          설치 안내 보기
-                        </Link>
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="pb-6 pt-10">
+        <div className="container mx-auto max-w-6xl px-5">
+          <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div className="space-y-2">
+              <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
+                <BookmarkCheck className="h-6 w-6 text-primary" />
+                저장한 후보
+              </h2>
+              <p className="text-sm leading-6 text-muted-foreground">
+                매칭 후보에서 맞아 보인다고 저장한 습득물을 점수 높은 순으로 모아봅니다.
+              </p>
+            </div>
+            <Button asChild variant="outline" className="rounded-lg">
+              <Link href="/matches">후보 전체 보기</Link>
+            </Button>
+          </div>
+
+          {isMatchesLoading ? (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {[1, 2, 3].map((index) => (
+                <div
+                  key={index}
+                  className="h-[180px] animate-pulse rounded-xl bg-muted"
+                />
+              ))}
+            </div>
+          ) : savedMatches.length === 0 ? (
+            <Card className="border-dashed border-border/80 bg-secondary/35">
+              <CardContent className="flex flex-col items-center py-12 text-center">
+                <BookmarkCheck className="mb-4 h-9 w-9 text-muted-foreground/55" />
+                <h3 className="text-lg font-semibold text-foreground">
+                  저장한 후보가 아직 없어요
+                </h3>
+                <p className="mt-2 max-w-md break-keep text-sm leading-6 text-muted-foreground [word-break:keep-all]">
+                  매칭 후보에서 맞아 보이는 항목을 저장하면 여기에서 다시 확인할 수 있어요.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {savedMatches.slice(0, 6).map((match) => (
+                <Card
+                  key={match.id}
+                  className="border-border/70 bg-white/92 shadow-sm"
+                >
+                  <CardContent className="space-y-3 p-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <Badge className="bg-primary text-primary-foreground hover:bg-primary">
+                        {Math.round(match.score * 100)}%
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        내 분실물 기준
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="line-clamp-1 text-xs text-muted-foreground">
+                        {match.lostItem.title}
+                      </p>
+                      <Link href={`/item/${match.foundItem.id}`}>
+                        <h3 className="line-clamp-2 text-base font-semibold leading-6 text-foreground transition-colors hover:text-primary">
+                          {match.foundItem.title}
+                        </h3>
+                      </Link>
+                      <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
+                        {match.matchReason}
+                      </p>
+                    </div>
+                    <Button asChild variant="outline" className="w-full rounded-lg">
+                      <Link href={`/item/${match.foundItem.id}`}>후보 상세 보기</Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -322,7 +374,7 @@ export default function MyPage() {
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <Button asChild className="rounded-full px-5">
-                    <Link href="/report/lost">분실물 등록하기</Link>
+                    <Link href="/report/lost">잃어버린 물건 등록하기</Link>
                   </Button>
                   <Button
                     asChild
@@ -458,7 +510,7 @@ export default function MyPage() {
           <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-2">
               <h2 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-                <PackageSearch className="h-6 w-6 text-primary" />내 게시글 관리
+                <PackageSearch className="h-6 w-6 text-primary" />내 물건 관리
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 해결된 글은 숨기고, 필요할 때 다시 공개할 수 있어요.
@@ -508,22 +560,22 @@ export default function MyPage() {
                   <PackageSearch className="h-8 w-8 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground">
-                  아직 등록한 게시글이 없어요
+                  아직 등록한 물건이 없어요
                 </h3>
-                <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-                  분실물이나 습득물을 등록하면 여기에서 수정, 삭제, 해결
-                  처리까지 한 번에 관리할 수 있어요.
+                <p className="mt-3 max-w-md break-keep text-sm leading-6 text-muted-foreground [word-break:keep-all]">
+                  등록한 물건은 여기에서 수정, 삭제, 해결 처리까지 한 번에
+                  관리할 수 있어요.
                 </p>
                 <div className="mt-8 flex flex-wrap justify-center gap-3">
                   <Button asChild className="rounded-full px-5">
-                    <Link href="/report/found">습득물 등록하기</Link>
+                    <Link href="/report/found">주운 물건 등록하기</Link>
                   </Button>
                   <Button
                     asChild
                     variant="outline"
                     className="rounded-full px-5"
                   >
-                    <Link href="/report/lost">분실물 등록하기</Link>
+                    <Link href="/report/lost">잃어버린 물건 등록하기</Link>
                   </Button>
                 </div>
               </CardContent>
@@ -532,7 +584,7 @@ export default function MyPage() {
             <Card className="border-border/70 bg-white/92">
               <CardContent className="py-14 text-center">
                 <h3 className="text-lg font-semibold text-foreground">
-                  선택한 상태의 게시글이 아직 없어요
+                  선택한 상태의 물건이 아직 없어요
                 </h3>
                 <p className="mt-2 text-sm text-muted-foreground">
                   다른 필터를 선택하면 숨겨진 글을 다시 볼 수 있어요.
@@ -708,6 +760,40 @@ export default function MyPage() {
           </div>
         </div>
       </section>
+
+      {!isInstalled && showInstallPanel ? (
+        <aside className="fixed bottom-5 right-5 z-40 w-[min(360px,calc(100vw-2rem))] rounded-xl border border-border bg-white p-4 shadow-[0_4px_16px_rgba(0,0,0,0.12)]">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 gap-3">
+              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--primary-light))] text-primary">
+                <Smartphone className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-foreground">
+                  Findy 앱 설치
+                </h2>
+                <p className="mt-1 break-keep text-xs leading-5 text-muted-foreground [word-break:keep-all]">
+                  자주 쓰는 기기 바탕화면에 바로가기를 추가할 수 있어요.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowInstallPanel(false)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+              aria-label="앱 설치 안내 닫기"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <Button asChild variant="outline" size="sm" className="mt-4 w-full">
+            <Link href="/install">
+              <Download className="mr-2 h-4 w-4" />
+              설치 안내 보기
+            </Link>
+          </Button>
+        </aside>
+      ) : null}
     </Layout>
   );
 }

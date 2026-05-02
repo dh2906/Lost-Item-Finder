@@ -1,7 +1,7 @@
 import { Link } from "wouter";
-import { MessageCircle, Image as ImageIcon } from "lucide-react";
+import { CameraOff, MessageCircle } from "lucide-react";
 import { Layout } from "@/components/layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { useAuth } from "@/hooks/use-auth";
 import { useChatRooms } from "@/hooks/use-chat";
 import { formatChatRoomTimestamp } from "@/lib/chat-time";
@@ -15,7 +15,7 @@ export default function ChatsPage() {
       <div className="container py-8 xl:max-w-[960px]">
         <Card className="border-border/70 bg-white/90">
           <CardHeader>
-            <CardTitle className="text-2xl">채팅 목록</CardTitle>
+            <h1 className="text-2xl font-semibold tracking-tight">채팅 목록</h1>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -40,6 +40,11 @@ export default function ChatsPage() {
                   );
 
                   const otherUser = room.otherUser;
+                  const otherUserName =
+                    otherUser?.nickname ??
+                    otherUser?.name ??
+                    otherUser?.username ??
+                    "상대방";
                   const imageUrl = room.item?.imageUrl;
 
                   return (
@@ -54,21 +59,23 @@ export default function ChatsPage() {
                             <img
                               src={imageUrl}
                               alt={room.item?.title || "물건 사진"}
+                              loading="lazy"
+                              decoding="async"
                               className="h-14 w-14 rounded-xl border border-border/50 object-cover"
                             />
                           ) : (
                             <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-border/50 bg-secondary/50 text-muted-foreground">
-                              <ImageIcon className="h-6 w-6 opacity-50" />
+                              <CameraOff className="h-6 w-6 opacity-50" />
                             </div>
                           )}
                         </div>
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <p className="font-semibold text-foreground">
-                              {otherUser?.nickname}
+                            <p className="shrink-0 font-semibold text-foreground">
+                              {otherUserName}
                             </p>
-                            <span className="truncate text-xs text-muted-foreground max-w-[120px]">
+                            <span className="min-w-0 truncate text-xs text-muted-foreground">
                               {room.item?.title ?? `게시물 #${room.itemId}`}
                             </span>
                             {room.hasUnread && (

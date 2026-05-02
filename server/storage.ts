@@ -37,6 +37,9 @@ import { promisify } from "util";
 
 const scryptAsync = promisify(scrypt);
 const DEFAULT_LOCATION_RADIUS_KM = 5;
+const AUTO_MATCH_DATE_WINDOW_DAYS = Number(
+  process.env.AUTO_MATCH_DATE_WINDOW_DAYS ?? 90
+);
 
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
@@ -96,6 +99,32 @@ export interface MatchNotificationRecord {
   updatedAt: Date;
   lostItem: Item;
   foundItem: Item;
+}
+
+export interface ExternalFoundItemInput {
+  externalSource: string;
+  externalId: string;
+  externalUrl?: string | null;
+  externalPayload?: Record<string, unknown> | null;
+  externalPayloadHash?: string | null;
+  title: string;
+  description?: string | null;
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
+  itemCategory?: string | null;
+  color?: string | null;
+  size?: string | null;
+  tags?: string[] | null;
+  location?: string | null;
+  region1?: string | null;
+  region2?: string | null;
+  region3?: string | null;
+  address?: string | null;
+  placeName?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
+  date?: Date | null;
+  contactInfo?: string | null;
 }
 
 function getConfiguredAdminUsernames(): string[] {
@@ -166,18 +195,31 @@ export interface IStorage {
     category?: string;
     color?: string;
     location?: string;
+    source?: "all" | "user" | "lost112";
     latitude?: number;
     longitude?: number;
     radiusKm?: number;
     dateRange?: "all" | "7d" | "30d" | "90d";
     sort?: "latest" | "oldest";
-  }): Promise<Item[]>;
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    items: Item[];
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>;
   getMyItems(
     userId: number,
     filters?: { type?: "lost" | "found"; status?: ItemStatus }
   ): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
   createItem(item: InsertItem & { userId?: number | null }): Promise<Item>;
+  upsertExternalFoundItem(item: ExternalFoundItemInput): Promise<{
+    item: Item;
+    created: boolean;
+  }>;
   updateItem(itemId: number, item: Partial<InsertItem>): Promise<Item | undefined>;
   updateOwnedItem(
     userId: number,
@@ -246,8 +288,15 @@ export interface IStorage {
   getAdminItems(filters?: {
     search?: string;
     type?: "lost" | "found";
+    page?: number;
     limit?: number;
-  }): Promise<AdminItemRecord[]>;
+  }): Promise<{
+    items: AdminItemRecord[];
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>;
   deleteItemByAdmin(itemId: number): Promise<boolean>;
 }
 
@@ -293,18 +342,30 @@ export class DatabaseStorage implements IStorage {
     category?: string;
     color?: string;
     location?: string;
+    source?: "all" | "user" | "lost112";
     latitude?: number;
     longitude?: number;
     radiusKm?: number;
     dateRange?: "all" | "7d" | "30d" | "90d";
     sort?: "latest" | "oldest";
-  }): Promise<Item[]> {
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    items: Item[];
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const conditions = [eq(items.status, "active" as const)];
     const search = filters?.search?.trim();
     const category = filters?.category?.trim();
     const color = filters?.color?.trim();
     const location = filters?.location?.trim();
+    const source = filters?.source ?? "all";
     const sort = filters?.sort ?? "latest";
+    const page = Math.max(1, filters?.page ?? 1);
+    const limit = Math.min(Math.max(1, filters?.limit ?? 24), 60);
     const hasCoordinates =
       typeof filters?.latitude === "number" && typeof filters?.longitude === "number";
     const radiusKm = filters?.radiusKm ?? DEFAULT_LOCATION_RADIUS_KM;
@@ -345,7 +406,21 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (search) {
-      conditions.push(ilike(items.title, `%${search}%`));
+      const searchPattern = `%${search}%`;
+      conditions.push(
+        or(
+          ilike(items.title, searchPattern),
+          ilike(items.description, searchPattern),
+          ilike(items.itemCategory, searchPattern),
+          ilike(items.color, searchPattern),
+          ilike(items.location, searchPattern),
+          ilike(items.region1, searchPattern),
+          ilike(items.region2, searchPattern),
+          ilike(items.region3, searchPattern),
+          ilike(items.address, searchPattern),
+          ilike(items.placeName, searchPattern)
+        )!
+      );
     }
 
     if (category) {
@@ -357,7 +432,25 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (location) {
-      conditions.push(ilike(items.location, `%${location}%`));
+      const locationPattern = `%${location}%`;
+      conditions.push(
+        or(
+          ilike(items.location, locationPattern),
+          ilike(items.region1, locationPattern),
+          ilike(items.region2, locationPattern),
+          ilike(items.region3, locationPattern),
+          ilike(items.address, locationPattern),
+          ilike(items.placeName, locationPattern)
+        )!
+      );
+    }
+
+    if (source === "lost112") {
+      conditions.push(eq(items.externalSource, "lost112"));
+    }
+
+    if (source === "user") {
+      conditions.push(isNull(items.externalSource));
     }
 
     if (distanceKm) {
@@ -377,15 +470,33 @@ export class DatabaseStorage implements IStorage {
       conditions.push(gte(items.date, startDate));
     }
 
-    return await db
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const [{ totalCount }] = await db
+      .select({ totalCount: sql<number>`count(*)::int` })
+      .from(items)
+      .where(whereClause);
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    const currentPage = Math.min(page, totalPages);
+    const currentOffset = (currentPage - 1) * limit;
+    const pageItems = await db
       .select()
       .from(items)
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(whereClause)
       .orderBy(
         ...(distanceKm ? [asc(distanceKm)] : []),
         sort === "oldest" ? asc(items.date) : desc(items.date),
         sort === "oldest" ? asc(items.id) : desc(items.id)
-      );
+      )
+      .limit(limit)
+      .offset(currentOffset);
+
+    return {
+      items: pageItems,
+      totalCount,
+      page: currentPage,
+      limit,
+      totalPages,
+    };
   }
 
   async getMyItems(
@@ -417,6 +528,86 @@ export class DatabaseStorage implements IStorage {
   async createItem(insertItem: InsertItem & { userId?: number | null }): Promise<Item> {
     const [item] = await db.insert(items).values(insertItem).returning();
     return item;
+  }
+
+  async upsertExternalFoundItem(input: ExternalFoundItemInput): Promise<{
+    item: Item;
+    created: boolean;
+  }> {
+    const values = {
+      userId: null,
+      reportType: "found",
+      status: "active",
+      title: input.title,
+      description: input.description ?? null,
+      imageUrl: input.imageUrl ?? null,
+      imageUrls: input.imageUrls ?? [],
+      itemCategory: input.itemCategory ?? null,
+      color: input.color ?? null,
+      size: input.size ?? null,
+      tags: input.tags ?? [],
+      location: input.location ?? null,
+      region1: input.region1 ?? null,
+      region2: input.region2 ?? null,
+      region3: input.region3 ?? null,
+      address: input.address ?? null,
+      placeName: input.placeName ?? null,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
+      // date가 없으면 null로 저장 — 현재 시각으로 대체하면 실제 습득일을 왜곡함
+      date: input.date ?? null,
+      contactInfo: input.contactInfo ?? null,
+      externalSource: input.externalSource,
+      externalId: input.externalId,
+      externalUrl: input.externalUrl ?? null,
+      externalPayload: input.externalPayload ?? null,
+      externalPayloadHash: input.externalPayloadHash ?? null,
+    } satisfies typeof items.$inferInsert;
+
+    const [savedItem] = await db
+      .insert(items)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [items.externalSource, items.externalId],
+        set: values,
+      })
+      .returning({
+        id: items.id,
+        userId: items.userId,
+        reportType: items.reportType,
+        status: items.status,
+        title: items.title,
+        description: items.description,
+        imageUrl: items.imageUrl,
+        imageUrls: items.imageUrls,
+        itemCategory: items.itemCategory,
+        color: items.color,
+        size: items.size,
+        tags: items.tags,
+        location: items.location,
+        region1: items.region1,
+        region2: items.region2,
+        region3: items.region3,
+        address: items.address,
+        placeName: items.placeName,
+        latitude: items.latitude,
+        longitude: items.longitude,
+        date: items.date,
+        contactInfo: items.contactInfo,
+        externalSource: items.externalSource,
+        externalId: items.externalId,
+        externalUrl: items.externalUrl,
+        externalPayload: items.externalPayload,
+        externalPayloadHash: items.externalPayloadHash,
+        created: sql<boolean>`xmax = 0`,
+      });
+
+    const { created, ...item } = savedItem;
+
+    return {
+      item,
+      created: Boolean(created),
+    };
   }
 
   async updateItem(
@@ -542,25 +733,67 @@ export class DatabaseStorage implements IStorage {
       eq(items.reportType, targetReportType),
       eq(items.status, "active"),
     ];
+    const sourceLatitude = Number.parseFloat(sourceItem.latitude ?? "");
+    const sourceLongitude = Number.parseFloat(sourceItem.longitude ?? "");
+    const hasSourceCoordinates =
+      Number.isFinite(sourceLatitude) && Number.isFinite(sourceLongitude);
+    const latitudeValue = sql<number | null>`
+      case
+        when ${items.latitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+          then ${items.latitude}::double precision
+        else null
+      end
+    `;
+    const longitudeValue = sql<number | null>`
+      case
+        when ${items.longitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+          then ${items.longitude}::double precision
+        else null
+      end
+    `;
+    const distanceKm = hasSourceCoordinates
+      ? sql<number>`
+          6371 * acos(
+            least(
+              1,
+              greatest(
+                -1,
+                cos(radians(${sourceLatitude})) *
+                cos(radians(${latitudeValue})) *
+                cos(radians(${longitudeValue}) - radians(${sourceLongitude})) +
+                sin(radians(${sourceLatitude})) *
+                sin(radians(${latitudeValue}))
+              )
+            )
+          )
+        `
+      : null;
 
     if (sourceItem.userId) {
       conditions.push(or(ne(items.userId, sourceItem.userId), isNull(items.userId))!);
     }
 
     if (sourceItem.date) {
-      const windowStart = new Date(sourceItem.date);
-      windowStart.setDate(windowStart.getDate() - 120);
-      const windowEnd = new Date(sourceItem.date);
-      windowEnd.setDate(windowEnd.getDate() + 120);
-      conditions.push(gte(items.date, windowStart));
-      conditions.push(lte(items.date, windowEnd));
+      const sourceDate = new Date(sourceItem.date);
+
+      if (targetReportType === "found") {
+        const windowEnd = new Date(sourceDate);
+        windowEnd.setDate(windowEnd.getDate() + AUTO_MATCH_DATE_WINDOW_DAYS);
+        conditions.push(gte(items.date, sourceDate));
+        conditions.push(lte(items.date, windowEnd));
+      } else {
+        const windowStart = new Date(sourceDate);
+        windowStart.setDate(windowStart.getDate() - AUTO_MATCH_DATE_WINDOW_DAYS);
+        conditions.push(gte(items.date, windowStart));
+        conditions.push(lte(items.date, sourceDate));
+      }
     }
 
     return await db
       .select()
       .from(items)
       .where(and(...conditions))
-      .orderBy(desc(items.date))
+      .orderBy(distanceKm ?? desc(items.date), desc(items.date))
       .limit(limit);
   }
 
@@ -817,7 +1050,7 @@ export class DatabaseStorage implements IStorage {
         recentItems: itemStats[0]?.recentItems ?? 0,
       },
       recentUsers,
-      recentItems,
+      recentItems: recentItems.items,
     };
   }
 
@@ -899,9 +1132,18 @@ export class DatabaseStorage implements IStorage {
   async getAdminItems(filters?: {
     search?: string;
     type?: "lost" | "found";
+    page?: number;
     limit?: number;
-  }): Promise<AdminItemRecord[]> {
+  }): Promise<{
+    items: AdminItemRecord[];
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const conditions = [];
+    const page = Math.max(1, filters?.page ?? 1);
+    const limit = Math.min(Math.max(1, filters?.limit ?? 30), 100);
 
     if (filters?.type) {
       conditions.push(eq(items.reportType, filters.type));
@@ -914,7 +1156,17 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
-    const baseQuery = db
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const [{ totalCount }] = await db
+      .select({ totalCount: sql<number>`count(*)::int` })
+      .from(items)
+      .leftJoin(users, eq(items.userId, users.id))
+      .where(whereClause);
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    const currentPage = Math.min(page, totalPages);
+    const currentOffset = (currentPage - 1) * limit;
+
+    const rows = await db
       .select({
         item: items,
         ownerName: users.name,
@@ -922,25 +1174,28 @@ export class DatabaseStorage implements IStorage {
       })
       .from(items)
       .leftJoin(users, eq(items.userId, users.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(items.date));
+      .where(whereClause)
+      .orderBy(desc(items.date), desc(items.id))
+      .limit(limit)
+      .offset(currentOffset);
 
-    const rows =
-      typeof filters?.limit === "number"
-        ? await baseQuery.limit(filters.limit)
-        : await baseQuery;
-
-    return rows.map((row) => ({
-      ...row.item,
-      ownerName: row.ownerName ?? null,
-      ownerUsername: row.ownerUsername ?? null,
-      statusLabel:
-        row.item.status === "resolved"
-          ? "해결됨"
-          : row.item.reportType === "lost"
-          ? "분실 접수"
-          : "습득 접수",
-    }));
+    return {
+      items: rows.map((row) => ({
+        ...row.item,
+        ownerName: row.ownerName ?? null,
+        ownerUsername: row.ownerUsername ?? null,
+        statusLabel:
+          row.item.status === "resolved"
+            ? "해결됨"
+            : row.item.reportType === "lost"
+            ? "분실 접수"
+            : "습득 접수",
+      })),
+      totalCount,
+      page: currentPage,
+      limit,
+      totalPages,
+    };
   }
 
   async deleteItemByAdmin(itemId: number): Promise<boolean> {

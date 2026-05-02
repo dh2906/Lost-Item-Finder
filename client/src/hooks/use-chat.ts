@@ -58,7 +58,7 @@ export function useChatRooms(enabled = true) {
       return res.json();
     },
     enabled,
-    refetchInterval: enabled ? 1000 : false,
+    refetchInterval: enabled ? 30_000 : false,
   });
 }
 

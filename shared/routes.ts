@@ -13,6 +13,7 @@ import {
 
 export const itemDateRanges = ["all", "7d", "30d", "90d"] as const;
 export const itemSortOrders = ["latest", "oldest"] as const;
+export const itemSourceFilters = ["all", "user", "lost112"] as const;
 
 const itemResponseSchema = z.custom<typeof items.$inferSelect>();
 
@@ -93,6 +94,22 @@ const adminDashboardResponseSchema = z.object({
   recentItems: z.array(adminItemResponseSchema),
 });
 
+const adminItemsResponseSchema = z.object({
+  items: z.array(adminItemResponseSchema),
+  totalCount: z.number(),
+  page: z.number(),
+  limit: z.number(),
+  totalPages: z.number(),
+});
+
+const itemsListResponseSchema = z.object({
+  items: z.array(itemResponseSchema),
+  totalCount: z.number(),
+  page: z.number(),
+  limit: z.number(),
+  totalPages: z.number(),
+});
+
 function getFirstQueryValue(value: unknown) {
   return Array.isArray(value) ? value[0] : value;
 }
@@ -106,6 +123,11 @@ const optionalPositiveIntegerQuerySchema = z.preprocess((value) => {
   const normalizedValue = getFirstQueryValue(value);
   return normalizedValue === undefined ? undefined : normalizedValue;
 }, z.coerce.number().int().positive().optional());
+
+const optionalItemsPageLimitQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  return normalizedValue === undefined ? undefined : normalizedValue;
+}, z.coerce.number().int().positive().max(60).optional());
 
 function getOptionalTrimmedQueryValue(value: unknown) {
   const normalizedValue = getFirstQueryValue(value);
@@ -131,15 +153,18 @@ const optionalRadiusKmQuerySchema = z.preprocess((value) => {
 
 const lost112ItemResponseSchema = z.object({
   atcId: z.string(),
-  fdYmd: z.string(),
-  prdtClNm: z.string(),
-  fdFilePathImg: z.string(),
-  fdSbjt: z.string(),
-  fdHor: z.string(),
-  clrNm: z.string(),
-  fdPlace: z.string(),
-  tel: z.string(),
-  orgNm: z.string(),
+  fdSn: z.string().optional().default("1"),
+  fdYmd: z.string().optional().default(""),
+  prdtClNm: z.string().optional().default(""),
+  fdFilePathImg: z.string().optional().default(""),
+  fdSbjt: z.string().optional().default(""),
+  fdPrdtNm: z.string().optional().default(""),
+  depPlace: z.string().optional().default(""),
+  fdHor: z.string().optional().default(""),
+  clrNm: z.string().optional().default(""),
+  fdPlace: z.string().optional().default(""),
+  tel: z.string().optional().default(""),
+  orgNm: z.string().optional().default(""),
 });
 
 const lost112ItemsResponseSchema = z.object({
@@ -147,6 +172,77 @@ const lost112ItemsResponseSchema = z.object({
   totalCount: z.number(),
   pageNo: z.number(),
   numOfRows: z.number(),
+});
+
+const lost112SyncResponseSchema = z.object({
+  fetchedCount: z.number(),
+  createdCount: z.number(),
+  updatedCount: z.number(),
+  skippedCount: z.number(),
+  embeddedCount: z.number(),
+  embeddingFailedCount: z.number(),
+  automaticMatchCount: z.number(),
+  items: z.array(itemResponseSchema),
+});
+
+const lost112ReprocessExistingResponseSchema = z.object({
+  fetchedCount: z.number(),
+  updatedCount: z.number(),
+  skippedCount: z.number(),
+  failedCount: z.number(),
+  embeddedCount: z.number(),
+  embeddingFailedCount: z.number(),
+  automaticMatchCount: z.number(),
+  items: z.array(itemResponseSchema),
+});
+
+const lost112SyncRunResponseSchema = z.object({
+  id: z.number(),
+  trigger: z.string(),
+  status: z.string(),
+  page: z.number(),
+  numOfRows: z.number(),
+  maxPages: z.number(),
+  fetchedCount: z.number(),
+  createdCount: z.number(),
+  updatedCount: z.number(),
+  skippedCount: z.number(),
+  embeddedCount: z.number(),
+  embeddingFailedCount: z.number(),
+  automaticMatchCount: z.number(),
+  errorMessage: z.string().nullable(),
+  startedAt: z.union([z.string(), z.date()]),
+  finishedAt: z.union([z.string(), z.date()]).nullable(),
+});
+
+const lost112ActiveSyncRunResponseSchema = z.object({
+  id: z.number(),
+  trigger: z.string(),
+  phase: z.enum(["fetching", "processing"]),
+  page: z.number(),
+  numOfRows: z.number(),
+  maxPages: z.number(),
+  currentPage: z.number().nullable(),
+  fetchedCount: z.number(),
+  processedCount: z.number(),
+  totalToProcess: z.number(),
+  createdCount: z.number(),
+  updatedCount: z.number(),
+  skippedCount: z.number(),
+  embeddedCount: z.number(),
+  embeddingFailedCount: z.number(),
+  automaticMatchCount: z.number(),
+  currentExternalId: z.string().nullable(),
+  currentTitle: z.string().nullable(),
+  recentItems: z.array(
+    z.object({
+      externalId: z.string(),
+      title: z.string().nullable(),
+      action: z.enum(["created", "updated", "skipped", "failed"]),
+    })
+  ),
+  startedAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
 });
 
 export const errorSchemas = {
@@ -216,11 +312,14 @@ export const api = {
           category: z.string().trim().min(1).optional(),
           color: z.string().trim().min(1).optional(),
           location: z.string().trim().min(1).max(80).optional(),
+          source: z.enum(itemSourceFilters).optional(),
           latitude: optionalLatitudeQuerySchema,
           longitude: optionalLongitudeQuerySchema,
           radiusKm: optionalRadiusKmQuerySchema,
           dateRange: z.enum(itemDateRanges).optional(),
           sort: z.enum(itemSortOrders).optional(),
+          page: optionalPositiveIntegerQuerySchema,
+          limit: optionalItemsPageLimitQuerySchema,
         })
         .superRefine((value, ctx) => {
           const hasLatitude = value.latitude !== undefined;
@@ -241,10 +340,18 @@ export const api = {
               path: ["radiusKm"],
             });
           }
+
+          if (value.location !== undefined && hasLatitude && hasLongitude) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "지역 검색과 현재 위치 반경 검색은 동시에 사용할 수 없습니다.",
+              path: ["location"],
+            });
+          }
         })
         .optional(),
       responses: {
-        200: z.array(itemResponseSchema),
+        200: itemsListResponseSchema,
       },
     },
     mine: {
@@ -297,21 +404,59 @@ export const api = {
     },
   },
   lost112: {
-    items: {
-      method: "GET" as const,
-      path: "/api/lost112/items" as const,
+    sync: {
+      method: "POST" as const,
+      path: "/api/lost112/sync" as const,
       input: z.object({
-        category: optionalQueryStringSchema,
-        region: optionalQueryStringSchema,
-        startDate: optionalQueryStringSchema,
-        endDate: optionalQueryStringSchema,
-        page: optionalPositiveIntegerQuerySchema,
-        numOfRows: optionalPositiveIntegerQuerySchema,
-      }),
+        category: z.string().optional(),
+        region: z.string().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+        page: z.coerce.number().int().positive().optional(),
+        numOfRows: z.coerce.number().int().positive().max(100).optional(),
+        maxPages: z.coerce.number().int().positive().max(1000).optional(),
+      }).optional(),
       responses: {
-        200: lost112ItemsResponseSchema,
+        200: lost112SyncResponseSchema,
         400: errorSchemas.validation,
+        403: errorSchemas.validation,
         500: errorSchemas.internal,
+        503: errorSchemas.internal,
+      },
+    },
+    latestSyncRun: {
+      method: "GET" as const,
+      path: "/api/lost112/sync/latest" as const,
+      responses: {
+        200: lost112SyncRunResponseSchema.nullable(),
+        403: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
+    activeSyncRuns: {
+      method: "GET" as const,
+      path: "/api/lost112/sync/active" as const,
+      responses: {
+        200: z.array(lost112ActiveSyncRunResponseSchema),
+        403: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
+    reprocessExisting: {
+      method: "POST" as const,
+      path: "/api/lost112/reprocess-existing" as const,
+      input: z.object({
+        limit: z.coerce.number().int().positive().max(1000).optional(),
+        offset: z.coerce.number().int().min(0).optional(),
+        onlyMissingLocation: z.boolean().optional(),
+        onlyMissingEmbedding: z.boolean().optional(),
+      }).optional(),
+      responses: {
+        200: lost112ReprocessExistingResponseSchema,
+        400: errorSchemas.validation,
+        403: errorSchemas.validation,
+        500: errorSchemas.internal,
+        503: errorSchemas.internal,
       },
     },
   },
@@ -385,8 +530,10 @@ export const api = {
       input: z.object({
         prompt: z.string().optional(),
         imageUrl: z.string().optional(),
+        location: z.string().optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),
+        radiusKm: z.number().positive().optional(),
       }),
       responses: {
         200: z.array(
@@ -448,10 +595,12 @@ export const api = {
         .object({
           search: z.string().optional(),
           type: z.enum(reportTypes).optional(),
+          page: optionalPositiveIntegerQuerySchema,
+          limit: optionalPositiveIntegerQuerySchema,
         })
         .optional(),
       responses: {
-        200: z.array(adminItemResponseSchema),
+        200: adminItemsResponseSchema,
       },
     },
     deleteItem: {
@@ -485,11 +634,10 @@ export type ItemResponse = z.infer<(typeof api.items.create.responses)[201]>;
 export type ItemsListResponse = z.infer<(typeof api.items.list.responses)[200]>;
 export type ItemsListFilters = NonNullable<z.infer<typeof api.items.list.input>>;
 export type MyItemsResponse = z.infer<(typeof api.items.mine.responses)[200]>;
-export type Lost112ItemsInput = z.infer<typeof api.lost112.items.input>;
-export type Lost112ItemsResponse = z.infer<
-  (typeof api.lost112.items.responses)[200]
+export type Lost112SyncInput = z.infer<typeof api.lost112.sync.input>;
+export type Lost112SyncResponse = z.infer<
+  (typeof api.lost112.sync.responses)[200]
 >;
-export type Lost112ItemResponse = Lost112ItemsResponse["items"][number];
 export type UpdateItemInput = z.infer<typeof api.items.update.input>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<
@@ -513,4 +661,4 @@ export type AdminUsersResponse = z.infer<(typeof api.admin.users.responses)[200]
 export type AdminUserResponse = AdminUsersResponse[number];
 export type UpdateAdminUserInput = z.infer<typeof api.admin.updateUser.input>;
 export type AdminItemsResponse = z.infer<(typeof api.admin.items.responses)[200]>;
-export type AdminItemResponse = AdminItemsResponse[number];
+export type AdminItemResponse = AdminItemsResponse["items"][number];

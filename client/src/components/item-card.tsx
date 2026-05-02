@@ -4,10 +4,11 @@ import { ko } from "date-fns/locale";
 import {
   MapPin,
   Calendar,
-  Tag as TagIcon,
   Sparkles,
   ChevronDown,
   ChevronUp,
+  CameraOff,
+  ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link } from "wouter";
@@ -17,6 +18,8 @@ import { getPrimaryItemImageUrl } from "@shared/item-images";
 import type { Item } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
+const INTERNAL_TAGS = new Set(["lost112", "police", "경찰청"]);
+
 interface ItemCardProps {
   item: Item;
   score?: number;
@@ -25,6 +28,7 @@ interface ItemCardProps {
   className?: string;
   variant?: "default" | "compact" | "list";
   showDateTime?: boolean;
+  imageLoading?: "eager" | "lazy";
 }
 
 export function getDisplayTitle(item: Item) {
@@ -34,6 +38,19 @@ export function getDisplayTitle(item: Item) {
     .trim();
 
   if (strippedTitle.length > 0) {
+    if (item.externalSource === "lost112") {
+      const compactTitle = strippedTitle
+        .replace(/\s*색\)을\s*습득.*$/i, "색)")
+        .replace(/\s*을\s*습득.*$/i, "")
+        .replace(/\s*를\s*습득.*$/i, "")
+        .replace(/\s*하여\s*보관.*$/i, "")
+        .trim();
+
+      if (compactTitle.length > 0) {
+        return compactTitle.replace(/\s+/g, " ");
+      }
+    }
+
     return strippedTitle
       .replace(/^black cap$/i, "검은색 모자")
       .replace(/^담요주웠어요$/i, "파란색 별무늬 담요")
@@ -44,6 +61,34 @@ export function getDisplayTitle(item: Item) {
   return item.reportType === "found" ? "등록된 습득물" : "등록된 분실물";
 }
 
+function isPlaceholderImageUrl(imageUrl?: string): boolean {
+  if (!imageUrl) {
+    return false;
+  }
+  const normalized = imageUrl.toLowerCase();
+  return (
+    normalized.includes("noimage") ||
+    normalized.includes("no_img") ||
+    normalized.includes("no-image") ||
+    normalized.includes("ready") ||
+    normalized.includes("placeholder")
+  );
+}
+
+function splitLocation(location?: string | null): {
+  primary: string;
+  secondary?: string;
+} | null {
+  if (!location) {
+    return null;
+  }
+  const [primary, ...rest] = location.split(" - ").map((value) => value.trim());
+  return {
+    primary,
+    secondary: rest.join(" - ") || undefined,
+  };
+}
+
 export function ItemCard({
   item,
   score,
@@ -52,13 +97,24 @@ export function ItemCard({
   className,
   variant = "default",
   showDateTime = false,
+  imageLoading = "lazy",
 }: ItemCardProps) {
   const [isReasonExpanded, setIsExpanded] = useState(false);
   const reportLabel = item.reportType === "found" ? "습득" : "분실";
   const statusLabel = item.status === "resolved" ? "해결 완료" : "진행 중";
   const isCompact = variant === "compact" || variant === "list";
   const displayTitle = getDisplayTitle(item);
+  const isLost112Item = item.externalSource === "lost112";
+  const itemActionLabel = isLost112Item
+    ? "경찰청 원문 보기"
+    : item.reportType === "found"
+      ? "채팅으로 문의"
+      : "상세 보기";
   const primaryImageUrl = getPrimaryItemImageUrl(item);
+  const shouldShowImage =
+    primaryImageUrl && !(isLost112Item && isPlaceholderImageUrl(primaryImageUrl));
+  const displayLocation = splitLocation(item.location);
+  const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
 
   const getMatchBadge = (scoreValue?: number) => {
     if (scoreValue === undefined) return null;
@@ -66,19 +122,18 @@ export function ItemCard({
     if (percentage >= 70) {
       return {
         text: `${percentage}%`,
-        className:
-          "bg-purple-600 hover:bg-purple-700 text-white border-purple-600",
+        className: "border-primary bg-primary text-primary-foreground",
       };
     }
     if (percentage >= 40) {
       return {
         text: `${percentage}%`,
-        className: "bg-blue-500 hover:bg-blue-600 text-white border-blue-500",
+        className: "border-primary/25 bg-primary/10 text-primary",
       };
     }
     return {
       text: `${percentage}%`,
-      className: "bg-gray-500 hover:bg-gray-600 text-white border-gray-500",
+      className: "border-border bg-white text-muted-foreground",
     };
   };
 
@@ -96,57 +151,81 @@ export function ItemCard({
       className={cn("group block h-full outline-none", className)}
     >
       <motion.div
-        whileHover={{ y: -4 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
+        whileHover={{ y: -2 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
         className="h-full"
       >
-        <Card className="h-full overflow-hidden rounded-[24px] border border-border/70 bg-white/92 shadow-[0_14px_28px_-24px_rgba(27,31,59,0.16)] transition-all duration-300 group-hover:border-primary/20 group-hover:bg-white group-hover:shadow-[0_22px_36px_-28px_hsl(var(--primary)/0.2)] group-active:translate-y-0.5">
+        <Card className="h-full overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-all duration-200 group-hover:border-primary/30 group-hover:shadow-md group-active:translate-y-0.5">
           <div
             className={cn(
-              "relative overflow-hidden bg-[hsl(var(--primary-light))]",
+              "relative overflow-hidden bg-secondary/45",
               isCompact ? "aspect-[5/4]" : "aspect-[4/3]"
             )}
           >
-            {primaryImageUrl ? (
+            {shouldShowImage ? (
               <img
                 src={primaryImageUrl}
                 alt={displayTitle}
+                loading={imageLoading}
+                decoding="async"
                 className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.045]"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center">
-                <TagIcon className="h-10 w-10 text-primary/25" />
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 border-b border-dashed border-border bg-[linear-gradient(180deg,hsl(var(--secondary))_0%,white_100%)] px-4 text-center">
+                <CameraOff className="h-8 w-8 text-primary/55" />
+                <div className="space-y-1">
+                  <span className="block text-xs font-semibold text-foreground/75">
+                    {isLost112Item ? "제공된 사진 없음" : "사진 없음"}
+                  </span>
+                  <span className="block break-keep text-[11px] leading-4 text-muted-foreground [word-break:keep-all]">
+                    {isLost112Item
+                      ? "경찰청 원문에서 사진을 제공하지 않았어요."
+                      : "등록된 이미지가 없어요."}
+                  </span>
+                </div>
               </div>
             )}
 
             <div className="absolute left-3 top-3 flex flex-wrap gap-2">
               <Badge
                 className={cn(
-                  "border-0 font-medium shadow-sm",
+                  "rounded-lg border-0 font-medium",
                   item.reportType === "found"
-                    ? "bg-emerald-500 hover:bg-emerald-600 text-white"
-                    : "bg-rose-500 hover:bg-rose-600 text-white"
+                    ? "bg-primary text-primary-foreground hover:bg-primary"
+                    : "bg-destructive text-destructive-foreground hover:bg-destructive"
                 )}
               >
                 {reportLabel}
               </Badge>
 
-              <Badge
-                variant="outline"
-                className={cn(
-                  "border font-medium shadow-sm",
-                  item.status === "resolved"
-                    ? "border-slate-300 bg-white/95 text-slate-700"
-                    : "border-amber-200 bg-amber-50/95 text-amber-700"
-                )}
-              >
-                {statusLabel}
-              </Badge>
+              {item.status === "resolved" || !isLost112Item ? (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    "rounded-lg border font-medium",
+                    item.status === "resolved"
+                      ? "border-border bg-white/95 text-muted-foreground"
+                      : "border-warning/35 bg-warning/14 text-foreground"
+                  )}
+                >
+                  {statusLabel}
+                </Badge>
+              ) : null}
+
+              {isLost112Item ? (
+                <Badge
+                  variant="outline"
+                  className="rounded-lg border-primary/20 bg-white/95 font-medium text-primary"
+                >
+                  <ShieldCheck className="mr-1 h-3 w-3" />
+                  경찰청
+                </Badge>
+              ) : null}
 
               {!isCompact && matchBadge ? (
                 <Badge
                   variant="outline"
-                  className={cn("font-medium shadow-sm border", matchBadge.className)}
+                  className={cn("rounded-lg border font-medium", matchBadge.className)}
                 >
                   <Sparkles className="mr-1 h-3 w-3" />
                   {matchBadge.text}
@@ -156,7 +235,7 @@ export function ItemCard({
               {!isCompact && distanceText ? (
                 <Badge
                   variant="outline"
-                  className="border-border/70 bg-white/95 font-medium text-slate-700 shadow-sm"
+                  className="rounded-lg border-border bg-white/95 font-medium text-muted-foreground"
                 >
                   <MapPin className="mr-1 h-3 w-3 text-primary/70" />
                   {distanceText}
@@ -178,19 +257,26 @@ export function ItemCard({
                 {displayTitle}
               </h3>
 
-              <div className="flex flex-col gap-1.5 pt-0.5 text-sm text-slate-600">
-                {item.location ? (
-                  <div className="flex items-center gap-2 leading-none">
+              <div className="flex flex-col gap-1.5 pt-0.5 text-sm text-muted-foreground">
+                {displayLocation ? (
+                  <div className="flex items-start gap-2 leading-snug">
                     <MapPin className="h-3.5 w-3.5 shrink-0 text-primary/50" />
-                    <span className="truncate pt-px font-medium text-slate-600">
-                      {item.location}
+                    <span className="min-w-0 pt-px">
+                      <span className="block truncate font-semibold text-foreground/80">
+                        {displayLocation.primary}
+                      </span>
+                      {displayLocation.secondary ? (
+                        <span className="block truncate text-xs font-medium text-muted-foreground">
+                          {displayLocation.secondary}
+                        </span>
+                      ) : null}
                     </span>
                   </div>
                 ) : null}
                 {item.date ? (
                   <div className="flex items-center gap-2 leading-none">
                     <Calendar className="h-3.5 w-3.5 shrink-0 text-primary/50" />
-                    <span className="pt-px font-medium text-slate-600">
+                    <span className="pt-px font-medium text-muted-foreground">
                       {format(
                         new Date(item.date),
                         showDateTime ? "PPP p" : "PPP",
@@ -202,26 +288,32 @@ export function ItemCard({
               </div>
             </div>
 
-            {!isCompact && item.tags && item.tags.length > 0 ? (
+            {!isCompact && visibleTags.length > 0 ? (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {item.tags.slice(0, 3).map((tag) => (
+                {visibleTags.slice(0, 1).map((tag) => (
                   <span
                     key={tag}
-                    className="inline-flex items-center rounded-full bg-[hsl(var(--primary-light))] px-2.5 py-1 text-xs font-medium text-primary/80"
+                    className="inline-flex items-center rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-primary"
                   >
                     {tag}
                   </span>
                 ))}
-                {item.tags.length > 3 ? (
-                  <span className="inline-flex items-center rounded-full bg-[hsl(var(--primary-light))] px-2.5 py-1 text-xs font-medium text-primary/80">
-                    +{item.tags.length - 3}
+                {visibleTags.length > 1 ? (
+                  <span className="inline-flex items-center rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-primary">
+                    +{visibleTags.length - 1}
                   </span>
                 ) : null}
               </div>
             ) : null}
 
+            {!isCompact ? (
+              <span className="mt-auto inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-3 py-2 text-sm font-semibold text-primary transition-colors group-hover:bg-accent">
+                {itemActionLabel}
+              </span>
+            ) : null}
+
             {!isCompact && reasoning ? (
-              <div className="mt-2 overflow-hidden rounded-[18px] border border-primary/10 bg-[hsl(var(--primary-light))/0.7] transition-colors hover:bg-[hsl(var(--primary-light))]">
+              <div className="mt-2 overflow-hidden rounded-xl border border-primary/10 bg-accent transition-colors">
                 <button
                   type="button"
                   onClick={toggleReason}
@@ -245,7 +337,7 @@ export function ItemCard({
                       exit={{ height: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
                     >
-                      <div className="border-t border-primary/10 px-3 pb-2.5 pt-2 text-xs leading-relaxed text-slate-600">
+                      <div className="border-t border-primary/10 px-3 pb-2.5 pt-2 text-xs leading-relaxed text-muted-foreground">
                         {reasoning}
                       </div>
                     </motion.div>

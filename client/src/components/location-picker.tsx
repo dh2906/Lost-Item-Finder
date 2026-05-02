@@ -1,11 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Map, MapMarker, useKakaoLoader } from "react-kakao-maps-sdk";
-import { Locate, MapPin } from "lucide-react";
+import { Locate, MapPin, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 interface LocationPickerProps {
   value?: { latitude: string; longitude: string };
-  onChange: (location: { latitude: string; longitude: string; address?: string }) => void;
+  onChange: (location: {
+    latitude: string;
+    longitude: string;
+    address?: string;
+    placeName?: string;
+  }) => void;
   height?: string;
 }
 
@@ -27,31 +33,43 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
   }, [loading, error]);
   const [position, setPosition] = useState<MarkerPosition | null>(null);
   const [address, setAddress] = useState<string>("");
+  const [placeKeyword, setPlaceKeyword] = useState("");
+  const [placeSearchMessage, setPlaceSearchMessage] = useState("");
   const [isLocating, setIsLocating] = useState(true);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  const [isSearchingPlace, setIsSearchingPlace] = useState(false);
   const mapRef = useRef<kakao.maps.Map | null>(null);
 
   const syncCoordinates = useCallback(
-    (nextPosition: MarkerPosition) => {
+    (nextPosition: MarkerPosition, nextAddress?: string, nextPlaceName?: string) => {
       onChange({
         latitude: nextPosition.lat.toFixed(6),
         longitude: nextPosition.lng.toFixed(6),
+        address: nextAddress,
+        placeName: nextPlaceName ?? nextAddress,
       });
     },
     [onChange],
   );
 
   const getAddressFromCoords = useCallback((lat: number, lng: number) => {
-    if (!window.kakao?.maps?.services) return;
+    const nextPosition = { lat, lng };
+    if (!window.kakao?.maps?.services) {
+      syncCoordinates(nextPosition);
+      return;
+    }
 
     const geocoder = new window.kakao.maps.services.Geocoder();
     geocoder.coord2Address(lng, lat, (result: any, status: any) => {
       if (status === window.kakao.maps.services.Status.OK && result[0]) {
         const addr = result[0].road_address?.address_name || result[0].address?.address_name;
         setAddress(addr || "");
+        syncCoordinates(nextPosition, addr || undefined);
+        return;
       }
+      syncCoordinates(nextPosition);
     });
-  }, []);
+  }, [syncCoordinates]);
 
   // 초기 위치 설정 (GPS 또는 기본값)
   useEffect(() => {
@@ -75,7 +93,6 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
           };
           setPosition(nextPosition);
           getAddressFromCoords(nextPosition.lat, nextPosition.lng);
-          syncCoordinates(nextPosition);
           setIsLocating(false);
         },
         () => {
@@ -85,7 +102,6 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
           };
           setPosition(nextPosition);
           getAddressFromCoords(nextPosition.lat, nextPosition.lng);
-          syncCoordinates(nextPosition);
           setIsLocating(false);
         },
         { enableHighAccuracy: true, timeout: 10000 }
@@ -94,7 +110,6 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
       const nextPosition = { lat: 37.5665, lng: 126.978 };
       setPosition(nextPosition);
       getAddressFromCoords(nextPosition.lat, nextPosition.lng);
-      syncCoordinates(nextPosition);
       setIsLocating(false);
     }
   }, [getAddressFromCoords, syncCoordinates, value]);
@@ -104,7 +119,6 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
     const newPosition = { lat: pos.getLat(), lng: pos.getLng() };
     setPosition(newPosition);
     getAddressFromCoords(newPosition.lat, newPosition.lng);
-    syncCoordinates(newPosition);
   };
 
   const handleMapClick = (_: any, mouseEvent: any) => {
@@ -112,7 +126,6 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
     const newPosition = { lat: latlng.getLat(), lng: latlng.getLng() };
     setPosition(newPosition);
     getAddressFromCoords(newPosition.lat, newPosition.lng);
-    syncCoordinates(newPosition);
   };
 
   const handleDragEnd = (marker: any) => {
@@ -134,7 +147,6 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
         };
         setPosition(newPosition);
         getAddressFromCoords(newPosition.lat, newPosition.lng);
-        syncCoordinates(newPosition);
         setIsGettingLocation(false);
       },
       (err) => {
@@ -144,6 +156,51 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
+  };
+
+  const handlePlaceSearch = () => {
+    const keyword = placeKeyword.trim();
+    if (!keyword) {
+      setPlaceSearchMessage("찾을 장소명을 입력해 주세요.");
+      return;
+    }
+
+    if (!window.kakao?.maps?.services) {
+      setPlaceSearchMessage("장소 검색을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.");
+      return;
+    }
+
+    setIsSearchingPlace(true);
+    setPlaceSearchMessage("");
+
+    const places = new window.kakao.maps.services.Places();
+    places.keywordSearch(keyword, (results: any[], status: any) => {
+      setIsSearchingPlace(false);
+
+      if (status !== window.kakao.maps.services.Status.OK || !results?.[0]) {
+        setPlaceSearchMessage("검색 결과가 없어요. 주소나 지명을 조금 더 자세히 입력해 주세요.");
+        return;
+      }
+
+      const firstResult = results[0];
+      const nextPosition = {
+        lat: Number(firstResult.y),
+        lng: Number(firstResult.x),
+      };
+      const nextAddress =
+        firstResult.road_address_name || firstResult.address_name || keyword;
+      const nextPlaceName = firstResult.place_name || keyword;
+
+      setPosition(nextPosition);
+      setAddress(
+        nextAddress && nextPlaceName && !nextAddress.includes(nextPlaceName)
+          ? `${nextAddress} - ${nextPlaceName}`
+          : nextAddress || nextPlaceName
+      );
+      syncCoordinates(nextPosition, nextAddress, nextPlaceName);
+      mapRef.current?.panTo(new window.kakao.maps.LatLng(nextPosition.lat, nextPosition.lng));
+      setPlaceSearchMessage(`${nextPlaceName} 위치를 적용했어요.`);
+    });
   };
 
   if (loading || isLocating) {
@@ -166,16 +223,13 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
     console.error("[LocationPicker] 렌더링 에러:", error);
     return (
         <div 
-          className="flex items-center justify-center rounded-[var(--radius)] border border-destructive/20 bg-destructive/10"
+          className="flex items-center justify-center rounded-[var(--radius)] border border-border/70 bg-secondary/40"
           style={{ height }}
         >
-        <div className="text-center p-4">
-          <p className="text-destructive mb-2">지도를 불러올 수 없습니다</p>
-          <p className="text-sm text-muted-foreground mb-2">
-            에러: {String(error)}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            VITE_KAKAO_MAP_KEY: {import.meta.env.VITE_KAKAO_MAP_KEY ? "설정됨" : "없음"}
+        <div className="max-w-sm px-5 text-center">
+          <p className="font-semibold text-foreground">지도를 불러오지 못했어요</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            장소명은 아래 입력칸에 직접 적어도 등록할 수 있어요. 잠시 후 다시 시도하거나 주소를 자세히 남겨 주세요.
           </p>
         </div>
       </div>
@@ -195,6 +249,41 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
 
   return (
     <div className="space-y-3">
+      <div className="rounded-[18px] border border-border/70 bg-white p-3 shadow-sm">
+        <label htmlFor="place-search" className="text-sm font-semibold text-foreground">
+          장소명으로 위치 찾기
+        </label>
+        <div className="mt-2 flex gap-2">
+          <Input
+            id="place-search"
+            value={placeKeyword}
+            onChange={(event) => setPlaceKeyword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handlePlaceSearch();
+              }
+            }}
+            placeholder="예: CGV 평택고덕, 천안역"
+            className="h-11 rounded-lg"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 shrink-0 rounded-lg px-4"
+            onClick={handlePlaceSearch}
+            disabled={isSearchingPlace}
+          >
+            <Search className="mr-2 h-4 w-4" />
+            찾기
+          </Button>
+        </div>
+        {placeSearchMessage ? (
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            {placeSearchMessage}
+          </p>
+        ) : null}
+      </div>
       <div className="relative overflow-hidden rounded-[var(--radius)] border border-primary/15 bg-white/88 shadow-[0_18px_32px_-24px_hsl(var(--primary)/0.18)]">
         <Map
           center={position}

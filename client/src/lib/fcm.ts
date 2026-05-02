@@ -19,9 +19,7 @@ export async function initFcm(): Promise<void> {
     return;
   }
 
-  const permission = await Notification.requestPermission();
-  if (permission !== 'granted') {
-    console.warn('[FCM] 알림 권한이 거부되었습니다.');
+  if (Notification.permission !== 'granted') {
     return;
   }
 

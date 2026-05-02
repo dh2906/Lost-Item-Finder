@@ -81,7 +81,7 @@ Lost-Item-Finder/
 | Backend | Node.js, Express.js |
 | ORM | Drizzle ORM |
 | DB | PostgreSQL + pgvector (벡터 검색) |
-| AI — 임베딩 | OpenAI text-embedding-3-small (1536차원) |
+| AI — 임베딩 | OpenAI text-embedding-3-small (512차원) |
 | AI — 이미지 분석 | Qwen Vision (qwen3.5-plus) |
 | AI — 재랭킹 | GPT-4o-mini |
 | 인증 | Passport.js (Local Strategy) |
@@ -137,7 +137,7 @@ Lost-Item-Finder/
         ↓
 [텍스트 + 이미지 요약 합산] → queryText 구성
         ↓
-[OpenAI Embeddings] → createEmbedding() → 1536차원 벡터
+[OpenAI Embeddings] → createEmbedding() → 512차원 벡터
         ↓
 [pgvector 코사인 유사도 검색] → searchFoundItemsByEmbedding()
   → 상위 VECTOR_CANDIDATE_COUNT(기본 20)개 후보 (score > 0.15 필터)
@@ -185,6 +185,8 @@ Lost-Item-Finder/
 ## 커밋 관련
 - 커밋 메시지는 "feat: 메시지 내용" 과 같은 형식으로 작성할 것(ex. refactor: 폴링 방식 수정, fix: 무슨 서비스 버그 수정)
 - 커밋은 최대한 작은 단위로 여러개 커밋할 것
+- 커밋 메시지, PR 제목, PR 본문은 모두 한글로 작성할 것
+- 작업 브랜치는 최신 `main`에서 새로 만들고, 작업 전 `main`과 `develop` 상태가 다르면 최신 변경사항을 PR로 먼저 동기화할 것
 
 ---
 

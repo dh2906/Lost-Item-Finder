@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
@@ -89,6 +89,8 @@ export default function AdminDashboardPage() {
   const [userStatusFilter, setUserStatusFilter] = useState("all");
   const [itemSearch, setItemSearch] = useState("");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
+  const [itemPage, setItemPage] = useState(1);
+  const itemPageSize = 30;
 
   const { data: dashboard, isLoading: isDashboardLoading } =
     useQuery<AdminDashboardResponse>({
@@ -130,14 +132,20 @@ export default function AdminDashboardPage() {
       },
     });
 
-  const { data: items = [], isLoading: isItemsLoading } =
+  useEffect(() => {
+    setItemPage(1);
+  }, [itemSearch, itemTypeFilter]);
+
+  const { data: itemsResponse, isLoading: isItemsLoading } =
     useQuery<AdminItemsResponse>({
-      queryKey: [api.admin.items.path, itemSearch, itemTypeFilter],
+      queryKey: [api.admin.items.path, itemSearch, itemTypeFilter, itemPage],
       queryFn: async () => {
         const res = await fetch(
           `${api.admin.items.path}${buildQueryString({
             search: itemSearch.trim() || undefined,
             type: itemTypeFilter !== "all" ? itemTypeFilter : undefined,
+            page: String(itemPage),
+            limit: String(itemPageSize),
           })}`,
           {
             credentials: "include",
@@ -149,6 +157,7 @@ export default function AdminDashboardPage() {
         return res.json();
       },
     });
+  const items = itemsResponse?.items ?? [];
 
   const updateUserMutation = useMutation({
     mutationFn: async (payload: {
@@ -575,6 +584,40 @@ export default function AdminDashboardPage() {
                   )}
                 </TableBody>
               </Table>
+              <div className="flex flex-col gap-3 border-t border-border pt-4 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  총 {itemsResponse?.totalCount ?? 0}개 중 {items.length}개 표시 ·{" "}
+                  {itemsResponse?.page ?? itemPage}/{itemsResponse?.totalPages ?? 1}페이지
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isItemsLoading || (itemsResponse?.page ?? 1) <= 1}
+                    onClick={() => setItemPage((page) => Math.max(1, page - 1))}
+                  >
+                    이전
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={
+                      isItemsLoading ||
+                      (itemsResponse?.page ?? 1) >=
+                        (itemsResponse?.totalPages ?? 1)
+                    }
+                    onClick={() =>
+                      setItemPage((page) =>
+                        Math.min(itemsResponse?.totalPages ?? page + 1, page + 1)
+                      )
+                    }
+                  >
+                    다음
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

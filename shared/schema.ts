@@ -22,33 +22,76 @@ export type ReportType = (typeof reportTypes)[number];
 export const itemStatuses = ["active", "resolved"] as const;
 export type ItemStatus = (typeof itemStatuses)[number];
 
-export const items = pgTable("items", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
-  reportType: text("report_type").notNull(),
-  status: text("status").notNull().default("active"),
-  title: text("title").notNull(),
-  description: text("description"),
-  imageUrl: text("image_url"),
-  imageUrls: jsonb("image_urls").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  itemCategory: text("item_category"),
-  color: text("color"),
-  size: text("size"),
-  tags: jsonb("tags").$type<string[]>(),
-  location: text("location"),
-  latitude: text("latitude"),
-  longitude: text("longitude"),
-  date: timestamp("date").defaultNow(),
-  contactInfo: text("contact_info"),
-});
+export const items = pgTable(
+  "items",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reportType: text("report_type").notNull(),
+    status: text("status").notNull().default("active"),
+    title: text("title").notNull(),
+    description: text("description"),
+    imageUrl: text("image_url"),
+    imageUrls: jsonb("image_urls")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    itemCategory: text("item_category"),
+    color: text("color"),
+    size: text("size"),
+    tags: jsonb("tags").$type<string[]>(),
+    location: text("location"),
+    region1: text("region1"),
+    region2: text("region2"),
+    region3: text("region3"),
+    address: text("address"),
+    placeName: text("place_name"),
+    latitude: text("latitude"),
+    longitude: text("longitude"),
+    date: timestamp("date").defaultNow(),
+    contactInfo: text("contact_info"),
+    externalSource: text("external_source"),
+    externalId: text("external_id"),
+    externalUrl: text("external_url"),
+    externalPayload: jsonb("external_payload").$type<Record<string, unknown>>(),
+    externalPayloadHash: text("external_payload_hash"),
+  },
+  (table) => ({
+    externalSourceIdUnique: uniqueIndex("items_external_source_id_unique").on(
+      table.externalSource,
+      table.externalId
+    ),
+  })
+);
 
 export const itemEmbeddings = pgTable("item_embeddings", {
   itemId: integer("item_id")
     .primaryKey()
     .references(() => items.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
-  embedding: vector("embedding", { dimensions: 1536 }).notNull(),
+  embedding: vector("embedding", { dimensions: 768 }).notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const lost112SyncRuns = pgTable("lost112_sync_runs", {
+  id: serial("id").primaryKey(),
+  trigger: text("trigger").notNull(),
+  status: text("status").notNull(),
+  page: integer("page").notNull(),
+  numOfRows: integer("num_of_rows").notNull(),
+  maxPages: integer("max_pages").notNull(),
+  fetchedCount: integer("fetched_count").notNull().default(0),
+  createdCount: integer("created_count").notNull().default(0),
+  updatedCount: integer("updated_count").notNull().default(0),
+  skippedCount: integer("skipped_count").notNull().default(0),
+  embeddedCount: integer("embedded_count").notNull().default(0),
+  embeddingFailedCount: integer("embedding_failed_count").notNull().default(0),
+  automaticMatchCount: integer("automatic_match_count").notNull().default(0),
+  errorMessage: text("error_message"),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
 });
 
 export const itemMatches = pgTable(
@@ -83,11 +126,18 @@ const itemBaseSchema = createInsertSchema(items, {
   reportType: z.enum(reportTypes),
   status: z.enum(itemStatuses),
   imageUrl: z.string().trim().min(1).optional(),
-  imageUrls: z.array(z.string().trim().min(1)).max(MAX_ITEM_IMAGE_COUNT).optional(),
+  imageUrls: z
+    .array(z.string().trim().min(1))
+    .max(MAX_ITEM_IMAGE_COUNT)
+    .optional(),
 }).omit({
   id: true,
   userId: true,
   date: true,
+  externalSource: true,
+  externalId: true,
+  externalUrl: true,
+  externalPayload: true,
 });
 
 export const insertItemSchema = itemBaseSchema.omit({
@@ -112,7 +162,12 @@ export type UpdateItem = z.infer<typeof updateItemSchema>;
 export type ItemEmbedding = typeof itemEmbeddings.$inferSelect;
 export type ItemMatch = typeof itemMatches.$inferSelect;
 
-export const itemMatchStatuses = ["new", "viewed", "dismissed", "confirmed"] as const;
+export const itemMatchStatuses = [
+  "new",
+  "viewed",
+  "dismissed",
+  "confirmed",
+] as const;
 export type ItemMatchStatus = (typeof itemMatchStatuses)[number];
 
 export const insertItemMatchSchema = createInsertSchema(itemMatches).omit({
@@ -143,6 +198,12 @@ export const insertUserSchema = createInsertSchema(users).omit({
   createdAt: true,
 });
 
+export const sessions = pgTable("sessions", {
+  sid: text("sid").primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire").notNull(),
+});
+
 export const matchNotifications = pgTable(
   "match_notifications",
   {
@@ -164,27 +225,35 @@ export const matchNotifications = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => ({
-    userLostFoundUnique: uniqueIndex("match_notifications_user_lost_found_unique").on(
-      table.userId,
-      table.lostItemId,
-      table.foundItemId
-    ),
+    userLostFoundUnique: uniqueIndex(
+      "match_notifications_user_lost_found_unique"
+    ).on(table.userId, table.lostItemId, table.foundItemId),
   })
 );
 
 export const chatRooms = pgTable("chat_rooms", {
   id: serial("id").primaryKey(),
-  itemId: integer("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
-  senderId: integer("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-  receiverId: integer("receiver_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  itemId: integer("item_id")
+    .notNull()
+    .references(() => items.id, { onDelete: "cascade" }),
+  senderId: integer("sender_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  receiverId: integer("receiver_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const chatMessages = pgTable("chat_messages", {
   id: serial("id").primaryKey(),
-  roomId: integer("room_id").notNull().references(() => chatRooms.id, { onDelete: "cascade" }),
-  senderId: integer("sender_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  roomId: integer("room_id")
+    .notNull()
+    .references(() => chatRooms.id, { onDelete: "cascade" }),
+  senderId: integer("sender_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   isRead: integer("is_read").default(0),
   createdAt: timestamp("created_at").defaultNow(),

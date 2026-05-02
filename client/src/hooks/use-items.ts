@@ -28,17 +28,21 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
   if (filters?.category) queryParams.set("category", filters.category);
   if (filters?.color) queryParams.set("color", filters.color);
   if (filters?.location) queryParams.set("location", filters.location);
+  if (filters?.source) queryParams.set("source", filters.source);
   if (filters?.latitude !== undefined) queryParams.set("latitude", String(filters.latitude));
   if (filters?.longitude !== undefined) queryParams.set("longitude", String(filters.longitude));
   if (filters?.radiusKm !== undefined) queryParams.set("radiusKm", String(filters.radiusKm));
   if (filters?.dateRange) queryParams.set("dateRange", filters.dateRange);
   if (filters?.sort) queryParams.set("sort", filters.sort);
+  if (filters?.page) queryParams.set("page", String(filters.page));
+  if (filters?.limit) queryParams.set("limit", String(filters.limit));
   
   const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
   const url = `${api.items.list.path}${queryString}`;
 
   return useQuery({
     queryKey: [api.items.list.path, filters],
+    placeholderData: (previousData) => previousData,
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch items");
@@ -51,7 +55,7 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
 export function useMyItems(filters?: {
   type?: "lost" | "found";
   status?: "active" | "resolved";
-}) {
+}, enabled = true) {
   const queryParams = new URLSearchParams();
   if (filters?.type) queryParams.set("type", filters.type);
   if (filters?.status) queryParams.set("status", filters.status);
@@ -61,6 +65,7 @@ export function useMyItems(filters?: {
 
   return useQuery<MyItemsResponse>({
     queryKey: [...MY_ITEMS_QUERY_KEY, filters],
+    enabled,
     queryFn: async () => {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch my items");

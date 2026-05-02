@@ -5,7 +5,7 @@ import {
   ArrowLeft,
   Send,
   ChevronRight,
-  Image as ImageIcon,
+  CameraOff,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ export default function ChatRoomPage() {
   const sendMessage = useSendChatMessage(roomId);
   const [content, setContent] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isSubmittingRef = useRef(false);
 
   const room = useMemo(
     () => rooms.find((entry) => entry.id === roomId),
@@ -79,34 +80,37 @@ export default function ChatRoomPage() {
     container.scrollTop = container.scrollHeight;
   }, [messages]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitMessage = () => {
     const nextValue = content.trim();
-    if (!nextValue || sendMessage.isPending) {
+    if (!nextValue || sendMessage.isPending || isSubmittingRef.current) {
       return;
     }
 
+    isSubmittingRef.current = true;
     sendMessage.mutate(nextValue, {
       onSuccess: () => setContent(""),
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      },
     });
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitMessage();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-
-      const nextValue = content.trim();
-      if (!nextValue || sendMessage.isPending) {
-        return;
-      }
-
-      event.currentTarget.form?.requestSubmit();
+      submitMessage();
     }
   };
 
   return (
     <Layout>
       <div className="container flex h-[calc(100dvh-120px)] min-h-0 flex-col overflow-hidden py-3 md:h-[calc(100dvh-124px)] md:py-4 xl:max-w-[960px]">
+        <h1 className="sr-only">{room?.item ? `${room.item.title} 채팅` : "채팅"}</h1>
         <div className="mb-3 flex items-center gap-3">
           <Button
             variant="ghost"
@@ -131,11 +135,13 @@ export default function ChatRoomPage() {
                   <img
                     src={room.item.imageUrl}
                     alt={room.item.title}
+                    loading="eager"
+                    decoding="async"
                     className="h-11 w-11 rounded-xl border border-border/50 object-cover"
                   />
                 ) : (
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-border/50 bg-secondary/50 text-muted-foreground">
-                    <ImageIcon className="h-5 w-5 opacity-50" />
+                    <CameraOff className="h-5 w-5 opacity-50" />
                   </div>
                 )}
               </div>
@@ -165,9 +171,15 @@ export default function ChatRoomPage() {
                   메시지를 불러오는 중입니다.
                 </p>
               ) : messages.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  아직 메시지가 없습니다. 먼저 말을 걸어보세요.
-                </p>
+                <div className="m-auto max-w-sm text-center">
+                  <Send className="mx-auto mb-3 h-8 w-8 text-muted-foreground/45" />
+                  <p className="text-sm font-semibold text-foreground">
+                    아직 메시지가 없습니다
+                  </p>
+                  <p className="mt-1 break-keep text-sm leading-6 text-muted-foreground [word-break:keep-all]">
+                    물건 확인에 필요한 장소, 시간, 특징부터 간단히 남겨보세요.
+                  </p>
+                </div>
               ) : (
                 messageGroups.map((entry) => {
                   if (entry.type === "date") {

@@ -1,19 +1,23 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { createHash } from "crypto";
 import passport from "passport";
 import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
-import { storage } from "./storage";
+import { storage, type ExternalFoundItemInput } from "./storage";
 import { api } from "@shared/routes";
 import { normalizeItemImageUrls } from "@shared/item-images";
 import { z } from "zod";
 import OpenAI from "openai";
 import { db } from "./db";
-import { and, eq, ne, or, desc, asc, isNull } from "drizzle-orm";
+import { and, eq, ne, or, desc, asc, isNull, gte } from "drizzle-orm";
 import {
   chatRooms,
   chatMessages,
+  items,
+  itemEmbeddings,
   itemMatches,
+  lost112SyncRuns,
   matchNotifications,
   updateItemMatchStatusSchema,
   users,
@@ -21,6 +25,7 @@ import {
   type ItemMatchStatus,
 } from "@shared/schema";
 import { sendFcmNotification } from "./fcm";
+
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -35,13 +40,42 @@ const qwen = process.env.QWEN_API_KEY
     })
   : null;
 
-const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5.4-mini";
+const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5-nano";
 const QWEN_VISION_MODEL = process.env.QWEN_VISION_MODEL ?? "qwen3.5-plus";
+const QWEN_TEXT_MODEL = process.env.QWEN_TEXT_MODEL ?? QWEN_VISION_MODEL;
+const LOST112_NORMALIZE_PROVIDER = (
+  process.env.LOST112_NORMALIZE_PROVIDER ?? "none"
+).toLowerCase();
+const LOST112_NORMALIZE_MODEL =
+  process.env.LOST112_NORMALIZE_MODEL ??
+  (LOST112_NORMALIZE_PROVIDER === "qwen" ? QWEN_TEXT_MODEL : GPT_TEXT_MODEL);
+const EMBEDDING_PROVIDER = (
+  process.env.EMBEDDING_PROVIDER ?? "local"
+).toLowerCase();
+const AI_RERANK_ENABLED = process.env.AI_RERANK_ENABLED === "true";
+const AI_RERANK_MAX_CANDIDATES = Number(
+  process.env.AI_RERANK_MAX_CANDIDATES ?? 10
+);
+const AUTOMATIC_MATCH_QUEUE_ENABLED =
+  process.env.AUTOMATIC_MATCH_QUEUE_ENABLED === "true";
+const OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED =
+  process.env.OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED === "true";
 const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
+const LOCAL_EMBEDDING_MODEL =
+  process.env.LOCAL_EMBEDDING_MODEL ?? "intfloat/multilingual-e5-base";
+const LOCAL_EMBEDDING_URL =
+  process.env.LOCAL_EMBEDDING_URL ?? "http://127.0.0.1:8090/embed";
+const EMBEDDING_DIMENSIONS = Number(
+  process.env.EMBEDDING_DIMENSIONS ??
+    process.env.OPENAI_EMBEDDING_DIMENSIONS ??
+    768
+);
 const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 12);
-const AUTO_MATCH_RESULT_COUNT = Number(process.env.AUTO_MATCH_RESULT_COUNT ?? 5);
+const AUTO_MATCH_RESULT_COUNT = Number(
+  process.env.AUTO_MATCH_RESULT_COUNT ?? 5
+);
 const AUTO_MATCH_BACKFILL_LIMIT = Number(
   process.env.AUTO_MATCH_BACKFILL_LIMIT ?? 3
 );
@@ -55,6 +89,7 @@ const MIN_FINAL_MATCH_SCORE = Number(process.env.MIN_FINAL_MATCH_SCORE ?? 0.42);
 const MIN_FALLBACK_MATCH_SCORE = Number(
   process.env.MIN_FALLBACK_MATCH_SCORE ?? 0.3
 );
+const DEFAULT_AI_SEARCH_RADIUS_KM = 1;
 const positiveIdSchema = z.coerce.number().int().positive();
 const embeddingRelevantFields = new Set([
   "title",
@@ -70,33 +105,1527 @@ const embeddingRelevantFields = new Set([
 const AUTO_MATCH_CANDIDATE_LIMIT = Number(
   process.env.AUTO_MATCH_CANDIDATE_LIMIT ?? 120
 );
-const AUTO_MATCH_MIN_SCORE = Number(process.env.AUTO_MATCH_MIN_SCORE ?? 0.42);
-const AUTO_MATCH_MIN_VECTOR_SCORE = Number(process.env.AUTO_MATCH_MIN_VECTOR_SCORE ?? 0.3);
-const AUTO_MATCH_MIN_KEYWORD_SCORE = Number(process.env.AUTO_MATCH_MIN_KEYWORD_SCORE ?? 0.12);
-const AUTO_MATCH_MIN_CATEGORY_SCORE = Number(process.env.AUTO_MATCH_MIN_CATEGORY_SCORE ?? 0.2);
-const AUTO_MATCH_MAX_RESULTS = Number(process.env.AUTO_MATCH_MAX_RESULTS ?? 12);
+const AUTO_MATCH_MIN_SCORE = Number(process.env.AUTO_MATCH_MIN_SCORE ?? 0.62);
+const AUTO_MATCH_MIN_VECTOR_SCORE = Number(
+  process.env.AUTO_MATCH_MIN_VECTOR_SCORE ?? 0.3
+);
+const AUTO_MATCH_MIN_KEYWORD_SCORE = Number(
+  process.env.AUTO_MATCH_MIN_KEYWORD_SCORE ?? 0.12
+);
+const AUTO_MATCH_MIN_CATEGORY_SCORE = Number(
+  process.env.AUTO_MATCH_MIN_CATEGORY_SCORE ?? 0.2
+);
+const AUTO_MATCH_MAX_RESULTS = Number(process.env.AUTO_MATCH_MAX_RESULTS ?? 5);
+const AUTO_MATCH_DATE_WINDOW_DAYS = Number(
+  process.env.AUTO_MATCH_DATE_WINDOW_DAYS ?? 90
+);
+const LOST112_SYNC_ENABLED = process.env.LOST112_SYNC_ENABLED !== "false";
+const LOST112_SYNC_INTERVAL_MS = Number(
+  process.env.LOST112_SYNC_INTERVAL_MS ?? 1000 * 60 * 30
+);
+const LOST112_SYNC_INITIAL_DELAY_MS = Number(
+  process.env.LOST112_SYNC_INITIAL_DELAY_MS ?? 1000 * 60
+);
+const LOST112_SYNC_NUM_ROWS = Number(process.env.LOST112_SYNC_NUM_ROWS ?? 100);
+const LOST112_SYNC_MAX_PAGES = Number(process.env.LOST112_SYNC_MAX_PAGES ?? 10);
+const LOST112_SYNC_START_PAGE = Number(process.env.LOST112_SYNC_START_PAGE ?? 1);
+const LOST112_SYNC_LOOKBACK_DAYS = Number(
+  process.env.LOST112_SYNC_LOOKBACK_DAYS ?? 1
+);
+const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY;
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
     throw new Error("QWEN_API_KEY is not configured");
   }
-
   return qwen;
+}
+
+function getLost112TodayYmd(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(new Date())
+    .replace(/-/g, "");
+}
+
+function getLost112DateOffsetYmd(offsetDays: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(date)
+    .replace(/-/g, "");
+}
+
+function getDefaultLost112SyncDateRange(): {
+  startDate: string;
+  endDate: string;
+} {
+  const lookbackDays = Math.max(0, LOST112_SYNC_LOOKBACK_DAYS);
+  return {
+    startDate: getLost112DateOffsetYmd(-lookbackDays),
+    endDate: getLost112TodayYmd(),
+  };
+}
+
+function getLost112NormalizeClient(): OpenAI {
+  if (LOST112_NORMALIZE_PROVIDER === "none") {
+    throw new Error("Lost112 AI normalization is disabled");
+  }
+  if (LOST112_NORMALIZE_PROVIDER === "qwen") {
+    return getQwenClient();
+  }
+  if (LOST112_NORMALIZE_PROVIDER === "openai") {
+    return openai;
+  }
+  throw new Error(
+    `지원하지 않는 Lost112 정규화 provider입니다: ${LOST112_NORMALIZE_PROVIDER}`
+  );
 }
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }
-
   if (typeof error === "object" && error !== null && "message" in error) {
     const message = (error as { message?: unknown }).message;
     if (typeof message === "string" && message.length > 0) {
       return message;
     }
   }
-
   return "Internal server error";
+}
+
+type Lost112NormalizedItem = {
+  atcId?: string;
+  fdSn?: string;
+  fdYmd?: string;
+  prdtClNm?: string;
+  fdFilePathImg?: string;
+  fdSbjt?: string;
+  fdPrdtNm?: string;
+  depPlace?: string;
+  fdHor?: string;
+  clrNm?: string;
+  fdPlace?: string;
+  tel?: string;
+  orgNm?: string;
+};
+
+type Lost112NormalizedResponse = {
+  response?: {
+    header?: {
+      resultCode?: string;
+      resultMsg?: string;
+    };
+    body?: {
+      items?: {
+        item?: Lost112NormalizedItem[] | Lost112NormalizedItem;
+      };
+      totalCount?: number;
+      numOfRows?: number;
+      pageNo?: number;
+    };
+  };
+};
+
+const LOST112_ITEM_FIELDS = [
+  "atcId",
+  "fdSn",
+  "fdYmd",
+  "prdtClNm",
+  "fdFilePathImg",
+  "fdSbjt",
+  "fdPrdtNm",
+  "depPlace",
+  "fdHor",
+  "clrNm",
+  "fdPlace",
+  "tel",
+  "orgNm",
+] as const;
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getXmlTagValue(xml: string, tagName: string): string | undefined {
+  const escapedTagName = escapeRegExp(tagName);
+  const fullTagPattern = new RegExp(
+    `<${escapedTagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${escapedTagName}>`,
+    "i"
+  );
+  const fullTagMatch = xml.match(fullTagPattern);
+  if (fullTagMatch) {
+    return decodeXmlEntities(fullTagMatch[1]);
+  }
+
+  const selfClosingPattern = new RegExp(
+    `<${escapedTagName}(?:\\s[^>]*)?\\s*/>`,
+    "i"
+  );
+  if (selfClosingPattern.test(xml)) {
+    return "";
+  }
+  return undefined;
+}
+
+function getXmlTagBlocks(xml: string, tagName: string): string[] {
+  const escapedTagName = escapeRegExp(tagName);
+  const pattern = new RegExp(
+    `<${escapedTagName}(?:\\s[^>]*)?>([\\s\\S]*?)</${escapedTagName}>`,
+    "gi"
+  );
+  return Array.from(xml.matchAll(pattern), (match) => match[1]);
+}
+
+function toOptionalNumber(value: string | undefined): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseLost112XmlResponse(xml: string): Lost112NormalizedResponse {
+  const responseXml = getXmlTagBlocks(xml, "response")[0] ?? xml;
+  const headerXml = getXmlTagBlocks(responseXml, "header")[0] ?? "";
+  const bodyXml = getXmlTagBlocks(responseXml, "body")[0];
+
+  if (!bodyXml) {
+    throw new Error(
+      `Lost112 API 응답 본문이 비어 있습니다: ${xml.slice(0, 160)}`
+    );
+  }
+
+  const resultCode = getXmlTagValue(headerXml, "resultCode");
+  const resultMsg = getXmlTagValue(headerXml, "resultMsg");
+  if (resultCode && resultCode !== "00") {
+    throw new Error(
+      `Lost112 API 오류: ${resultCode}${resultMsg ? ` ${resultMsg}` : ""}`
+    );
+  }
+
+  const itemsXml = getXmlTagBlocks(bodyXml, "items")[0] ?? "";
+  const items = getXmlTagBlocks(itemsXml, "item").map((itemXml) => {
+    const normalizedItem: Lost112NormalizedItem = {};
+    for (const field of LOST112_ITEM_FIELDS) {
+      const value = getXmlTagValue(itemXml, field);
+      if (value !== undefined) {
+        normalizedItem[field] = value;
+      }
+    }
+    return normalizedItem;
+  });
+
+  return {
+    response: {
+      header: {
+        resultCode,
+        resultMsg,
+      },
+      body: {
+        items: {
+          item: items,
+        },
+        totalCount: toOptionalNumber(getXmlTagValue(bodyXml, "totalCount")),
+        numOfRows: toOptionalNumber(getXmlTagValue(bodyXml, "numOfRows")),
+        pageNo: toOptionalNumber(getXmlTagValue(bodyXml, "pageNo")),
+      },
+    },
+  };
+}
+
+function parseLost112ApiResponse(rawText: string): Lost112NormalizedResponse {
+  try {
+    return JSON.parse(rawText) as Lost112NormalizedResponse;
+  } catch {
+    const trimmed = rawText.trim();
+    if (trimmed.startsWith("<")) {
+      return parseLost112XmlResponse(trimmed);
+    }
+    throw new Error(
+      `Lost112 API가 JSON/XML이 아닌 응답을 반환했습니다: ${rawText.slice(
+        0,
+        160
+      )}`
+    );
+  }
+}
+
+type Lost112FetchOptions = {
+  apiKey: string;
+  category?: string;
+  region?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  numOfRows?: number;
+  timeoutMs?: number;
+};
+
+type Lost112FetchedPage = {
+  items: Lost112NormalizedItem[];
+  totalCount: number;
+  pageNo: number;
+  numOfRows: number;
+  rawCount: number;
+};
+
+function normalizeLost112DateParam(value?: string): string {
+  if (!value) {
+    return "";
+  }
+  return value.replace(/\D/g, "").slice(0, 8);
+}
+
+type Lost112SyncOptions = {
+  apiKey: string;
+  category?: string;
+  region?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  numOfRows?: number;
+  maxPages?: number;
+  trigger?: string;
+};
+
+type Lost112SyncResult = {
+  fetchedCount: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  embeddedCount: number;
+  embeddingFailedCount: number;
+  automaticMatchCount: number;
+  items: Item[];
+};
+
+type Lost112ActiveSyncRun = {
+  id: number;
+  trigger: string;
+  phase: "fetching" | "processing";
+  page: number;
+  numOfRows: number;
+  maxPages: number;
+  currentPage: number | null;
+  fetchedCount: number;
+  processedCount: number;
+  totalToProcess: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  embeddedCount: number;
+  embeddingFailedCount: number;
+  automaticMatchCount: number;
+  currentExternalId: string | null;
+  currentTitle: string | null;
+  recentItems: Array<{
+    externalId: string;
+    title: string | null;
+    action: "created" | "updated" | "skipped" | "failed";
+  }>;
+  startedAt: Date;
+  updatedAt: Date;
+};
+
+const LOST112_SOURCE = "lost112";
+const LOST112_NORMALIZATION_VERSION = "geocoded-location-v3";
+const activeLost112SyncRuns = new Map<number, Lost112ActiveSyncRun>();
+
+const LOST112_REGION_CODES: Record<string, string> = {
+  서울특별시: "LCA000",
+  부산광역시: "LCB000",
+  대구광역시: "LCC000",
+  인천광역시: "LCD000",
+  광주광역시: "LCE000",
+  대전광역시: "LCF000",
+  울산광역시: "LCG000",
+  세종특별자치시: "LCR000",
+  경기도: "LCI000",
+  강원특별자치도: "LCJ000",
+  충청북도: "LCK000",
+  충청남도: "LCL000",
+  전북특별자치도: "LCM000",
+  전라남도: "LCN000",
+  경상북도: "LCO000",
+  경상남도: "LCP000",
+  제주특별자치도: "LCQ000",
+};
+
+function normalizeLost112ItemList(rawItems: unknown): Lost112NormalizedItem[] {
+  if (!rawItems) {
+    return [];
+  }
+  return (
+    Array.isArray(rawItems) ? rawItems : [rawItems]
+  ) as Lost112NormalizedItem[];
+}
+
+function matchesLost112TextFilter(
+  item: Lost112NormalizedItem,
+  filter: string,
+  fields: Array<keyof Lost112NormalizedItem>
+): boolean {
+  if (!filter) {
+    return true;
+  }
+  return fields
+    .map((field) => item[field])
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.includes(filter));
+}
+
+const ADMINISTRATIVE_LOCATION_SUFFIXES = [
+  "특별자치도",
+  "특별자치시",
+  "특별시",
+  "광역시",
+  "자치도",
+  "시",
+  "군",
+  "구",
+  "읍",
+  "면",
+  "동",
+  "리",
+] as const;
+
+function getAdministrativeLocationTokenVariants(token: string): string[] {
+  const variants = new Set([token]);
+  for (const suffix of ADMINISTRATIVE_LOCATION_SUFFIXES) {
+    if (!token.endsWith(suffix)) {
+      continue;
+    }
+    const withoutSuffix = token.slice(0, -suffix.length);
+    if (withoutSuffix.length >= 2) {
+      variants.add(withoutSuffix);
+    }
+  }
+  return Array.from(variants);
+}
+
+function getLocationFilterTokenGroups(
+  locationText?: string | null
+): string[][] {
+  return normalizePlainSearchText(locationText)
+    .split(" ")
+    .filter((token) => token.length >= 2)
+    .map(getAdministrativeLocationTokenVariants);
+}
+
+function locationTextMatchesFilter(
+  candidateText: string,
+  locationText?: string | null
+): boolean {
+  const tokenGroups = getLocationFilterTokenGroups(locationText);
+  if (tokenGroups.length === 0) {
+    return true;
+  }
+  const normalizedCandidate = normalizePlainSearchText(candidateText);
+  const compactCandidate = normalizedCandidate.replace(/\s+/g, "");
+  if (!normalizedCandidate) {
+    return false;
+  }
+  return tokenGroups.every((variants) =>
+    variants.some((variant) => {
+      const compactVariant = variant.replace(/\s+/g, "");
+      return (
+        normalizedCandidate.includes(variant) ||
+        compactCandidate.includes(compactVariant)
+      );
+    })
+  );
+}
+
+function matchesLost112RegionFilter(
+  item: Lost112NormalizedItem,
+  region: string
+): boolean {
+  if (!region) {
+    return true;
+  }
+  const locationText = [item.depPlace, item.fdPlace, item.orgNm]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+
+  return locationTextMatchesFilter(locationText, region);
+}
+
+async function fetchLost112ItemsPage({
+  apiKey,
+  category = "",
+  region = "",
+  startDate = "",
+  endDate = "",
+  page = 1,
+  numOfRows = 20,
+  timeoutMs = 10000,
+}: Lost112FetchOptions): Promise<Lost112FetchedPage> {
+  const safePageNo = Math.max(1, page);
+  const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
+  const normalizedCategory = category.trim();
+  const normalizedRegion = region.trim();
+  const normalizedStartDate = normalizeLost112DateParam(startDate);
+  const normalizedEndDate = normalizeLost112DateParam(endDate);
+
+  const hasRegionCode =
+    normalizedRegion && LOST112_REGION_CODES[normalizedRegion];
+  const externalNumOfRows =
+    normalizedCategory && !hasRegionCode
+      ? Math.min(100, Math.max(safeNumOfRows * 3, safeNumOfRows))
+      : safeNumOfRows;
+
+  const params = new URLSearchParams({
+    serviceKey: apiKey,
+    pageNo: String(safePageNo),
+    numOfRows: String(externalNumOfRows),
+    _type: "json",
+  });
+
+  if (normalizedStartDate) params.set("START_YMD", normalizedStartDate);
+  if (normalizedEndDate) params.set("END_YMD", normalizedEndDate);
+
+  // API에 지역 코드 전달
+  if (hasRegionCode) {
+    params.set("N_FD_LCT_CD", LOST112_REGION_CODES[normalizedRegion]);
+  }
+
+  const url = `https://apis.data.go.kr/1320000/LosPtfundInfoInqireService/getPtLosfundInfoAccToClAreaPd?${params.toString()}`;
+  const safeUrl = new URL(url);
+  safeUrl.searchParams.set("serviceKey", "***");
+  console.log("[Lost112] request:", safeUrl.toString());
+
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  const rawText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(
+      `Lost112 API HTTP error: ${response.status} ${rawText.slice(0, 160)}`
+    );
+  }
+
+  const data = parseLost112ApiResponse(rawText);
+  const body = data.response?.body;
+
+  if (!body) {
+    throw new Error(
+      `Lost112 API response body is empty: ${rawText.slice(0, 160)}`
+    );
+  }
+
+  const rawItems = normalizeLost112ItemList(body.items?.item);
+  const filteredItems = rawItems.filter((item) => {
+    const categoryMatched = matchesLost112TextFilter(item, normalizedCategory, [
+      "prdtClNm",
+      "fdSbjt",
+      "fdPrdtNm",
+    ]);
+
+    // API에서 이미 지역을 필터링했다면, 예외 케이스 방지용으로 통과시킵니다.
+    const regionMatched = hasRegionCode
+      ? true
+      : matchesLost112RegionFilter(item, normalizedRegion);
+
+    return categoryMatched && regionMatched;
+  });
+
+  filteredItems.sort((a, b) => {
+    const dateA = a.fdYmd ? parseInt(a.fdYmd.replace(/\D/g, ""), 10) : 0;
+    const dateB = b.fdYmd ? parseInt(b.fdYmd.replace(/\D/g, ""), 10) : 0;
+
+    if (dateA !== dateB) {
+      return dateB - dateA; // 날짜 기준 내림차순
+    }
+
+    // 날짜가 같으면 atcId(보통 접수 연도/순번 포함) 기준으로 내림차순 정렬
+    const idA = a.atcId || "";
+    const idB = b.atcId || "";
+    return idB.localeCompare(idA);
+  });
+
+  return {
+    items: filteredItems.slice(0, safeNumOfRows),
+    totalCount:
+      normalizedCategory || (normalizedRegion && !hasRegionCode)
+        ? filteredItems.length
+        : body.totalCount ?? filteredItems.length,
+    pageNo: body.pageNo ?? safePageNo,
+    numOfRows: safeNumOfRows,
+    rawCount: rawItems.length,
+  };
+}
+
+function getLost112DetailUrl(item: Lost112NormalizedItem): string | null {
+  if (!item.atcId) {
+    return null;
+  }
+  const params = new URLSearchParams({ ATC_ID: item.atcId });
+  if (item.fdSn) {
+    params.set("FD_SN", item.fdSn);
+  }
+  return `https://www.lost112.go.kr/find/findDetail.do?${params.toString()}`;
+}
+
+function parseLost112Date(value?: string): Date | null {
+  if (!value) {
+    return null;
+  }
+  const digits = value.replace(/\D/g, "");
+  if (digits.length !== 8) {
+    return null;
+  }
+  const year = Number(digits.slice(0, 4));
+  const month = Number(digits.slice(4, 6)) - 1;
+  const day = Number(digits.slice(6, 8));
+  const parsed = new Date(year, month, day);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function createLost112PayloadHash(item: Lost112NormalizedItem): string {
+  return createHash("sha256")
+    .update(stableStringify({ version: LOST112_NORMALIZATION_VERSION, item }))
+    .digest("hex");
+}
+
+function touchLost112ActiveSyncRun(progress: Lost112ActiveSyncRun): void {
+  progress.updatedAt = new Date();
+}
+
+function addLost112RecentSyncItem(
+  progress: Lost112ActiveSyncRun,
+  item: {
+    externalId: string;
+    title: string | null;
+    action: "created" | "updated" | "skipped" | "failed";
+  }
+): void {
+  progress.recentItems.unshift(item);
+  progress.recentItems = progress.recentItems.slice(0, 20);
+  touchLost112ActiveSyncRun(progress);
+}
+
+function getActiveLost112SyncRuns(): Lost112ActiveSyncRun[] {
+  return Array.from(activeLost112SyncRuns.values()).sort(
+    (left, right) => right.startedAt.getTime() - left.startedAt.getTime()
+  );
+}
+
+function hasLost112LocationEnrichment(item: Item): boolean {
+  return Boolean(item.latitude && item.longitude);
+}
+
+function normalizeStoredLost112Payload(
+  payload: unknown
+): Lost112NormalizedItem | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const source = payload as Record<string, unknown>;
+  const normalized = Object.fromEntries(
+    LOST112_ITEM_FIELDS.map((field) => {
+      const value = source[field];
+      return [field, typeof value === "string" ? value : ""];
+    })
+  ) as Lost112NormalizedItem;
+
+  return normalized.atcId?.trim() ? normalized : null;
+}
+
+type KakaoKeywordDocument = {
+  place_name?: string;
+  address_name?: string;
+  road_address_name?: string;
+  x?: string;
+  y?: string;
+};
+
+type Lost112GeocodingResult = {
+  provider: "kakao";
+  query: string;
+  placeName?: string;
+  address?: string;
+  addressName?: string;
+  roadAddressName?: string;
+  latitude: string;
+  longitude: string;
+  location: string;
+};
+
+type ParsedLocationParts = {
+  region1?: string | null;
+  region2?: string | null;
+  region3?: string | null;
+  address?: string | null;
+  placeName?: string | null;
+};
+
+const REGION1_ALIASES = new Map<string, string>([
+  ["서울", "서울특별시"],
+  ["서울특별시", "서울특별시"],
+  ["부산", "부산광역시"],
+  ["부산광역시", "부산광역시"],
+  ["대구", "대구광역시"],
+  ["대구광역시", "대구광역시"],
+  ["인천", "인천광역시"],
+  ["인천광역시", "인천광역시"],
+  ["광주", "광주광역시"],
+  ["광주광역시", "광주광역시"],
+  ["대전", "대전광역시"],
+  ["대전광역시", "대전광역시"],
+  ["울산", "울산광역시"],
+  ["울산광역시", "울산광역시"],
+  ["세종", "세종특별자치시"],
+  ["세종특별자치시", "세종특별자치시"],
+  ["경기", "경기도"],
+  ["경기도", "경기도"],
+  ["강원", "강원특별자치도"],
+  ["강원도", "강원특별자치도"],
+  ["강원특별자치도", "강원특별자치도"],
+  ["충북", "충청북도"],
+  ["충청북도", "충청북도"],
+  ["충남", "충청남도"],
+  ["충청남도", "충청남도"],
+  ["전북", "전북특별자치도"],
+  ["전라북도", "전북특별자치도"],
+  ["전북특별자치도", "전북특별자치도"],
+  ["전남", "전라남도"],
+  ["전라남도", "전라남도"],
+  ["경북", "경상북도"],
+  ["경상북도", "경상북도"],
+  ["경남", "경상남도"],
+  ["경상남도", "경상남도"],
+  ["제주", "제주특별자치도"],
+  ["제주도", "제주특별자치도"],
+  ["제주특별자치도", "제주특별자치도"],
+]);
+
+function parseLocationParts(
+  location?: string | null,
+  geocoding?: Lost112GeocodingResult | null
+): ParsedLocationParts {
+  const address = geocoding?.address?.trim() || location?.split(" - ")[0]?.trim() || null;
+  const administrativeAddress =
+    geocoding?.addressName?.trim() || address || location?.split(" - ")[0]?.trim() || null;
+  const placeName =
+    geocoding?.placeName?.trim() ||
+    (location?.includes(" - ") ? location.split(" - ").slice(1).join(" - ").trim() : "") ||
+    null;
+  const tokens = (administrativeAddress ?? location ?? "").split(/\s+/).filter(Boolean);
+  const canonicalRegion1 = tokens[0] ? REGION1_ALIASES.get(tokens[0]) ?? tokens[0] : null;
+
+  return {
+    region1: canonicalRegion1,
+    region2: tokens[1] ?? null,
+    region3: tokens[2] ?? null,
+    address,
+    placeName,
+  };
+}
+
+function getLost112LocationSearchQueries(
+  item: Lost112NormalizedItem,
+  fallbackLocation?: string | null
+): string[] {
+  return Array.from(
+    new Set(
+      [
+        [item.orgNm, item.depPlace].filter(Boolean).join(" "),
+        [item.orgNm, item.fdPlace].filter(Boolean).join(" "),
+        item.depPlace,
+        item.orgNm,
+        item.fdPlace,
+        fallbackLocation,
+      ]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+}
+
+function formatLost112GeocodedLocation(document: KakaoKeywordDocument): string {
+  const address = document.road_address_name || document.address_name || "";
+  const placeName = document.place_name || "";
+  if (address && placeName && !address.includes(placeName)) {
+    return `${address} - ${placeName}`;
+  }
+  return address || placeName;
+}
+
+async function geocodeLost112Location(
+  item: Lost112NormalizedItem,
+  fallbackLocation?: string | null
+): Promise<Lost112GeocodingResult | null> {
+  if (!KAKAO_REST_API_KEY) {
+    return null;
+  }
+
+  for (const query of getLost112LocationSearchQueries(item, fallbackLocation)) {
+    try {
+      const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
+      url.searchParams.set("query", query);
+      url.searchParams.set("size", "1");
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `KakaoAK ${KAKAO_REST_API_KEY}`,
+        },
+      });
+
+      if (!response.ok) {
+        console.error(
+          `Failed to geocode Lost112 location with Kakao: ${response.status} ${response.statusText}`
+        );
+        continue;
+      }
+
+      const body = z
+        .object({
+          documents: z.array(
+            z.object({
+              place_name: z.string().optional(),
+              address_name: z.string().optional(),
+              road_address_name: z.string().optional(),
+              x: z.string().optional(),
+              y: z.string().optional(),
+            })
+          ),
+        })
+        .parse(await response.json());
+      const document = body.documents.find(
+        (entry) => entry.x && entry.y && formatLost112GeocodedLocation(entry)
+      );
+
+      if (!document?.x || !document.y) {
+        continue;
+      }
+
+      return {
+        provider: "kakao",
+        query,
+        placeName: document.place_name,
+        address: document.road_address_name || document.address_name,
+        addressName: document.address_name,
+        roadAddressName: document.road_address_name,
+        latitude: document.y,
+        longitude: document.x,
+        location: formatLost112GeocodedLocation(document),
+      };
+    } catch (error) {
+      console.error("Failed to geocode Lost112 location with Kakao:", error);
+    }
+  }
+
+  return null;
+}
+
+async function getLost112SyncState(externalId: string): Promise<{
+  item: Item;
+  hasEmbedding: boolean;
+} | null> {
+  const [row] = await db
+    .select({
+      item: items,
+      embeddingItemId: itemEmbeddings.itemId,
+    })
+    .from(items)
+    .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
+    .where(
+      and(
+        eq(items.externalSource, LOST112_SOURCE),
+        eq(items.externalId, externalId)
+      )
+    )
+    .limit(1);
+
+  return row
+    ? {
+        item: row.item,
+        hasEmbedding: row.embeddingItemId !== null,
+      }
+    : null;
+}
+
+function normalizeLost112ToExternalFoundItem(
+  item: Lost112NormalizedItem
+): ExternalFoundItemInput | null {
+  const atcId = item.atcId?.trim();
+  if (!atcId) {
+    return null;
+  }
+  const fdSn = item.fdSn?.trim() || "1";
+  const title =
+    item.fdSbjt?.trim() ||
+    item.fdPrdtNm?.trim() ||
+    item.prdtClNm?.trim() ||
+    "Lost112 found item";
+  const location = Array.from(
+    new Set(
+      [
+        item.fdPlace ? `습득 장소: ${item.fdPlace}` : null,
+        item.depPlace ? `보관 장소: ${item.depPlace}` : null,
+        item.orgNm ? `담당 기관: ${item.orgNm}` : null,
+      ]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  ).join(" / ") || null;
+  const contactInfo = [item.orgNm, item.tel]
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join(" / ");
+  const imageUrl = item.fdFilePathImg?.trim() || null;
+  const tags = Array.from(
+    new Set(
+      [
+        "경찰청",
+        LOST112_SOURCE,
+        "police",
+        item.prdtClNm,
+        item.fdPrdtNm,
+        item.orgNm,
+      ]
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  );
+  const descriptionParts = [
+    item.fdPrdtNm ? `물품명: ${item.fdPrdtNm}` : null,
+    item.prdtClNm ? `분류: ${item.prdtClNm}` : null,
+    item.clrNm ? `색상: ${item.clrNm}` : null,
+    item.fdPlace ? `습득 장소: ${item.fdPlace}` : null,
+    item.depPlace ? `보관 장소: ${item.depPlace}` : null,
+    item.orgNm ? `담당 기관: ${item.orgNm}` : null,
+    item.fdYmd ? `습득일: ${item.fdYmd}` : null,
+    item.fdHor ? `습득 시간: ${item.fdHor}` : null,
+    `Lost112 접수번호: ${atcId}-${fdSn}`,
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    externalSource: LOST112_SOURCE,
+    externalId: `${atcId}:${fdSn}`,
+    externalUrl: getLost112DetailUrl(item),
+    externalPayload: { ...item },
+    externalPayloadHash: createLost112PayloadHash(item),
+    title,
+    description: descriptionParts.join("\n"),
+    imageUrl,
+    imageUrls: imageUrl ? [imageUrl] : [],
+    itemCategory: item.prdtClNm?.trim() || null,
+    color: item.clrNm?.trim() || null,
+    tags,
+    location,
+    date: parseLost112Date(item.fdYmd),
+    contactInfo: contactInfo || null,
+  };
+}
+
+async function normalizeLost112ExternalFoundItemWithAi(
+  item: Lost112NormalizedItem
+): Promise<ExternalFoundItemInput | null> {
+  const fallbackItem = normalizeLost112ToExternalFoundItem(item);
+  if (!fallbackItem) {
+    return null;
+  }
+
+  const applyGeocoding = async (
+    externalItem: ExternalFoundItemInput
+  ): Promise<ExternalFoundItemInput> => {
+    const geocoding = await geocodeLost112Location(item, externalItem.location);
+    if (!geocoding) {
+      return externalItem;
+    }
+
+    return {
+      ...externalItem,
+      location: geocoding.location,
+      ...parseLocationParts(geocoding.location, geocoding),
+      latitude: geocoding.latitude,
+      longitude: geocoding.longitude,
+      externalPayload: {
+        ...(externalItem.externalPayload ?? {}),
+        geocoding,
+      },
+    };
+  };
+
+  if (LOST112_NORMALIZE_PROVIDER === "none") {
+    return applyGeocoding({
+      ...fallbackItem,
+      ...parseLocationParts(fallbackItem.location, null),
+    });
+  }
+
+  try {
+    const response = await getLost112NormalizeClient().chat.completions.create({
+      model: LOST112_NORMALIZE_MODEL,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "너는 경찰청 Lost112 습득물 원천 데이터를 우리 서비스의 검색용 물건 메타데이터로 정규화하는 도우미다.",
+            '반드시 JSON 객체만 반환하고 형식은 {"title":"...","itemCategory":"...","color":"...","size":"...","tags":["..."],"description":"...","location":"..."} 이어야 한다.',
+            "원천 데이터에 없는 사실을 만들어내지 말고, 불확실하면 '알 수 없음' 또는 원천 표현을 보존해라.",
+            "title은 사용자가 물건을 바로 알아볼 수 있는 짧은 한국어 명사구로 작성해라.",
+            "description은 물품명, 색상, 습득 장소, 보관 장소, 담당 기관, 습득일처럼 매칭에 필요한 사실을 자연스러운 한국어 문장으로 정리해라.",
+            "location은 반드시 행정구역 정보를 우선 포함해라. 가능한 경우 '시/도 시/군/구 읍/면/동 - 시설명/보관장소' 형식으로 작성해라.",
+            "fdPlace, depPlace, orgNm에 행정구역이 일부만 있으면 추론 가능한 시/도·시/군/구까지만 포함하고, 확실하지 않은 세부 행정동은 만들지 마라.",
+            "행정구역을 전혀 알 수 없으면 시설명과 보관장소를 함께 보존해라.",
+          ].join("\n"),
+        },
+        {
+          role: "user",
+          content: [
+            `Lost112 원천 JSON:\n${JSON.stringify(item, null, 2)}`,
+            `현재 fallback JSON:\n${JSON.stringify(fallbackItem, null, 2)}`,
+            "fallback의 externalSource, externalId, externalUrl, externalPayload, imageUrl, imageUrls, date, contactInfo는 유지한다. 검색/매칭 품질에 필요한 텍스트 메타데이터만 더 정확하게 정규화해라.",
+            "특히 location은 시설명만 쓰지 말고 행정구역과 시설/보관장소를 같이 포함해라.",
+          ].join("\n\n"),
+        },
+      ],
+      response_format: { type: "json_object" },
+    });
+
+    const content = getCompletionText(
+      response,
+      "Lost112 메타데이터 정규화 응답을 받지 못했습니다"
+    );
+    const normalized = normalizedAnalyzeImageSchema
+      .extend({ location: z.string().min(1).optional() })
+      .parse(JSON.parse(content));
+    const normalizedMetadata = normalizeItemMetadata(normalized);
+
+    const locationParts = parseLocationParts(
+      normalizedMetadata.location ?? fallbackItem.location,
+      null
+    );
+
+    return applyGeocoding({
+      ...fallbackItem,
+      title: normalizedMetadata.title,
+      description: fallbackItem.description,
+      itemCategory: normalizedMetadata.itemCategory,
+      color: normalizedMetadata.color,
+      size: normalizedMetadata.size,
+      tags: Array.from(
+        new Set([
+          ...(fallbackItem.tags ?? []),
+          ...(normalizedMetadata.tags ?? []),
+        ])
+      ),
+      location: normalizedMetadata.location ?? fallbackItem.location,
+      ...locationParts,
+    });
+  } catch (error) {
+    console.error("Failed to normalize Lost112 item with AI:", error);
+    return applyGeocoding({
+      ...fallbackItem,
+      ...parseLocationParts(fallbackItem.location, null),
+    });
+  }
+}
+
+async function runLost112Sync({
+  apiKey,
+  category,
+  region,
+  startDate,
+  endDate,
+  page = 1,
+  numOfRows = LOST112_SYNC_NUM_ROWS,
+  maxPages = LOST112_SYNC_MAX_PAGES,
+  trigger = "manual",
+}: Lost112SyncOptions): Promise<Lost112SyncResult> {
+  const [syncRun] = await db
+    .insert(lost112SyncRuns)
+    .values({
+      trigger,
+      status: "running",
+      page,
+      numOfRows,
+      maxPages,
+    })
+    .returning();
+  const progress: Lost112ActiveSyncRun = {
+    id: syncRun.id,
+    trigger,
+    phase: "fetching",
+    page,
+    numOfRows,
+    maxPages,
+    currentPage: null,
+    fetchedCount: 0,
+    processedCount: 0,
+    totalToProcess: 0,
+    createdCount: 0,
+    updatedCount: 0,
+    skippedCount: 0,
+    embeddedCount: 0,
+    embeddingFailedCount: 0,
+    automaticMatchCount: 0,
+    currentExternalId: null,
+    currentTitle: null,
+    recentItems: [],
+    startedAt: syncRun.startedAt,
+    updatedAt: new Date(),
+  };
+  activeLost112SyncRuns.set(syncRun.id, progress);
+
+  const fetchedItems: Lost112NormalizedItem[] = [];
+  let createdCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let embeddedCount = 0;
+  let embeddingFailedCount = 0;
+  let automaticMatchCount = 0;
+  const syncedItems: Item[] = [];
+
+  try {
+    for (let pageOffset = 0; pageOffset < maxPages; pageOffset += 1) {
+      const pageData = await fetchLost112ItemsPage({
+        apiKey,
+        category,
+        region,
+        startDate,
+        endDate,
+        page: page + pageOffset,
+        numOfRows,
+      });
+
+      progress.currentPage = pageData.pageNo;
+      progress.fetchedCount = fetchedItems.length + pageData.items.length;
+      touchLost112ActiveSyncRun(progress);
+
+      console.log("[Lost112 Sync] page fetched:", {
+        page: pageData.pageNo,
+        rawCount: pageData.rawCount,
+        filteredCount: pageData.items.length,
+        totalCount: pageData.totalCount,
+      });
+
+      fetchedItems.push(...pageData.items);
+      progress.totalToProcess = fetchedItems.length;
+      touchLost112ActiveSyncRun(progress);
+
+      if (pageData.rawCount < pageData.numOfRows) {
+        console.log("[Lost112 Sync] stopping page scan:", {
+          page: pageData.pageNo,
+          reason: "page returned fewer items than requested",
+          filteredCount: pageData.items.length,
+          rawCount: pageData.rawCount,
+          numOfRows: pageData.numOfRows,
+        });
+        break;
+      }
+    }
+
+    progress.phase = "processing";
+    progress.totalToProcess = fetchedItems.length;
+    touchLost112ActiveSyncRun(progress);
+
+    for (const lost112Item of fetchedItems) {
+      const atcId = lost112Item.atcId?.trim();
+      if (!atcId) {
+        progress.processedCount += 1;
+        touchLost112ActiveSyncRun(progress);
+        continue;
+      }
+      const fdSn = lost112Item.fdSn?.trim() || "1";
+      const externalId = `${atcId}:${fdSn}`;
+      progress.currentExternalId = externalId;
+      progress.currentTitle =
+        lost112Item.fdSbjt?.trim() ||
+        lost112Item.fdPrdtNm?.trim() ||
+        lost112Item.prdtClNm?.trim() ||
+        null;
+      touchLost112ActiveSyncRun(progress);
+      const payloadHash = createLost112PayloadHash(lost112Item);
+      const existingState = await getLost112SyncState(externalId);
+      if (
+        existingState?.item.externalPayloadHash === payloadHash &&
+        existingState.hasEmbedding &&
+        (!KAKAO_REST_API_KEY ||
+          hasLost112LocationEnrichment(existingState.item))
+      ) {
+        skippedCount += 1;
+        progress.skippedCount = skippedCount;
+        progress.processedCount += 1;
+        addLost112RecentSyncItem(progress, {
+          externalId,
+          title: existingState.item.title,
+          action: "skipped",
+        });
+        syncedItems.push(existingState.item);
+        continue;
+      }
+
+      const externalItem = await normalizeLost112ExternalFoundItemWithAi(
+        lost112Item
+      );
+      if (!externalItem) {
+        progress.processedCount += 1;
+        addLost112RecentSyncItem(progress, {
+          externalId,
+          title: progress.currentTitle,
+          action: "failed",
+        });
+        continue;
+      }
+
+      const { item, created } = await storage.upsertExternalFoundItem(
+        externalItem
+      );
+      syncedItems.push(item);
+
+      if (created) {
+        createdCount += 1;
+        progress.createdCount = createdCount;
+      } else {
+        updatedCount += 1;
+        progress.updatedCount = updatedCount;
+      }
+
+      let itemEmbedding: number[] | undefined;
+      try {
+        itemEmbedding = await ensureItemEmbedding(item);
+        embeddedCount += 1;
+        progress.embeddedCount = embeddedCount;
+      } catch (embeddingError) {
+        embeddingFailedCount += 1;
+        progress.embeddingFailedCount = embeddingFailedCount;
+        console.error("Failed to store Lost112 item embedding:", embeddingError);
+      }
+
+      if (item.status === "active" && itemEmbedding !== undefined) {
+        queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
+        try {
+          automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
+          progress.automaticMatchCount = automaticMatchCount;
+        } catch (matchError) {
+          console.error("Failed to match Lost112 item:", matchError);
+        }
+      }
+
+      progress.processedCount += 1;
+      addLost112RecentSyncItem(progress, {
+        externalId,
+        title: item.title,
+        action: created ? "created" : "updated",
+      });
+    }
+
+    await db
+      .update(lost112SyncRuns)
+      .set({
+        status: "completed",
+        fetchedCount: fetchedItems.length,
+        createdCount,
+        updatedCount,
+        skippedCount,
+        embeddedCount,
+        embeddingFailedCount,
+        automaticMatchCount,
+        finishedAt: new Date(),
+      })
+      .where(eq(lost112SyncRuns.id, syncRun.id));
+
+    console.log("[Lost112 Sync] job completed:", {
+      trigger,
+      fetchedCount: fetchedItems.length,
+      createdCount,
+      updatedCount,
+      skippedCount,
+      embeddedCount,
+      embeddingFailedCount,
+      automaticMatchCount,
+    });
+
+    return {
+      fetchedCount: fetchedItems.length,
+      createdCount,
+      updatedCount,
+      skippedCount,
+      embeddedCount,
+      embeddingFailedCount,
+      automaticMatchCount,
+      items: syncedItems,
+    };
+  } catch (error) {
+    await db
+      .update(lost112SyncRuns)
+      .set({
+        status: "failed",
+        fetchedCount: fetchedItems.length,
+        createdCount,
+        updatedCount,
+        skippedCount,
+        embeddedCount,
+        embeddingFailedCount,
+        automaticMatchCount,
+        errorMessage: getErrorMessage(error),
+        finishedAt: new Date(),
+      })
+      .where(eq(lost112SyncRuns.id, syncRun.id));
+    throw error;
+  } finally {
+    activeLost112SyncRuns.delete(syncRun.id);
+  }
+}
+
+async function reprocessExistingLost112Items({
+  limit = 100,
+  offset = 0,
+  onlyMissingLocation = true,
+  onlyMissingEmbedding = false,
+}: {
+  limit?: number;
+  offset?: number;
+  onlyMissingLocation?: boolean;
+  onlyMissingEmbedding?: boolean;
+}): Promise<{
+  fetchedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  embeddedCount: number;
+  embeddingFailedCount: number;
+  automaticMatchCount: number;
+  items: Item[];
+}> {
+  const conditions = [eq(items.externalSource, LOST112_SOURCE)];
+  if (onlyMissingLocation) {
+    conditions.push(or(isNull(items.latitude), isNull(items.longitude))!);
+  }
+
+  const existingItems = onlyMissingEmbedding
+    ? (
+        await db
+          .select({ item: items })
+          .from(items)
+          .leftJoin(itemEmbeddings, eq(items.id, itemEmbeddings.itemId))
+          .where(and(...conditions, isNull(itemEmbeddings.itemId)))
+          .orderBy(asc(items.id))
+          .limit(limit)
+          .offset(offset)
+      ).map((row) => row.item)
+    : await db
+        .select()
+        .from(items)
+        .where(and(...conditions))
+        .orderBy(asc(items.id))
+        .limit(limit)
+        .offset(offset);
+
+  let updatedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+  let embeddedCount = 0;
+  let embeddingFailedCount = 0;
+  let automaticMatchCount = 0;
+  const processedItems: Item[] = [];
+
+  for (const existingItem of existingItems) {
+    const lost112Item = normalizeStoredLost112Payload(
+      existingItem.externalPayload
+    );
+    if (!lost112Item) {
+      skippedCount += 1;
+      continue;
+    }
+
+    try {
+      const externalItem = await normalizeLost112ExternalFoundItemWithAi(
+        lost112Item
+      );
+      if (!externalItem) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const { item } = await storage.upsertExternalFoundItem(externalItem);
+      processedItems.push(item);
+      updatedCount += 1;
+
+      let itemEmbedding: number[] | undefined;
+      try {
+        itemEmbedding = await ensureItemEmbedding(item);
+        embeddedCount += 1;
+      } catch (embeddingError) {
+        embeddingFailedCount += 1;
+        console.error(
+          "Failed to store reprocessed Lost112 item embedding:",
+          embeddingError
+        );
+      }
+
+      if (item.status === "active" && itemEmbedding !== undefined) {
+        queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
+        try {
+          automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
+        } catch (matchError) {
+          console.error("Failed to match reprocessed Lost112 item:", matchError);
+        }
+      }
+    } catch (error) {
+      failedCount += 1;
+      console.error("Failed to reprocess existing Lost112 item:", error);
+    }
+  }
+
+  return {
+    fetchedCount: existingItems.length,
+    updatedCount,
+    skippedCount,
+    failedCount,
+    embeddedCount,
+    embeddingFailedCount,
+    automaticMatchCount,
+    items: processedItems,
+  };
+}
+
+function startLost112SyncScheduler(): void {
+  const apiKey = process.env.LOST112_API_KEY;
+  if (!LOST112_SYNC_ENABLED) {
+    console.log("[Lost112 Sync] scheduler disabled by LOST112_SYNC_ENABLED");
+    return;
+  }
+  if (!apiKey) {
+    console.log("[Lost112 Sync] scheduler disabled because LOST112_API_KEY is missing");
+    return;
+  }
+
+  let isRunning = false;
+  const initialDelayMs = Math.max(0, LOST112_SYNC_INITIAL_DELAY_MS);
+  const intervalMs = Math.max(1000 * 60, LOST112_SYNC_INTERVAL_MS);
+
+  console.log("[Lost112 Sync] scheduler started:", {
+    initialDelayMs,
+    intervalMs,
+    startPage: LOST112_SYNC_START_PAGE,
+    numOfRows: LOST112_SYNC_NUM_ROWS,
+    maxPages: LOST112_SYNC_MAX_PAGES,
+    lookbackDays: LOST112_SYNC_LOOKBACK_DAYS,
+  });
+
+  const runScheduledSync = async () => {
+    if (isRunning) {
+      console.warn("[Lost112 Sync] previous job is still running; skipped");
+      return;
+    }
+
+    isRunning = true;
+    try {
+      const { startDate, endDate } = getDefaultLost112SyncDateRange();
+      const result = await runLost112Sync({
+        apiKey,
+        startDate,
+        endDate,
+        page: LOST112_SYNC_START_PAGE,
+        numOfRows: LOST112_SYNC_NUM_ROWS,
+        maxPages: LOST112_SYNC_MAX_PAGES,
+        trigger: "scheduled",
+      });
+      console.log("[Lost112 Sync] scheduled job completed:", {
+        startDate,
+        endDate,
+        fetchedCount: result.fetchedCount,
+        createdCount: result.createdCount,
+        updatedCount: result.updatedCount,
+        skippedCount: result.skippedCount,
+        embeddedCount: result.embeddedCount,
+        embeddingFailedCount: result.embeddingFailedCount,
+        automaticMatchCount: result.automaticMatchCount,
+      });
+    } catch (error) {
+      console.error("[Lost112 Sync] scheduled job failed:", error);
+    } finally {
+      isRunning = false;
+    }
+  };
+
+  setTimeout(() => {
+    void runScheduledSync();
+  }, initialDelayMs);
+
+  setInterval(() => {
+    void runScheduledSync();
+  }, intervalMs);
+}
+
+function normalizePlainSearchText(value?: string | null): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/[^0-9a-zA-Z가-힣\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function itemMatchesLocationText(item: Item, locationText?: string): boolean {
+  const locationHaystack = [
+    item.title,
+    item.location,
+    item.address,
+    item.placeName,
+    item.region1,
+    item.region2,
+    item.region3,
+    item.description,
+    item.itemCategory,
+    item.contactInfo,
+    item.externalPayload && typeof item.externalPayload === "object"
+      ? Object.values(item.externalPayload).join(" ")
+      : null,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+
+  return locationTextMatchesFilter(locationHaystack, locationText);
 }
 
 function extractCompletionMessageContent(content: unknown): string | null {
@@ -104,14 +1633,12 @@ function extractCompletionMessageContent(content: unknown): string | null {
     const trimmed = content.trim();
     return trimmed.length > 0 ? trimmed : null;
   }
-
   if (Array.isArray(content)) {
     const textParts = content
       .map((part) => {
         if (typeof part === "string") {
           return part;
         }
-
         if (
           typeof part === "object" &&
           part !== null &&
@@ -120,24 +1647,22 @@ function extractCompletionMessageContent(content: unknown): string | null {
         ) {
           return (part as { text: string }).text;
         }
-
         return "";
       })
       .join("")
       .trim();
-
     return textParts.length > 0 ? textParts : null;
   }
-
   if (typeof content === "object" && content !== null) {
     return JSON.stringify(content);
   }
-
   return null;
 }
 
 function getCompletionText(
-  response: { choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }> },
+  response: {
+    choices?: Array<{ message?: { content?: unknown; refusal?: unknown } }>;
+  },
   emptyContentErrorMessage: string
 ): string {
   const message = response.choices?.[0]?.message;
@@ -145,11 +1670,12 @@ function getCompletionText(
   if (content) {
     return content;
   }
-
-  if (typeof message?.refusal === "string" && message.refusal.trim().length > 0) {
+  if (
+    typeof message?.refusal === "string" &&
+    message.refusal.trim().length > 0
+  ) {
     throw new Error(`${emptyContentErrorMessage}: ${message.refusal.trim()}`);
   }
-
   throw new Error(emptyContentErrorMessage);
 }
 
@@ -158,12 +1684,10 @@ function validateSearchPrompt(prompt: string): string | null {
   if (normalized.length < 2) {
     return "검색어가 너무 짧아요. 물건 특징을 조금 더 입력해 주세요.";
   }
-
   const meaningfulChars = normalized.match(/[가-힣A-Za-z0-9]/g)?.length ?? 0;
   if (meaningfulChars < 2) {
     return "의미 있는 검색어를 입력해 주세요.";
   }
-
   const jamoCount = normalized.match(/[ㄱ-ㅎㅏ-ㅣ]/g)?.length ?? 0;
   const alnumKoreanCount = normalized.match(/[가-힣A-Za-z0-9]/g)?.length ?? 0;
   const totalSignal = jamoCount + alnumKoreanCount;
@@ -172,20 +1696,16 @@ function validateSearchPrompt(prompt: string): string | null {
   if (jamoCount >= 3 || jamoRatio > 0.25) {
     return "자음/모음만 섞인 입력이 많아요. 물건 특징을 자연어로 입력해 주세요.";
   }
-
   const isEnglishOnly = /^[A-Za-z\s]+$/.test(normalized);
   if (isEnglishOnly) {
     const tokens = normalized.toLowerCase().split(/\s+/).filter(Boolean);
-
     const suspiciousTokenCount = tokens.filter((token) => {
       if (token.length < 6) {
         return false;
       }
-
       const vowelCount = token.match(/[aeiou]/g)?.length ?? 0;
       const vowelRatio = vowelCount / token.length;
       const uniqueRatio = new Set(token).size / token.length;
-
       return vowelRatio < 0.22 || uniqueRatio < 0.3;
     }).length;
 
@@ -198,7 +1718,6 @@ function validateSearchPrompt(prompt: string): string | null {
       return "영문 난타처럼 보여요. 물건 특징을 문장으로 입력해 주세요. (예: black leather wallet with silver clip)";
     }
   }
-
   return null;
 }
 
@@ -206,18 +1725,8 @@ function parseCoordinate(value?: string | null): number | null {
   if (!value) {
     return null;
   }
-
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function formatCoordinateForEmbedding(value?: string | null): string | null {
-  const parsed = parseCoordinate(value);
-  if (parsed === null) {
-    return null;
-  }
-
-  return parsed.toFixed(3);
 }
 
 function getSearchCoordinates(input: {
@@ -230,7 +1739,6 @@ function getSearchCoordinates(input: {
   if (!hasLatitude && !hasLongitude) {
     return null;
   }
-
   if (!hasLatitude || !hasLongitude) {
     throw new Error("위치 검색을 하려면 위도와 경도를 모두 전달해야 합니다.");
   }
@@ -241,7 +1749,6 @@ function getSearchCoordinates(input: {
   if (latitude === null || longitude === null) {
     throw new Error("위치 좌표 형식이 올바르지 않습니다.");
   }
-
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
     throw new Error("위치 좌표 범위가 올바르지 않습니다.");
   }
@@ -277,7 +1784,6 @@ function formatDistanceText(distanceKm: number): string {
   if (distanceKm < 1) {
     return `${Math.round(distanceKm * 1000)}m`;
   }
-
   return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)}km`;
 }
 
@@ -289,29 +1795,42 @@ function buildItemSearchText(item: {
   size?: string | null;
   tags?: string[] | null;
   location?: string | null;
-  latitude?: string | null;
-  longitude?: string | null;
+  region1?: string | null;
+  region2?: string | null;
+  region3?: string | null;
+  address?: string | null;
+  placeName?: string | null;
 }): string {
   const normalizedItem = normalizeItemMetadata(item);
-  const coordinateSummary = [
-    formatCoordinateForEmbedding(item.latitude),
-    formatCoordinateForEmbedding(item.longitude),
-  ].filter((value): value is string => Boolean(value));
+  const region = [
+    normalizedItem.region1,
+    normalizedItem.region2,
+    normalizedItem.region3,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ");
+  const description = normalizedItem.description
+    ? normalizedItem.description.slice(0, 300)
+    : null;
 
   const sections = [
-    normalizedItem.title ? `제목: ${normalizedItem.title}` : null,
-    normalizedItem.itemCategory ? `카테고리: ${normalizedItem.itemCategory}` : null,
-    normalizedItem.color ? `색상: ${normalizedItem.color}` : null,
-    normalizedItem.size ? `크기: ${normalizedItem.size}` : null,
-    normalizedItem.description ? `설명: ${normalizedItem.description}` : null,
-    normalizedItem.location ? `위치: ${normalizedItem.location}` : null,
-    coordinateSummary.length === 2
-      ? `위치 좌표(근사): ${coordinateSummary.join(", ")}`
+    normalizedItem.title ? `물건=${normalizedItem.title}` : null,
+    normalizedItem.itemCategory
+      ? `분류=${normalizedItem.itemCategory}`
       : null,
-    normalizedItem.tags?.length ? `태그: ${normalizedItem.tags.join(", ")}` : null,
+    normalizedItem.color ? `색상=${normalizedItem.color}` : null,
+    normalizedItem.size ? `크기=${normalizedItem.size}` : null,
+    region ? `지역=${region}` : null,
+    normalizedItem.placeName ? `장소=${normalizedItem.placeName}` : null,
+    normalizedItem.location ? `위치=${normalizedItem.location}` : null,
+    normalizedItem.address ? `주소=${normalizedItem.address}` : null,
+    description ? `설명=${description}` : null,
+    normalizedItem.tags?.length
+      ? `태그=${normalizedItem.tags.join(", ")}`
+      : null,
   ].filter((value): value is string => Boolean(value));
 
-  return sections.join("\n");
+  return sections.join(". ");
 }
 
 function normalizeKoreanText(value: string): string {
@@ -327,7 +1846,6 @@ function extractQueryKeywords(queryText: string): string[] {
     .split(" ")
     .filter((token) => token.length >= 2)
     .filter((token) => !/^\d+$/.test(token));
-
   return Array.from(new Set(tokens)).slice(0, 20);
 }
 
@@ -446,7 +1964,6 @@ function isAbortError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
-
   return error.name === "AbortError" || error.message === "Operation aborted";
 }
 
@@ -457,7 +1974,16 @@ function normalizeComparableText(value?: string | null): string {
 const CATEGORY_SYNONYM_GROUPS = [
   ["지갑", "반지갑", "장지갑", "카드지갑", "wallet", "card wallet"],
   ["가방", "백팩", "배낭", "숄더백", "토트백", "크로스백", "bag", "backpack"],
-  ["핸드폰", "휴대폰", "스마트폰", "폰", "phone", "smartphone", "iphone", "galaxy"],
+  [
+    "핸드폰",
+    "휴대폰",
+    "스마트폰",
+    "폰",
+    "phone",
+    "smartphone",
+    "iphone",
+    "galaxy",
+  ],
   ["이어폰", "에어팟", "헤드폰", "무선이어폰", "earbuds", "airpods"],
   ["키", "열쇠", "차키", "key", "car key"],
   ["노트북", "랩탑", "laptop", "macbook"],
@@ -507,6 +2033,11 @@ type NormalizableItemMetadata = {
   size?: string | null;
   tags?: string[] | null;
   location?: string | null;
+  region1?: string | null;
+  region2?: string | null;
+  region3?: string | null;
+  address?: string | null;
+  placeName?: string | null;
 };
 
 function canonicalizeWithGroups(
@@ -514,19 +2045,17 @@ function canonicalizeWithGroups(
   groups: readonly (readonly string[])[]
 ): string {
   const normalizedValue = normalizeComparableText(value);
-
   if (!normalizedValue) {
     return "";
   }
-
   const matchedGroup = groups.find((group) =>
-    group.some((token) => normalizedValue.includes(normalizeComparableText(token)))
+    group.some((token) =>
+      normalizedValue.includes(normalizeComparableText(token))
+    )
   );
-
   if (matchedGroup) {
     return normalizeComparableText(matchedGroup[0]);
   }
-
   return normalizedValue;
 }
 
@@ -534,11 +2063,9 @@ function normalizeMetadataTags(tags?: string[] | null): string[] {
   if (!Array.isArray(tags)) {
     return [];
   }
-
   const normalizedTags = tags
     .map((tag) => tag.replace(/\s+/g, " ").trim())
     .filter((tag) => tag.length > 0);
-
   return Array.from(new Set(normalizedTags));
 }
 
@@ -547,7 +2074,6 @@ function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
     if (typeof value !== "string") {
       return undefined;
     }
-
     const normalizedValue = value.replace(/\s+/g, " ").trim();
     return normalizedValue.length > 0 ? normalizedValue : undefined;
   };
@@ -557,37 +2083,49 @@ function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
   if (item.title !== undefined) {
     normalizedItem.title = normalizePlainText(item.title) as T["title"];
   }
-
   if (item.description !== undefined) {
     normalizedItem.description = normalizePlainText(
       item.description
     ) as T["description"];
   }
-
   if (item.imageUrl !== undefined || item.imageUrls !== undefined) {
     const normalizedImageUrls = normalizeItemImageUrls(item);
     normalizedItem.imageUrls = normalizedImageUrls as T["imageUrls"];
     normalizedItem.imageUrl = (normalizedImageUrls[0] ?? null) as T["imageUrl"];
   }
-
   if (item.itemCategory !== undefined) {
     normalizedItem.itemCategory = normalizePlainText(
       item.itemCategory
     ) as T["itemCategory"];
   }
-
   if (item.color !== undefined) {
     normalizedItem.color = normalizePlainText(item.color) as T["color"];
   }
-
   if (item.size !== undefined) {
     normalizedItem.size = normalizePlainText(item.size) as T["size"];
   }
-
   if (item.location !== undefined) {
-    normalizedItem.location = normalizePlainText(item.location) as T["location"];
+    normalizedItem.location = normalizePlainText(
+      item.location
+    ) as T["location"];
   }
-
+  if (item.region1 !== undefined) {
+    normalizedItem.region1 = normalizePlainText(item.region1) as T["region1"];
+  }
+  if (item.region2 !== undefined) {
+    normalizedItem.region2 = normalizePlainText(item.region2) as T["region2"];
+  }
+  if (item.region3 !== undefined) {
+    normalizedItem.region3 = normalizePlainText(item.region3) as T["region3"];
+  }
+  if (item.address !== undefined) {
+    normalizedItem.address = normalizePlainText(item.address) as T["address"];
+  }
+  if (item.placeName !== undefined) {
+    normalizedItem.placeName = normalizePlainText(
+      item.placeName
+    ) as T["placeName"];
+  }
   if (item.tags !== undefined) {
     normalizedItem.tags = normalizeMetadataTags(item.tags) as T["tags"];
   }
@@ -601,19 +2139,22 @@ function areSameNormalizedValue(
 ): boolean {
   const normalizedLeft = normalizeComparableText(left);
   const normalizedRight = normalizeComparableText(right);
-
   return Boolean(normalizedLeft) && normalizedLeft === normalizedRight;
 }
 
-function hasTokenContainment(left?: string | null, right?: string | null): boolean {
+function hasTokenContainment(
+  left?: string | null,
+  right?: string | null
+): boolean {
   const normalizedLeft = normalizeComparableText(left);
   const normalizedRight = normalizeComparableText(right);
-
   if (!normalizedLeft || !normalizedRight) {
     return false;
   }
-
-  return normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft);
+  return (
+    normalizedLeft.includes(normalizedRight) ||
+    normalizedRight.includes(normalizedLeft)
+  );
 }
 
 function hasSynonymGroupMatch(
@@ -623,14 +2164,16 @@ function hasSynonymGroupMatch(
 ): boolean {
   const normalizedLeft = normalizeComparableText(left);
   const normalizedRight = normalizeComparableText(right);
-
   if (!normalizedLeft || !normalizedRight) {
     return false;
   }
-
   return groups.some((group) => {
-    const matchedLeft = group.some((token) => normalizedLeft.includes(normalizeComparableText(token)));
-    const matchedRight = group.some((token) => normalizedRight.includes(normalizeComparableText(token)));
+    const matchedLeft = group.some((token) =>
+      normalizedLeft.includes(normalizeComparableText(token))
+    );
+    const matchedRight = group.some((token) =>
+      normalizedRight.includes(normalizeComparableText(token))
+    );
     return matchedLeft && matchedRight;
   });
 }
@@ -642,23 +2185,18 @@ function calculateFieldSimilarity(
 ): number {
   const normalizedLeft = normalizeComparableText(left);
   const normalizedRight = normalizeComparableText(right);
-
   if (!normalizedLeft || !normalizedRight) {
     return 0;
   }
-
   if (normalizedLeft === normalizedRight) {
     return 1;
   }
-
   if (hasSynonymGroupMatch(normalizedLeft, normalizedRight, groups)) {
     return 0.82;
   }
-
   if (hasTokenContainment(normalizedLeft, normalizedRight)) {
     return 0.64;
   }
-
   return 0;
 }
 
@@ -670,15 +2208,12 @@ function calculateTokenSimilarity(
   if (left === right) {
     return 1;
   }
-
   if (hasSynonymGroupMatch(left, right, groups)) {
     return 0.88;
   }
-
   if (left.includes(right) || right.includes(left)) {
     return 0.68;
   }
-
   const shorterLength = Math.min(left.length, right.length);
   if (shorterLength >= 3) {
     const prefixLength = Array.from({ length: shorterLength }).findIndex(
@@ -689,7 +2224,6 @@ function calculateTokenSimilarity(
       return 0.48;
     }
   }
-
   return 0;
 }
 
@@ -701,57 +2235,134 @@ function calculateTokenSetSimilarity(
   if (leftTokens.length === 0 || rightTokens.length === 0) {
     return 0;
   }
-
-  const scoreDirection = (sourceTokens: string[], candidateTokens: string[]) => {
+  const scoreDirection = (
+    sourceTokens: string[],
+    candidateTokens: string[]
+  ) => {
     const total = sourceTokens.reduce((sum, sourceToken) => {
       const bestMatch = candidateTokens.reduce((best, candidateToken) => {
-        return Math.max(best, calculateTokenSimilarity(sourceToken, candidateToken, groups));
+        return Math.max(
+          best,
+          calculateTokenSimilarity(sourceToken, candidateToken, groups)
+        );
       }, 0);
       return sum + bestMatch;
     }, 0);
-
     return total / sourceTokens.length;
   };
-
   return Number(
-    ((scoreDirection(leftTokens, rightTokens) + scoreDirection(rightTokens, leftTokens)) / 2).toFixed(4)
+    (
+      (scoreDirection(leftTokens, rightTokens) +
+        scoreDirection(rightTokens, leftTokens)) /
+      2
+    ).toFixed(4)
   );
 }
 
 function calculateKeywordOverlapScore(source: Item, candidate: Item): number {
-  const sourceKeywords = Array.from(new Set(
-    extractQueryKeywords(getItemEvidenceText(source)).concat(
-      (source.tags ?? []).map((tag) => normalizeComparableText(tag)).filter(Boolean)
+  const sourceKeywords = Array.from(
+    new Set(
+      extractQueryKeywords(getItemEvidenceText(source)).concat(
+        (source.tags ?? [])
+          .map((tag) => normalizeComparableText(tag))
+          .filter(Boolean)
+      )
     )
-  ));
-  const candidateKeywords = Array.from(new Set(
-    extractQueryKeywords(getItemEvidenceText(candidate)).concat(
-      (candidate.tags ?? [])
-        .map((tag) => normalizeComparableText(tag))
-        .filter(Boolean)
+  );
+  const candidateKeywords = Array.from(
+    new Set(
+      extractQueryKeywords(getItemEvidenceText(candidate)).concat(
+        (candidate.tags ?? [])
+          .map((tag) => normalizeComparableText(tag))
+          .filter(Boolean)
+      )
     )
-  ));
+  );
 
   if (sourceKeywords.length === 0 || candidateKeywords.length === 0) {
     return 0;
   }
-
-  return calculateTokenSetSimilarity(sourceKeywords, candidateKeywords, KEYWORD_SYNONYM_GROUPS);
+  return calculateTokenSetSimilarity(
+    sourceKeywords,
+    candidateKeywords,
+    KEYWORD_SYNONYM_GROUPS
+  );
 }
 
-function calculateLocationTextSimilarity(source: Item, candidate: Item): number {
+function calculateLocationTextSimilarity(
+  source: Item,
+  candidate: Item
+): number {
   const normalizedSource = normalizeItemMetadata(source);
   const normalizedCandidate = normalizeItemMetadata(candidate);
-  const sourceTokens = extractQueryKeywords(normalizedSource.location ?? "");
-  const candidateTokens = extractQueryKeywords(normalizedCandidate.location ?? "");
-  return calculateTokenSetSimilarity(sourceTokens, candidateTokens, LOCATION_SYNONYM_GROUPS);
+  const sourceTokens = extractQueryKeywords(
+    [
+      normalizedSource.region1,
+      normalizedSource.region2,
+      normalizedSource.region3,
+      normalizedSource.address,
+      normalizedSource.placeName,
+      normalizedSource.location,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const candidateTokens = extractQueryKeywords(
+    [
+      normalizedCandidate.region1,
+      normalizedCandidate.region2,
+      normalizedCandidate.region3,
+      normalizedCandidate.address,
+      normalizedCandidate.placeName,
+      normalizedCandidate.location,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  return calculateTokenSetSimilarity(
+    sourceTokens,
+    candidateTokens,
+    LOCATION_SYNONYM_GROUPS
+  );
+}
+
+function calculateRegionAffinityScore(source: Item, candidate: Item): number {
+  const regionFields: Array<"region1" | "region2" | "region3"> = [
+    "region1",
+    "region2",
+    "region3",
+  ];
+  const knownRegionPairs = regionFields
+    .map((field) => ({
+      source: source[field]?.trim(),
+      candidate: candidate[field]?.trim(),
+    }))
+    .filter(({ source, candidate }) => source && candidate);
+
+  if (knownRegionPairs.length === 0) {
+    return 0.2;
+  }
+
+  const matchedCount = knownRegionPairs.filter(
+    ({ source, candidate }) => source === candidate
+  ).length;
+
+  if (matchedCount === knownRegionPairs.length) {
+    return 1;
+  }
+  if (matchedCount >= 2) {
+    return 0.76;
+  }
+  if (matchedCount === 1) {
+    return 0.46;
+  }
+  return 0;
 }
 
 function calculateDateClosenessScore(source: Item, candidate: Item): number {
   if (!source.date || !candidate.date) {
     return 0;
   }
-
   const sourceTime = new Date(source.date).getTime();
   const candidateTime = new Date(candidate.date).getTime();
   const diffDays = Math.abs(sourceTime - candidateTime) / (1000 * 60 * 60 * 24);
@@ -768,7 +2379,6 @@ function calculateDateClosenessScore(source: Item, candidate: Item): number {
   if (diffDays <= 90) {
     return 0.2;
   }
-
   return 0;
 }
 
@@ -777,19 +2387,84 @@ function calculateDistanceScore(distanceKm: number | null): number {
     return 0;
   }
   if (distanceKm <= 1) {
-    return 0.35;
+    return 1;
   }
   if (distanceKm <= 3) {
-    return 0.2;
+    return 0.86;
   }
   if (distanceKm <= 10) {
-    return 0.08;
+    return 0.62;
   }
   if (distanceKm <= 30) {
-    return 0.02;
+    return 0.34;
+  }
+  if (distanceKm <= 80) {
+    return 0.16;
+  }
+  return 0;
+}
+
+function calculateSearchDistanceScore(
+  distanceKm: number | null,
+  radiusKm?: number
+): number {
+  if (distanceKm === null) {
+    return 0;
   }
 
+  const normalizedRadiusKm = Math.max(
+    0.1,
+    radiusKm ?? DEFAULT_AI_SEARCH_RADIUS_KM
+  );
+  const ratio = distanceKm / normalizedRadiusKm;
+
+  if (ratio <= 0.1) {
+    return 1;
+  }
+  if (ratio <= 0.25) {
+    return 0.92;
+  }
+  if (ratio <= 0.5) {
+    return 0.78;
+  }
+  if (ratio <= 0.75) {
+    return 0.58;
+  }
+  if (ratio <= 1) {
+    return 0.38;
+  }
   return 0;
+}
+
+function blendAiSearchScore(params: {
+  vectorScore: number;
+  llmScore: number;
+  distanceKm: number | null;
+  radiusKm?: number;
+}): number {
+  const { vectorScore, llmScore, distanceKm, radiusKm } = params;
+
+  if (distanceKm === null) {
+    return Number((vectorScore * 0.35 + llmScore * 0.65).toFixed(4));
+  }
+
+  const distanceScore = calculateSearchDistanceScore(distanceKm, radiusKm);
+  return Number(
+    (vectorScore * 0.25 + llmScore * 0.5 + distanceScore * 0.25).toFixed(4)
+  );
+}
+
+function blendAiSearchFallbackScore(
+  vectorScore: number,
+  distanceKm: number | null,
+  radiusKm?: number
+): number {
+  if (distanceKm === null) {
+    return Math.max(0, Math.min(1, Number(vectorScore.toFixed(4))));
+  }
+
+  const distanceScore = calculateSearchDistanceScore(distanceKm, radiusKm);
+  return Number((vectorScore * 0.7 + distanceScore * 0.3).toFixed(4));
 }
 
 function calculateCosineSimilarity(
@@ -799,27 +2474,26 @@ function calculateCosineSimilarity(
   if (!left || !right || left.length === 0 || right.length === 0) {
     return 0;
   }
-
   const dimensions = Math.min(left.length, right.length);
   let dotProduct = 0;
   let leftNorm = 0;
   let rightNorm = 0;
-
   for (let index = 0; index < dimensions; index += 1) {
     dotProduct += left[index] * right[index];
     leftNorm += left[index] * left[index];
     rightNorm += right[index] * right[index];
   }
-
   if (leftNorm === 0 || rightNorm === 0) {
     return 0;
   }
-
   const similarity = dotProduct / Math.sqrt(leftNorm * rightNorm);
   return Math.max(0, Math.min(1, similarity));
 }
 
-function calculateMatchDistanceKm(source: Item, candidate: Item): number | null {
+function calculateMatchDistanceKm(
+  source: Item,
+  candidate: Item
+): number | null {
   const sourceLatitude = parseCoordinate(source.latitude);
   const sourceLongitude = parseCoordinate(source.longitude);
   const candidateLatitude = parseCoordinate(candidate.latitude);
@@ -833,11 +2507,46 @@ function calculateMatchDistanceKm(source: Item, candidate: Item): number | null 
   ) {
     return null;
   }
-
   return calculateDistanceKm(
     { latitude: sourceLatitude, longitude: sourceLongitude },
     { latitude: candidateLatitude, longitude: candidateLongitude }
   );
+}
+
+function isMatchDateDirectionValid(source: Item, candidate: Item): boolean {
+  if (!source.date || !candidate.date) {
+    return true;
+  }
+
+  const sourceTime = new Date(source.date).getTime();
+  const candidateTime = new Date(candidate.date).getTime();
+  if (!Number.isFinite(sourceTime) || !Number.isFinite(candidateTime)) {
+    return true;
+  }
+
+  const foundTime =
+    source.reportType === "found" ? sourceTime : candidateTime;
+  const lostTime =
+    source.reportType === "lost" ? sourceTime : candidateTime;
+  if (foundTime < lostTime) {
+    return false;
+  }
+
+  const diffDays = (foundTime - lostTime) / (1000 * 60 * 60 * 24);
+  return diffDays <= AUTO_MATCH_DATE_WINDOW_DAYS;
+}
+
+function isAutomaticMatchCandidateAllowed(params: {
+  sourceItem: Item;
+  candidateItem: Item;
+}): boolean {
+  const { sourceItem, candidateItem } = params;
+
+  if (!isMatchDateDirectionValid(sourceItem, candidateItem)) {
+    return false;
+  }
+
+  return true;
 }
 
 function calculateAutomaticMatchScore(params: {
@@ -848,6 +2557,8 @@ function calculateAutomaticMatchScore(params: {
   distanceKm: number | null;
 }): number {
   const { sourceEmbedding, candidateEmbedding, distanceKm } = params;
+  const rawSourceItem = params.sourceItem;
+  const rawCandidateItem = params.candidateItem;
   const sourceItem = normalizeItemMetadata(params.sourceItem);
   const candidateItem = normalizeItemMetadata(params.candidateItem);
 
@@ -863,11 +2574,24 @@ function calculateAutomaticMatchScore(params: {
   );
   const keywordScore = calculateKeywordOverlapScore(sourceItem, candidateItem);
   const dateScore = calculateDateClosenessScore(sourceItem, candidateItem);
-  const locationScore = Math.max(
-    calculateDistanceScore(distanceKm),
-    calculateLocationTextSimilarity(sourceItem, candidateItem)
+  const distanceScore = calculateDistanceScore(distanceKm);
+  const locationTextScore = calculateLocationTextSimilarity(
+    sourceItem,
+    candidateItem
   );
-  const vectorScore = calculateCosineSimilarity(sourceEmbedding, candidateEmbedding);
+  const regionScore = calculateRegionAffinityScore(
+    rawSourceItem,
+    rawCandidateItem
+  );
+  const locationScore = Math.max(
+    distanceScore,
+    locationTextScore,
+    regionScore
+  );
+  const vectorScore = calculateCosineSimilarity(
+    sourceEmbedding,
+    candidateEmbedding
+  );
   const hasMinimumSemanticEvidence =
     vectorScore >= AUTO_MATCH_MIN_VECTOR_SCORE ||
     keywordScore >= AUTO_MATCH_MIN_KEYWORD_SCORE ||
@@ -876,24 +2600,68 @@ function calculateAutomaticMatchScore(params: {
   if (!hasMinimumSemanticEvidence) {
     return 0;
   }
-
   if (categoryScore === 0 && keywordScore < 0.2 && vectorScore < 0.38) {
     return 0;
   }
-
   if (dateScore === 0 && locationScore === 0 && vectorScore < 0.34) {
+    return 0;
+  }
+  if (
+    locationScore < 0.2 &&
+    categoryScore < 0.75 &&
+    keywordScore < 0.55 &&
+    vectorScore < 0.62
+  ) {
     return 0;
   }
 
   const blendedScore =
-    categoryScore * 0.18 +
+    categoryScore * 0.17 +
     colorScore * 0.08 +
-    keywordScore * 0.26 +
+    keywordScore * 0.25 +
     dateScore * 0.18 +
-    locationScore * 0.06 +
-    vectorScore * 0.24;
+    locationScore * 0.14 +
+    vectorScore * 0.18;
 
-  return Math.max(0, Math.min(1, Number(blendedScore.toFixed(4))));
+  const sameFineRegion = regionScore >= 1;
+  const sameBroadRegion = regionScore >= 0.46;
+  const isNearby = distanceKm !== null && distanceKm <= 3;
+  const isReasonablyNear = distanceKm !== null && distanceKm <= 10;
+  const hasStrongIdentityEvidence =
+    (categoryScore >= 0.72 && keywordScore >= 0.5) ||
+    (categoryScore >= 0.72 && colorScore >= 0.7 && vectorScore >= 0.42) ||
+    (keywordScore >= 0.72 && vectorScore >= 0.42) ||
+    vectorScore >= 0.72;
+  const hasLocationSupport =
+    sameBroadRegion || isReasonablyNear || locationTextScore >= 0.45;
+
+  let adjustedScore = blendedScore;
+
+  if (sameFineRegion) {
+    adjustedScore += 0.08;
+  } else if (sameBroadRegion) {
+    adjustedScore += 0.04;
+  }
+
+  if (isNearby) {
+    adjustedScore += 0.08;
+  } else if (isReasonablyNear) {
+    adjustedScore += 0.04;
+  }
+
+  if (dateScore >= 0.75) {
+    adjustedScore += 0.04;
+  }
+
+  if (hasStrongIdentityEvidence && !hasLocationSupport) {
+    adjustedScore -= 0.06;
+  }
+
+  if (!hasStrongIdentityEvidence && !hasLocationSupport) {
+    adjustedScore -= 0.16;
+  }
+
+  return Math.max(0, Math.min(1, Number(adjustedScore.toFixed(4))));
 }
 
 function formatStoredMatchScore(score: number): number {
@@ -907,13 +2675,21 @@ function buildAutomaticMatchReason(params: {
   distanceKm: number | null;
 }): string {
   const { sourceItem, candidateItem, score, distanceKm } = params;
-
   return buildReasoningFromEvidence({
     queryText: buildItemSearchText(sourceItem),
     item: candidateItem,
     matchScore: score,
     distanceKm,
   });
+}
+
+function getAutomaticRerankImageUrl(item: FoundItemForAutoMatch): string | undefined {
+  if (!qwen || item.externalSource === LOST112_SOURCE) {
+    return undefined;
+  }
+
+  const imageUrl = item.imageUrl?.trim();
+  return imageUrl ? imageUrl : undefined;
 }
 
 async function ensureEmbeddingsForItems(itemsToEnsure: Item[]): Promise<void> {
@@ -945,7 +2721,9 @@ const normalizedAnalyzeImageSchema = z.object({
 });
 
 type RawAnalyzeImageResult = z.infer<typeof rawAnalyzeImageSchema>;
-type NormalizedAnalyzeImageResult = z.infer<typeof normalizedAnalyzeImageSchema>;
+type NormalizedAnalyzeImageResult = z.infer<
+  typeof normalizedAnalyzeImageSchema
+>;
 
 function buildLocalAnalyzeImageResult(
   rawResult: RawAnalyzeImageResult
@@ -956,9 +2734,7 @@ function buildLocalAnalyzeImageResult(
     color: rawResult.color?.trim() || "알 수 없음",
     size: rawResult.size?.trim() || "알 수 없음",
     tags: Array.isArray(rawResult.tags)
-      ? rawResult.tags
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0)
+      ? rawResult.tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0)
       : [],
     description: rawResult.description?.trim() || "설명이 없습니다",
   });
@@ -1008,7 +2784,6 @@ function buildAnalyzedTitle(result: {
   if (simplifiedTitle.length > 30) {
     return simplifiedTitle.slice(0, 30).trim();
   }
-
   return simplifiedTitle;
 }
 
@@ -1016,7 +2791,6 @@ async function normalizeAnalyzeImageMetadata(
   rawResult: RawAnalyzeImageResult
 ): Promise<NormalizedAnalyzeImageResult> {
   const fallbackResult = buildLocalAnalyzeImageResult(rawResult);
-
   const response = await openai.chat.completions.create({
     model: GPT_TEXT_MODEL,
     messages: [
@@ -1053,7 +2827,6 @@ async function normalizeAnalyzeImageMetadata(
   );
 
   const normalized = normalizedAnalyzeImageSchema.parse(JSON.parse(content));
-
   return normalizeItemMetadata({
     title: normalized.title.trim(),
     itemCategory: normalized.itemCategory.trim(),
@@ -1066,30 +2839,83 @@ async function normalizeAnalyzeImageMetadata(
   });
 }
 
-async function createEmbedding(
-  text: string,
-  signal?: AbortSignal
-): Promise<number[]> {
-  const normalized = text.replace(/\s+/g, " ").trim();
+type EmbeddingInputKind = "query" | "passage";
 
+function formatEmbeddingInput(text: string, kind: EmbeddingInputKind): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) {
     throw new Error("임베딩할 검색 텍스트가 없습니다");
   }
+  if (EMBEDDING_PROVIDER === "local") {
+    return normalized.startsWith("query: ") || normalized.startsWith("passage: ")
+      ? normalized
+      : `${kind}: ${normalized}`;
+  }
+  return normalized;
+}
 
+async function createEmbedding(
+  text: string,
+  kind: EmbeddingInputKind = "query",
+  signal?: AbortSignal
+): Promise<number[]> {
+  const input = formatEmbeddingInput(text, kind);
   abortIfNeeded(signal);
+  if (EMBEDDING_PROVIDER === "local") {
+    const response = await fetch(LOCAL_EMBEDDING_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input }),
+      signal,
+    });
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "");
+      throw new Error(
+        `로컬 임베딩 생성에 실패했습니다 (${response.status}): ${errorText}`
+      );
+    }
+    const payload = (await response.json()) as {
+      model?: string;
+      dimensions?: number;
+      data?: unknown;
+    };
+    const embedding = Array.isArray(payload.data)
+      ? Array.isArray(payload.data[0])
+        ? payload.data[0]
+        : payload.data
+      : undefined;
+    if (
+      !Array.isArray(embedding) ||
+      !embedding.every((value) => typeof value === "number")
+    ) {
+      throw new Error("로컬 임베딩 서버 응답 형식이 올바르지 않습니다");
+    }
+    if (embedding.length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `로컬 임베딩 차원이 맞지 않습니다: expected ${EMBEDDING_DIMENSIONS}, got ${embedding.length}`
+      );
+    }
+    return embedding;
+  }
 
-  const response = await openai.embeddings.create({
-    model: OPENAI_EMBEDDING_MODEL,
-    input: normalized,
-  }, {
-    signal,
-  });
+  if (EMBEDDING_PROVIDER !== "openai") {
+    throw new Error(`지원하지 않는 임베딩 provider입니다: ${EMBEDDING_PROVIDER}`);
+  }
+  const response = await openai.embeddings.create(
+    {
+      model: OPENAI_EMBEDDING_MODEL,
+      input,
+      dimensions: EMBEDDING_DIMENSIONS,
+    },
+    {
+      signal,
+    }
+  );
 
   const embedding = response.data[0]?.embedding;
   if (!embedding) {
     throw new Error("임베딩 생성에 실패했습니다");
   }
-
   return embedding;
 }
 
@@ -1098,33 +2924,37 @@ async function createImageSearchText(
   signal?: AbortSignal
 ): Promise<string> {
   abortIfNeeded(signal);
+  const response = await getQwenClient().chat.completions.create(
+    {
+      model: QWEN_VISION_MODEL,
+      messages: [
+        {
+          role: "system",
+          content:
+            '너는 분실물 검색용 이미지 요약 도우미다. 제공된 이미지를 보고 검색에 도움이 되는 한국어 JSON 객체만 반환해라. 형식은 {"itemCategory":"...","color":"...","size":"...","tags":["..."],"description":"..."} 이다.',
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "이 이미지를 분실물 검색용 텍스트로 요약해줘. 반드시 한국어 JSON만 반환해줘.",
+            },
+            { type: "image_url", image_url: { url: imageUrl } },
+          ],
+        },
+      ],
+      response_format: { type: "json_object" },
+    },
+    {
+      signal,
+    }
+  );
 
-  const response = await getQwenClient().chat.completions.create({
-    model: QWEN_VISION_MODEL,
-    messages: [
-      {
-        role: "system",
-        content:
-          '너는 분실물 검색용 이미지 요약 도우미다. 제공된 이미지를 보고 검색에 도움이 되는 한국어 JSON 객체만 반환해라. 형식은 {"itemCategory":"...","color":"...","size":"...","tags":["..."],"description":"..."} 이다.',
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "이 이미지를 분실물 검색용 텍스트로 요약해줘. 반드시 한국어 JSON만 반환해줘.",
-          },
-          { type: "image_url", image_url: { url: imageUrl } },
-        ],
-      },
-    ],
-    response_format: { type: "json_object" },
-  }, {
-    signal,
-  });
-
-  const content = getCompletionText(response, "이미지 검색 텍스트 생성에 실패했습니다");
-
+  const content = getCompletionText(
+    response,
+    "이미지 검색 텍스트 생성에 실패했습니다"
+  );
   const parsed = normalizeItemMetadata(JSON.parse(content));
   return buildItemSearchText({
     itemCategory: parsed.itemCategory,
@@ -1135,21 +2965,29 @@ async function createImageSearchText(
   });
 }
 
-async function ensureItemEmbedding(item: {
-  id: number;
-  title?: string | null;
-  description?: string | null;
-  itemCategory?: string | null;
-  color?: string | null;
-  size?: string | null;
-  tags?: string[] | null;
-  location?: string | null;
-  latitude?: string | null;
-  longitude?: string | null;
-}, signal?: AbortSignal): Promise<number[]> {
+async function ensureItemEmbedding(
+  item: {
+    id: number;
+    title?: string | null;
+    description?: string | null;
+    itemCategory?: string | null;
+    color?: string | null;
+    size?: string | null;
+    tags?: string[] | null;
+    location?: string | null;
+    latitude?: string | null;
+    longitude?: string | null;
+    region1?: string | null;
+    region2?: string | null;
+    region3?: string | null;
+    address?: string | null;
+    placeName?: string | null;
+  },
+  signal?: AbortSignal
+): Promise<number[]> {
   const normalizedItem = normalizeItemMetadata(item);
   const content = buildItemSearchText(normalizedItem);
-  const embedding = await createEmbedding(content, signal);
+  const embedding = await createEmbedding(content, "passage", signal);
   await storage.upsertItemEmbedding(item.id, content, embedding);
   return embedding;
 }
@@ -1159,18 +2997,18 @@ async function backfillItemEmbeddings(
   limit?: number,
   signal?: AbortSignal
 ): Promise<void> {
-  const missingItems = await storage.getItemsWithoutEmbeddings(reportType, limit);
-
+  const missingItems = await storage.getItemsWithoutEmbeddings(
+    reportType,
+    limit
+  );
   for (const item of missingItems) {
     abortIfNeeded(signal);
-
     try {
       await ensureItemEmbedding(item, signal);
     } catch (error) {
       if (isAbortError(error)) {
         throw error;
       }
-
       console.error(
         `Failed to backfill embedding for ${reportType} item ${item.id}:`,
         error
@@ -1207,7 +3045,9 @@ function mapMatchResponse(match: {
   };
 }
 
-async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number> {
+async function findAutomaticMatchesForFoundItem(
+  foundItem: Item
+): Promise<number> {
   const candidateLostItems = await storage.getCandidateItemsForAutoMatch(
     foundItem,
     AUTO_MATCH_CANDIDATE_LIMIT
@@ -1233,6 +3073,15 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
   const matchesToPersist = candidateLostItems
     .map((lostItem) => {
       const distanceKm = calculateMatchDistanceKm(foundItem, lostItem);
+      if (
+        !isAutomaticMatchCandidateAllowed({
+          sourceItem: foundItem,
+          candidateItem: lostItem,
+        })
+      ) {
+        return null;
+      }
+
       const normalizedScore = calculateAutomaticMatchScore({
         sourceItem: foundItem,
         candidateItem: lostItem,
@@ -1272,10 +3121,13 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
     .sort((left, right) => right.score - left.score)
     .slice(0, AUTO_MATCH_MAX_RESULTS);
 
-  await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
+  await Promise.all(
+    matchesToPersist.map((match) => storage.upsertItemMatch(match))
+  );
 
-  // 매칭 생성 후 분실물 주인에게 FCM 발송 (중복 방지)
-  console.log(`[FCM] findAutomaticMatchesForFoundItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`);
+  console.log(
+    `[FCM] findAutomaticMatchesForFoundItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`
+  );
   for (const match of matchesToPersist) {
     const lostItem = await storage.getItem(match.lostItemId);
     if (!lostItem?.userId) {
@@ -1283,7 +3135,6 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
       continue;
     }
 
-    // 이미 알림 발송했는지 확인
     const existingMatch = await db.query.itemMatches.findFirst({
       where: and(
         eq(itemMatches.lostItemId, match.lostItemId),
@@ -1291,7 +3142,9 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
       ),
     });
     if (existingMatch?.notifiedAt) {
-      console.log(`[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`);
+      console.log(
+        `[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`
+      );
       continue;
     }
 
@@ -1313,19 +3166,23 @@ async function findAutomaticMatchesForFoundItem(foundItem: Item): Promise<number
       },
     });
 
-    // 알림 발송 시간 업데이트
-    await db.update(itemMatches)
+    await db
+      .update(itemMatches)
       .set({ notifiedAt: new Date() })
-      .where(and(
-        eq(itemMatches.lostItemId, match.lostItemId),
-        eq(itemMatches.foundItemId, match.foundItemId)
-      ));
+      .where(
+        and(
+          eq(itemMatches.lostItemId, match.lostItemId),
+          eq(itemMatches.foundItemId, match.foundItemId)
+        )
+      );
   }
 
   return matchesToPersist.length;
 }
 
-async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> {
+async function findAutomaticMatchesForLostItem(
+  lostItem: Item
+): Promise<number> {
   const candidateFoundItems = await storage.getCandidateItemsForAutoMatch(
     lostItem,
     AUTO_MATCH_CANDIDATE_LIMIT
@@ -1351,6 +3208,15 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
   const matchesToPersist = candidateFoundItems
     .map((foundItem) => {
       const distanceKm = calculateMatchDistanceKm(lostItem, foundItem);
+      if (
+        !isAutomaticMatchCandidateAllowed({
+          sourceItem: lostItem,
+          candidateItem: foundItem,
+        })
+      ) {
+        return null;
+      }
+
       const normalizedScore = calculateAutomaticMatchScore({
         sourceItem: lostItem,
         candidateItem: foundItem,
@@ -1390,10 +3256,13 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
     .sort((left, right) => right.score - left.score)
     .slice(0, AUTO_MATCH_MAX_RESULTS);
 
-  await Promise.all(matchesToPersist.map((match) => storage.upsertItemMatch(match)));
+  await Promise.all(
+    matchesToPersist.map((match) => storage.upsertItemMatch(match))
+  );
 
-  // 매칭 생성 후 습득물 주인에게 FCM 발송 (중복 방지)
-  console.log(`[FCM] findAutomaticMatchesForLostItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`);
+  console.log(
+    `[FCM] findAutomaticMatchesForLostItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`
+  );
   for (const match of matchesToPersist) {
     const foundItem = await storage.getItem(match.foundItemId);
     if (!foundItem?.userId) {
@@ -1401,7 +3270,6 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
       continue;
     }
 
-    // 이미 알림 발송했는지 확인
     const existingMatch = await db.query.itemMatches.findFirst({
       where: and(
         eq(itemMatches.lostItemId, match.lostItemId),
@@ -1409,7 +3277,9 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
       ),
     });
     if (existingMatch?.notifiedAt) {
-      console.log(`[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`);
+      console.log(
+        `[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`
+      );
       continue;
     }
 
@@ -1431,13 +3301,15 @@ async function findAutomaticMatchesForLostItem(lostItem: Item): Promise<number> 
       },
     });
 
-    // 알림 발송 시간 업데이트
-    await db.update(itemMatches)
+    await db
+      .update(itemMatches)
       .set({ notifiedAt: new Date() })
-      .where(and(
-        eq(itemMatches.lostItemId, match.lostItemId),
-        eq(itemMatches.foundItemId, match.foundItemId)
-      ));
+      .where(
+        and(
+          eq(itemMatches.lostItemId, match.lostItemId),
+          eq(itemMatches.foundItemId, match.foundItemId)
+        )
+      );
   }
 
   return matchesToPersist.length;
@@ -1465,6 +3337,7 @@ type FoundItemForAutoMatch = {
   location?: string | null;
   latitude?: string | null;
   longitude?: string | null;
+  externalSource?: string | null;
 };
 let automaticMatchQueue: Promise<void> = Promise.resolve();
 
@@ -1499,6 +3372,10 @@ function queueAutomaticMatchNotificationsForFoundItem(
   foundItem: FoundItemForAutoMatch,
   existingEmbedding?: number[]
 ): void {
+  if (!AUTOMATIC_MATCH_QUEUE_ENABLED) {
+    return;
+  }
+
   automaticMatchQueue = automaticMatchQueue
     .catch(() => undefined)
     .then(() =>
@@ -1580,7 +3457,7 @@ async function runAutomaticMatchNotificationsForFoundItem(
   const queryText = buildItemSearchText(foundItem);
   const rerankedMatches = await rerankCandidates({
     prompt: foundItem.description ?? undefined,
-    imageUrl: qwen && foundItem.imageUrl ? foundItem.imageUrl : undefined,
+    imageUrl: getAutomaticRerankImageUrl(foundItem),
     queryText,
     candidates: filteredVectorMatches,
     signal,
@@ -1606,7 +3483,10 @@ async function runAutomaticMatchNotificationsForFoundItem(
         return null;
       }
 
-      if (!vectorMatch.item.userId || vectorMatch.item.userId === foundItem.userId) {
+      if (
+        !vectorMatch.item.userId ||
+        vectorMatch.item.userId === foundItem.userId
+      ) {
         return null;
       }
 
@@ -1644,10 +3524,10 @@ async function runAutomaticMatchNotificationsForFoundItem(
     )
   );
 
-  // 매칭 알림 FCM 발송 (중복 방지)
-  console.log(`[FCM] 매칭 알림 ${matchedNotifications.length}개 생성됨, FCM 발송 시작`);
+  console.log(
+    `[FCM] 매칭 알림 ${matchedNotifications.length}개 생성됨, FCM 발송 시작`
+  );
   for (const notification of matchedNotifications) {
-    // 이미 알림 발송했는지 확인
     const existingNotification = await db.query.matchNotifications.findFirst({
       where: and(
         eq(matchNotifications.userId, notification.userId),
@@ -1656,7 +3536,9 @@ async function runAutomaticMatchNotificationsForFoundItem(
       ),
     });
     if (existingNotification?.notifiedAt) {
-      console.log(`[FCM] 매칭 알림 ${notification.lostItemId}-${notification.foundItemId} 이미 발송됨 - 스킵`);
+      console.log(
+        `[FCM] 매칭 알림 ${notification.lostItemId}-${notification.foundItemId} 이미 발송됨 - 스킵`
+      );
       continue;
     }
 
@@ -1671,7 +3553,9 @@ async function runAutomaticMatchNotificationsForFoundItem(
     void sendFcmNotification({
       fcmToken: user.fcmToken,
       title: "새로운 매칭 발견!",
-      body: `"${foundItemData?.title ?? "물건"}"과 유사한 습득물이 등록되었어요.`,
+      body: `"${
+        foundItemData?.title ?? "물건"
+      }"과 유사한 습득물이 등록되었어요.`,
       data: {
         type: "match_notification",
         lostItemId: String(notification.lostItemId),
@@ -1679,14 +3563,16 @@ async function runAutomaticMatchNotificationsForFoundItem(
       },
     });
 
-    // 알림 발송 시간 업데이트
-    await db.update(matchNotifications)
+    await db
+      .update(matchNotifications)
       .set({ notifiedAt: new Date() })
-      .where(and(
-        eq(matchNotifications.userId, notification.userId),
-        eq(matchNotifications.lostItemId, notification.lostItemId),
-        eq(matchNotifications.foundItemId, notification.foundItemId)
-      ));
+      .where(
+        and(
+          eq(matchNotifications.userId, notification.userId),
+          eq(matchNotifications.lostItemId, notification.lostItemId),
+          eq(matchNotifications.foundItemId, notification.foundItemId)
+        )
+      );
   }
 }
 
@@ -1739,23 +3625,26 @@ async function rerankCandidates(params: {
     userContent.push({ type: "image_url", image_url: { url: imageUrl } });
   }
 
-  const response = await aiClient.chat.completions.create({
-    model,
-    messages: [
-      {
-        role: "system",
-        content:
-          "너는 분실물-습득물 매칭 재랭킹 도우미다. 벡터 검색 후보 중에서 실제로 일치할 가능성이 높은 항목만 골라 다시 점수화해라. 반드시 JSON 객체만 반환하고, reasoning은 모두 한국어로 작성해라.",
-      },
-      {
-        role: "user",
-        content: userContent,
-      },
-    ],
-    response_format: { type: "json_object" },
-  }, {
-    signal,
-  });
+  const response = await aiClient.chat.completions.create(
+    {
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "너는 분실물-습득물 매칭 재랭킹 도우미다. 벡터 검색 후보 중에서 실제로 일치할 가능성이 높은 항목만 골라 다시 점수화해라. 반드시 JSON 객체만 반환하고, reasoning은 모두 한국어로 작성해라.",
+        },
+        {
+          role: "user",
+          content: userContent,
+        },
+      ],
+      response_format: { type: "json_object" },
+    },
+    {
+      signal,
+    }
+  );
 
   const content = getCompletionText(response, "재랭킹 응답을 받지 못했습니다");
 
@@ -1886,7 +3775,10 @@ export async function registerRoutes(
       const usersList = await storage.getAdminUsers({
         search:
           typeof req.query.search === "string" ? req.query.search : undefined,
-        role: typeof req.query.role === "string" ? (req.query.role as "member" | "admin") : undefined,
+        role:
+          typeof req.query.role === "string"
+            ? (req.query.role as "member" | "admin")
+            : undefined,
         status:
           typeof req.query.status === "string"
             ? (req.query.status as "active" | "suspended")
@@ -1951,7 +3843,18 @@ export async function registerRoutes(
       const itemList = await storage.getAdminItems({
         search:
           typeof req.query.search === "string" ? req.query.search : undefined,
-        type: typeof req.query.type === "string" ? (req.query.type as "lost" | "found") : undefined,
+        type:
+          typeof req.query.type === "string"
+            ? (req.query.type as "lost" | "found")
+            : undefined,
+        page:
+          typeof req.query.page === "string"
+            ? Number.parseInt(req.query.page, 10)
+            : undefined,
+        limit:
+          typeof req.query.limit === "string"
+            ? Number.parseInt(req.query.limit, 10)
+            : undefined,
       });
       res.json(itemList);
     } catch (err) {
@@ -1986,21 +3889,41 @@ export async function registerRoutes(
     try {
       const filters = api.items.list.input.parse({
         type: typeof req.query.type === "string" ? req.query.type : undefined,
-        search: typeof req.query.search === "string" ? req.query.search : undefined,
+        search:
+          typeof req.query.search === "string" ? req.query.search : undefined,
         category:
-          typeof req.query.category === "string" ? req.query.category : undefined,
-        color: typeof req.query.color === "string" ? req.query.color : undefined,
+          typeof req.query.category === "string"
+            ? req.query.category
+            : undefined,
+        color:
+          typeof req.query.color === "string" ? req.query.color : undefined,
         location:
-          typeof req.query.location === "string" ? req.query.location : undefined,
+          typeof req.query.location === "string"
+            ? req.query.location
+            : undefined,
+        source:
+          typeof req.query.source === "string"
+            ? req.query.source
+            : undefined,
         latitude:
-          typeof req.query.latitude === "string" ? req.query.latitude : undefined,
+          typeof req.query.latitude === "string"
+            ? req.query.latitude
+            : undefined,
         longitude:
-          typeof req.query.longitude === "string" ? req.query.longitude : undefined,
+          typeof req.query.longitude === "string"
+            ? req.query.longitude
+            : undefined,
         radiusKm:
-          typeof req.query.radiusKm === "string" ? req.query.radiusKm : undefined,
+          typeof req.query.radiusKm === "string"
+            ? req.query.radiusKm
+            : undefined,
         dateRange:
-          typeof req.query.dateRange === "string" ? req.query.dateRange : undefined,
+          typeof req.query.dateRange === "string"
+            ? req.query.dateRange
+            : undefined,
         sort: typeof req.query.sort === "string" ? req.query.sort : undefined,
+        page: typeof req.query.page === "string" ? req.query.page : undefined,
+        limit: typeof req.query.limit === "string" ? req.query.limit : undefined,
       });
       const itemsList = await storage.getItems(filters);
       res.json(itemsList);
@@ -2052,13 +3975,19 @@ export async function registerRoutes(
     console.log("[API] POST /api/items - 물건 등록 시작", req.body?.reportType);
     try {
       const input = api.items.create.input.parse(req.body);
-      console.log("[API] 물건 데이터 파싱 완료:", input.reportType, input.title);
+      console.log(
+        "[API] 물건 데이터 파싱 완료:",
+        input.reportType,
+        input.title
+      );
       const normalizedInput = normalizeItemMetadata(input);
       const item = await storage.createItem({
         ...normalizedInput,
         userId: req.user?.id ?? null,
       });
-      console.log(`[API] 물건 저장 완료 - ID: ${item.id}, type: ${item.reportType}`);
+      console.log(
+        `[API] 물건 저장 완료 - ID: ${item.id}, type: ${item.reportType}`
+      );
 
       let automaticMatchCount = 0;
 
@@ -2076,24 +4005,42 @@ export async function registerRoutes(
         item.status === "active" &&
         itemEmbedding !== undefined
       ) {
-        console.log(`[AutoMatch] 습득물 ${item.id} - 매칭 알림 큐 추가 및 실행`);
+        console.log(
+          `[AutoMatch] 습득물 ${item.id} - 매칭 알림 큐 추가 및 실행`
+        );
         queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
         try {
           automaticMatchCount = await findAutomaticMatchesForFoundItem(item);
-          console.log(`[AutoMatch] 습득물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`);
+          console.log(
+            `[AutoMatch] 습득물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`
+          );
         } catch (matchError) {
-          console.error("Failed to create automatic matches for found item:", matchError);
+          console.error(
+            "Failed to create automatic matches for found item:",
+            matchError
+          );
         }
       } else if (item.reportType === "lost" && item.status === "active") {
         console.log(`[AutoMatch] 분실물 ${item.id} - 매칭 실행`);
         try {
           automaticMatchCount = await findAutomaticMatchesForLostItem(item);
-          console.log(`[AutoMatch] 분실물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`);
+          console.log(
+            `[AutoMatch] 분실물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`
+          );
         } catch (matchError) {
-          console.error("Failed to create automatic matches for lost item:", matchError);
+          console.error(
+            "Failed to create automatic matches for lost item:",
+            matchError
+          );
         }
       } else {
-        console.log(`[AutoMatch] ${item.id} - 조건 불충족으로 매칭 스킵 (reportType: ${item.reportType}, status: ${item.status}, hasEmbedding: ${itemEmbedding !== undefined})`);
+        console.log(
+          `[AutoMatch] ${item.id} - 조건 불충족으로 매칭 스킵 (reportType: ${
+            item.reportType
+          }, status: ${item.status}, hasEmbedding: ${
+            itemEmbedding !== undefined
+          })`
+        );
       }
 
       res.status(201).json({
@@ -2130,7 +4077,8 @@ export async function registerRoutes(
         item.status === "active" &&
         (Object.keys(normalizedInput).some((field) =>
           embeddingRelevantFields.has(field)
-        ) || normalizedInput.status === "active");
+        ) ||
+          normalizedInput.status === "active");
 
       let itemEmbedding: number[] | undefined;
       if (shouldRefreshEmbedding) {
@@ -2220,38 +4168,44 @@ export async function registerRoutes(
     }
   });
 
-  app.patch(api.matches.updateStatus.path, isAuthenticated, async (req, res) => {
-    try {
-      const matchId = Number(req.params.id);
-      const input = updateItemMatchStatusSchema.parse(req.body);
-      const updatedMatch = await storage.updateItemMatchStatus(
-        matchId,
-        req.user!.id,
-        input.status
-      );
+  app.patch(
+    api.matches.updateStatus.path,
+    isAuthenticated,
+    async (req, res) => {
+      try {
+        const matchId = Number(req.params.id);
+        const input = updateItemMatchStatusSchema.parse(req.body);
+        const updatedMatch = await storage.updateItemMatchStatus(
+          matchId,
+          req.user!.id,
+          input.status
+        );
 
-      if (!updatedMatch) {
-        return res.status(404).json({ message: "Match not found" });
-      }
+        if (!updatedMatch) {
+          return res.status(404).json({ message: "Match not found" });
+        }
 
-      const matches = await storage.getMatchesForUser(req.user!.id);
-      const hydratedMatch = matches.find(({ match }) => match.id === updatedMatch.id);
-      if (!hydratedMatch) {
-        return res.status(404).json({ message: "Match not found" });
-      }
+        const matches = await storage.getMatchesForUser(req.user!.id);
+        const hydratedMatch = matches.find(
+          ({ match }) => match.id === updatedMatch.id
+        );
+        if (!hydratedMatch) {
+          return res.status(404).json({ message: "Match not found" });
+        }
 
-      res.json(mapMatchResponse(hydratedMatch));
-    } catch (err) {
-      console.error(err);
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join("."),
-        });
+        res.json(mapMatchResponse(hydratedMatch));
+      } catch (err) {
+        console.error(err);
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({
+            message: err.errors[0].message,
+            field: err.errors[0].path.join("."),
+          });
+        }
+        res.status(500).json({ message: getErrorMessage(err) });
       }
-      res.status(500).json({ message: getErrorMessage(err) });
     }
-  });
+  );
 
   app.get(api.notifications.list.path, isAuthenticated, async (req, res) => {
     try {
@@ -2263,30 +4217,34 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.notifications.markRead.path, isAuthenticated, async (req, res) => {
-    try {
-      const notificationId = positiveIdSchema.parse(req.params.id);
-      const notification = await storage.markMatchNotificationAsRead(
-        req.user!.id,
-        notificationId
-      );
+  app.post(
+    api.notifications.markRead.path,
+    isAuthenticated,
+    async (req, res) => {
+      try {
+        const notificationId = positiveIdSchema.parse(req.params.id);
+        const notification = await storage.markMatchNotificationAsRead(
+          req.user!.id,
+          notificationId
+        );
 
-      if (!notification) {
-        return res.status(404).json({ message: "Notification not found" });
-      }
+        if (!notification) {
+          return res.status(404).json({ message: "Notification not found" });
+        }
 
-      res.json(notification);
-    } catch (err) {
-      console.error(err);
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join("."),
-        });
+        res.json(notification);
+      } catch (err) {
+        console.error(err);
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({
+            message: err.errors[0].message,
+            field: err.errors[0].path.join("."),
+          });
+        }
+        res.status(500).json({ message: getErrorMessage(err) });
       }
-      res.status(500).json({ message: getErrorMessage(err) });
     }
-  });
+  );
 
   // --- AI API ---
   app.post(api.ai.analyzeImage.path, async (req, res) => {
@@ -2315,18 +4273,23 @@ export async function registerRoutes(
         response_format: { type: "json_object" },
       });
 
-      const content = getCompletionText(response, "Failed to get response from AI");
+      const content = getCompletionText(
+        response,
+        "Failed to get response from AI"
+      );
 
       const rawResult = rawAnalyzeImageSchema.parse(JSON.parse(content));
-      const normalizedResult = await normalizeAnalyzeImageMetadata(rawResult).catch(
-        (normalizationError) => {
-          console.error(
-            "Failed to normalize image metadata:",
-            normalizationError
-          );
-          return buildLocalAnalyzeImageResult(rawResult);
-        }
-      );
+      const normalizedResult = OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED
+        ? await normalizeAnalyzeImageMetadata(rawResult).catch(
+            (normalizationError) => {
+              console.error(
+                "Failed to normalize image metadata:",
+                normalizationError
+              );
+              return buildLocalAnalyzeImageResult(rawResult);
+            }
+          )
+        : buildLocalAnalyzeImageResult(rawResult);
 
       let finalImageBase64 = input.imageUrl;
 
@@ -2370,6 +4333,14 @@ export async function registerRoutes(
       }
 
       const searchCoordinates = getSearchCoordinates(input);
+      const searchLocation = input.location?.trim();
+      const radiusKm =
+        typeof input.radiusKm === "number" && Number.isFinite(input.radiusKm)
+          ? input.radiusKm
+          : undefined;
+      const effectiveRadiusKm = searchCoordinates
+        ? radiusKm ?? DEFAULT_AI_SEARCH_RADIUS_KM
+        : undefined;
       await backfillItemEmbeddings("found");
 
       const queryParts: string[] = [];
@@ -2419,18 +4390,43 @@ export async function registerRoutes(
             ...result,
             distanceKm,
           };
+        })
+        .filter((result) => {
+          if (
+            searchLocation &&
+            !itemMatchesLocationText(result.item, searchLocation)
+          ) {
+            return false;
+          }
+
+          if (searchCoordinates && effectiveRadiusKm !== undefined) {
+            return (
+              result.distanceKm !== null &&
+              result.distanceKm <= effectiveRadiusKm
+            );
+          }
+
+          return true;
         });
 
       if (filteredVectorMatches.length === 0) {
         return res.json([]);
       }
 
-      const rerankedMatches = await rerankCandidates({
-        prompt: input.prompt,
-        imageUrl: input.imageUrl,
-        queryText,
-        candidates: filteredVectorMatches,
-      });
+      const rerankedMatches = AI_RERANK_ENABLED
+        ? await rerankCandidates({
+            prompt: input.prompt,
+            imageUrl: input.imageUrl,
+            queryText,
+            candidates: filteredVectorMatches.slice(0, AI_RERANK_MAX_CANDIDATES),
+          }).catch((rerankError) => {
+            console.error(
+              "[AI Search] rerank failed; using vector fallback:",
+              rerankError
+            );
+            return [];
+          })
+        : [];
 
       const vectorMatchById = new Map(
         filteredVectorMatches.map((candidate) => [candidate.item.id, candidate])
@@ -2444,9 +4440,12 @@ export async function registerRoutes(
           }
 
           const llmScore = Math.max(0, Math.min(1, result.score));
-          const blendedScore = Number(
-            (vectorMatch.score * 0.35 + llmScore * 0.65).toFixed(4)
-          );
+          const blendedScore = blendAiSearchScore({
+            vectorScore: vectorMatch.score,
+            llmScore,
+            distanceKm: vectorMatch.distanceKm,
+            radiusKm: effectiveRadiusKm,
+          });
 
           return {
             item: vectorMatch.item,
@@ -2471,24 +4470,47 @@ export async function registerRoutes(
             reasoning: string;
           } => Boolean(result) && (result?.score ?? 0) >= MIN_FINAL_MATCH_SCORE
         )
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => {
+          if (b.score !== a.score) {
+            return b.score - a.score;
+          }
+          if (a.distanceKm === null) return 1;
+          if (b.distanceKm === null) return -1;
+          return a.distanceKm - b.distanceKm;
+        })
         .slice(0, FINAL_RESULT_COUNT);
 
       if (searchResults.length === 0) {
         const fallbackResults = filteredVectorMatches
-          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE)
-          .slice(0, FINAL_RESULT_COUNT)
-          .map((result) => ({
-            item: result.item,
-            score: Math.max(0, Math.min(1, result.score)),
-            distanceKm: result.distanceKm,
-            reasoning: buildReasoningFromEvidence({
-              queryText,
+          .map((result) => {
+            const score = blendAiSearchFallbackScore(
+              result.score,
+              result.distanceKm,
+              effectiveRadiusKm
+            );
+
+            return {
               item: result.item,
-              matchScore: result.score,
+              score,
               distanceKm: result.distanceKm,
-            }),
-          }));
+              reasoning: buildReasoningFromEvidence({
+                queryText,
+                item: result.item,
+                matchScore: score,
+                distanceKm: result.distanceKm,
+              }),
+            };
+          })
+          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE)
+          .sort((a, b) => {
+            if (b.score !== a.score) {
+              return b.score - a.score;
+            }
+            if (a.distanceKm === null) return 1;
+            if (b.distanceKm === null) return -1;
+            return a.distanceKm - b.distanceKm;
+          })
+          .slice(0, FINAL_RESULT_COUNT)
 
         return res.json(fallbackResults);
       }
@@ -2513,7 +4535,10 @@ export async function registerRoutes(
       if (!token || typeof token !== "string") {
         return res.status(400).json({ message: "FCM 토큰이 필요합니다" });
       }
-      await db.update(users).set({ fcmToken: token }).where(eq(users.id, req.user!.id));
+      await db
+        .update(users)
+        .set({ fcmToken: token })
+        .where(eq(users.id, req.user!.id));
       res.json({ message: "FCM 토큰이 등록되었습니다" });
     } catch (err) {
       console.error("[FCM] 토큰 등록 오류:", err);
@@ -2528,14 +4553,23 @@ export async function registerRoutes(
       const senderId = req.user!.id;
 
       if (!itemId || !receiverId) {
-        return res.status(400).json({ message: "itemId와 receiverId가 필요합니다" });
+        return res
+          .status(400)
+          .json({ message: "itemId와 receiverId가 필요합니다" });
       }
 
       const existingRoom = await db.query.chatRooms.findFirst({
-        where: and(
-          eq(chatRooms.itemId, itemId),
-          eq(chatRooms.senderId, senderId),
-          eq(chatRooms.receiverId, receiverId)
+        where: or(
+          and(
+            eq(chatRooms.itemId, itemId),
+            eq(chatRooms.senderId, senderId),
+            eq(chatRooms.receiverId, receiverId)
+          ),
+          and(
+            eq(chatRooms.itemId, itemId),
+            eq(chatRooms.senderId, receiverId),
+            eq(chatRooms.receiverId, senderId)
+          )
         ),
       });
 
@@ -2543,11 +4577,14 @@ export async function registerRoutes(
         return res.json(existingRoom);
       }
 
-      const [room] = await db.insert(chatRooms).values({
-        itemId,
-        senderId,
-        receiverId,
-      }).returning();
+      const [room] = await db
+        .insert(chatRooms)
+        .values({
+          itemId,
+          senderId,
+          receiverId,
+        })
+        .returning();
 
       res.status(201).json(room);
     } catch (err) {
@@ -2575,11 +4612,11 @@ export async function registerRoutes(
             },
           },
           sender: {
-            columns: { id: true, username: true, name: true }
+            columns: { id: true, username: true, name: true },
           },
           receiver: {
-            columns: { id: true, username: true, name: true }
-          }
+            columns: { id: true, username: true, name: true },
+          },
         },
         orderBy: desc(chatRooms.updatedAt),
       });
@@ -2590,10 +4627,7 @@ export async function registerRoutes(
             where: and(
               eq(chatMessages.roomId, room.id),
               ne(chatMessages.senderId, userId),
-              or(
-                eq(chatMessages.isRead, 0),
-                isNull(chatMessages.isRead)
-              )
+              or(eq(chatMessages.isRead, 0), isNull(chatMessages.isRead))
             ),
           });
 
@@ -2604,14 +4638,19 @@ export async function registerRoutes(
               createdAt: true,
             },
             where: eq(chatMessages.roomId, room.id),
-            orderBy: (_messages, { desc }) => [desc(chatMessages.createdAt), desc(chatMessages.id)],
+            orderBy: (_messages, { desc }) => [
+              desc(chatMessages.createdAt),
+              desc(chatMessages.id),
+            ],
           });
 
-          const rawOtherUser = room.senderId === userId ? room.receiver : room.sender;
+          const rawOtherUser =
+            room.senderId === userId ? room.receiver : room.sender;
 
           const otherUser = {
             ...rawOtherUser,
-            nickname: rawOtherUser?.name ?? rawOtherUser?.username ?? "알 수 없음",
+            nickname:
+              rawOtherUser?.name ?? rawOtherUser?.username ?? "알 수 없음",
           };
 
           return {
@@ -2638,7 +4677,9 @@ export async function registerRoutes(
 
   app.get("/api/chat/rooms/:id/messages", isAuthenticated, async (req, res) => {
     try {
-      const roomId = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+      const roomId = Number(
+        Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+      );
       const userId = req.user!.id;
 
       const room = await db.query.chatRooms.findFirst({
@@ -2649,16 +4690,14 @@ export async function registerRoutes(
         return res.status(403).json({ message: "접근 권한이 없습니다" });
       }
 
-      await db.update(chatMessages)
+      await db
+        .update(chatMessages)
         .set({ isRead: 1 })
         .where(
           and(
             eq(chatMessages.roomId, roomId),
             ne(chatMessages.senderId, userId),
-            or(
-              eq(chatMessages.isRead, 0),
-              isNull(chatMessages.isRead)
-            )
+            or(eq(chatMessages.isRead, 0), isNull(chatMessages.isRead))
           )
         );
 
@@ -2666,8 +4705,8 @@ export async function registerRoutes(
         where: eq(chatMessages.roomId, roomId),
         with: {
           sender: {
-            columns: { id: true, username: true, name: true }
-          }
+            columns: { id: true, username: true, name: true },
+          },
         },
         orderBy: asc(chatMessages.createdAt),
       });
@@ -2679,131 +4718,192 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/chat/rooms/:id/messages", isAuthenticated, async (req, res) => {
-    try {
-      const roomId = Number(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
-      const { content } = req.body;
-      const senderId = req.user!.id;
+  app.post(
+    "/api/chat/rooms/:id/messages",
+    isAuthenticated,
+    async (req, res) => {
+      try {
+        const roomId = Number(
+          Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
+        );
+        const { content } = req.body;
+        const senderId = req.user!.id;
 
-      if (!content || content.trim() === "") {
-        return res.status(400).json({ message: "메시지 내용이 필요합니다" });
-      }
+        if (!content || content.trim() === "") {
+          return res.status(400).json({ message: "메시지 내용이 필요합니다" });
+        }
+        const normalizedContent = content.trim();
 
-      const room = await db.query.chatRooms.findFirst({
-        where: eq(chatRooms.id, roomId),
-      });
-
-      if (!room || (room.senderId !== senderId && room.receiverId !== senderId)) {
-        return res.status(403).json({ message: "접근 권한이 없습니다" });
-      }
-
-      const [message] = await db.insert(chatMessages).values({
-        roomId,
-        senderId,
-        content: content.trim(),
-        isRead: 0,
-      }).returning();
-
-      await db.update(chatRooms).set({
-        updatedAt: new Date(),
-      }).where(eq(chatRooms.id, roomId));
-
-      // 수신자에게 FCM 알림 발송
-      const receiverId = room.senderId === senderId ? room.receiverId : room.senderId;
-      const [receiver, sender] = await Promise.all([
-        db.query.users.findFirst({ where: eq(users.id, receiverId) }),
-        db.query.users.findFirst({ where: eq(users.id, senderId) }),
-      ]);
-      if (receiver?.fcmToken) {
-        const senderName = sender?.name ?? sender?.username ?? "누군가";
-        void sendFcmNotification({
-          fcmToken: receiver.fcmToken,
-          title: `${senderName}님의 새 메시지`,
-          body: content.trim().length > 50
-            ? content.trim().slice(0, 50) + "..."
-            : content.trim(),
-          data: { roomId: String(roomId) },
+        const room = await db.query.chatRooms.findFirst({
+          where: eq(chatRooms.id, roomId),
         });
+
+        if (
+          !room ||
+          (room.senderId !== senderId && room.receiverId !== senderId)
+        ) {
+          return res.status(403).json({ message: "접근 권한이 없습니다" });
+        }
+
+        const duplicateCutoff = new Date(Date.now() - 5000);
+        const recentDuplicate = await db.query.chatMessages.findFirst({
+          where: and(
+            eq(chatMessages.roomId, roomId),
+            eq(chatMessages.senderId, senderId),
+            eq(chatMessages.content, normalizedContent),
+            gte(chatMessages.createdAt, duplicateCutoff)
+          ),
+          orderBy: desc(chatMessages.id),
+        });
+
+        if (recentDuplicate) {
+          return res.status(200).json(recentDuplicate);
+        }
+
+        const [message] = await db
+          .insert(chatMessages)
+          .values({
+            roomId,
+            senderId,
+            content: normalizedContent,
+            isRead: 0,
+          })
+          .returning();
+
+        await db
+          .update(chatRooms)
+          .set({
+            updatedAt: new Date(),
+          })
+          .where(eq(chatRooms.id, roomId));
+
+        const receiverId =
+          room.senderId === senderId ? room.receiverId : room.senderId;
+        const [receiver, sender] = await Promise.all([
+          db.query.users.findFirst({ where: eq(users.id, receiverId) }),
+          db.query.users.findFirst({ where: eq(users.id, senderId) }),
+        ]);
+        if (receiver?.fcmToken) {
+          const senderName = sender?.name ?? sender?.username ?? "누군가";
+          void sendFcmNotification({
+            fcmToken: receiver.fcmToken,
+            title: `${senderName}님의 새 메시지`,
+            body:
+              normalizedContent.length > 50
+                ? normalizedContent.slice(0, 50) + "..."
+                : normalizedContent,
+            data: { roomId: String(roomId) },
+          });
+        }
+
+        res.status(201).json(message);
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: getErrorMessage(err) });
       }
-
-      res.status(201).json(message);
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({ message: getErrorMessage(err) });
     }
-  });
+  );
 
-  // --- Lost112 (경찰청 습득물) API 프록시 ---
-  app.get(api.lost112.items.path, async (req, res) => {
+  // --- Lost112 (경찰청 습득물) 수집 API ---
+  app.post(api.lost112.sync.path, isAdmin, async (req, res) => {
     try {
       const apiKey = process.env.LOST112_API_KEY;
       if (!apiKey) {
         return res.status(503).json({
-          message: "Lost112 API 키가 설정되지 않았습니다. .env에 LOST112_API_KEY를 추가해 주세요.",
+          message:
+            "Lost112 API 키가 설정되지 않았습니다. .env에 LOST112_API_KEY를 추가해 주세요.",
         });
       }
 
-      const {
-        category = "",
-        region = "",
-        startDate = "",
-        endDate = "",
-        page = 1,
-        numOfRows = 20,
-      } = api.lost112.items.input.parse(req.query);
-
-      const safePageNo = Math.max(1, page);
-      const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
-
-      const params = new URLSearchParams({
-        serviceKey: apiKey,
-        pageNo: String(safePageNo),
-        numOfRows: String(safeNumOfRows),
-        _type: "json",
+      const input = api.lost112.sync.input.parse(req.body ?? {}) ?? {};
+      const defaultDateRange = getDefaultLost112SyncDateRange();
+      const startDate =
+        input.startDate ?? input.endDate ?? defaultDateRange.startDate;
+      const endDate =
+        input.endDate ?? input.startDate ?? defaultDateRange.endDate;
+      const result = await runLost112Sync({
+        apiKey,
+        category: input.category,
+        region: input.region,
+        startDate,
+        endDate,
+        page: input.page ?? LOST112_SYNC_START_PAGE,
+        numOfRows: input.numOfRows ?? LOST112_SYNC_NUM_ROWS,
+        maxPages: input.maxPages ?? LOST112_SYNC_MAX_PAGES,
       });
 
-      if (category) params.set("PRDT_CL_CD_01", category);
-      if (region) params.set("N_FD_LCT_CD", region);
-      if (startDate) params.set("START_YMD", startDate);
-      if (endDate) params.set("END_YMD", endDate);
-
-      const url = `https://apis.data.go.kr/1320000/LosfundInfoInqireService/getLosfundInfoAccToClAreaPd?${params.toString()}`;
-      const safeUrl = new URL(url);
-      safeUrl.searchParams.set("serviceKey", "***");
-      console.log("[Lost112] 요청:", safeUrl.toString());
-
-      const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
-      if (!response.ok) {
-        throw new Error(`Lost112 API HTTP 오류: ${response.status}`);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
       }
 
-      const data = await response.json() as unknown;
-      const body = (data as { response?: { body?: unknown } })?.response?.body as {
-        items?: { item?: unknown };
-        totalCount?: number;
-        numOfRows?: number;
-        pageNo?: number;
-      } | null | undefined;
-
-      const rawItems = body?.items?.item;
-      // 단건 결과는 배열이 아닌 객체로 오므로 정규화
-      const items = !rawItems
-        ? []
-        : Array.isArray(rawItems)
-        ? rawItems
-        : [rawItems];
-
-      res.json({
-        items,
-        totalCount: body?.totalCount ?? 0,
-        pageNo: body?.pageNo ?? 1,
-        numOfRows: body?.numOfRows ?? 20,
-      });
-    } catch (err) {
-      console.error("[Lost112] 오류:", err);
+      console.error("[Lost112 Sync] 오류:", err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });
+
+  app.get(api.lost112.latestSyncRun.path, isAdmin, async (_req, res) => {
+    try {
+      const [latestRun] = await db
+        .select()
+        .from(lost112SyncRuns)
+        .orderBy(desc(lost112SyncRuns.startedAt))
+        .limit(1);
+
+      res.json(latestRun ?? null);
+    } catch (err) {
+      console.error("[Lost112 Sync Latest] 오류:", err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get(api.lost112.activeSyncRuns.path, isAdmin, async (_req, res) => {
+    try {
+      res.json(getActiveLost112SyncRuns());
+    } catch (err) {
+      console.error("[Lost112 Sync Active] 오류:", err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.post(api.lost112.reprocessExisting.path, isAdmin, async (req, res) => {
+    try {
+      const input =
+        api.lost112.reprocessExisting.input.parse(req.body ?? {}) ?? {};
+
+      if (input.onlyMissingLocation !== false && !KAKAO_REST_API_KEY) {
+        return res.status(503).json({
+          message:
+            "Kakao REST API 키가 설정되지 않았습니다. .env에 KAKAO_REST_API_KEY를 추가해 주세요.",
+        });
+      }
+
+      const result = await reprocessExistingLost112Items({
+        limit: input.limit,
+        offset: input.offset,
+        onlyMissingLocation: input.onlyMissingLocation,
+        onlyMissingEmbedding: input.onlyMissingEmbedding,
+      });
+
+      res.json(result);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+
+      console.error("[Lost112 Reprocess Existing] 오류:", err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  startLost112SyncScheduler();
 
   return httpServer;
 }
