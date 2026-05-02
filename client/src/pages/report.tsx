@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Images,
   X,
+  PencilLine,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
@@ -153,6 +154,23 @@ function LoadingState() {
         </div>
       </div>
     </Layout>
+  );
+}
+
+function ReviewField({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | null;
+}) {
+  return (
+    <div className="rounded-lg border border-border/65 bg-white px-3 py-2.5">
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <p className="mt-1 break-keep text-sm font-semibold leading-6 text-foreground [word-break:keep-all]">
+        {value?.trim() || "입력 안 함"}
+      </p>
+    </div>
   );
 }
 
@@ -483,6 +501,11 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   };
 
   const onSubmit = async (data: FormValues) => {
+    if (currentStep !== 4) {
+      navigateToStep(4);
+      return;
+    }
+
     if (
       reportType === "found" &&
       (!data.imageUrls || data.imageUrls.length === 0)
@@ -491,6 +514,12 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
         title: "습득물 등록에는 사진이 필요해요.",
         variant: "destructive",
       });
+      return;
+    }
+
+    const isValid = await form.trigger();
+    if (!isValid) {
+      navigateToStep(2);
       return;
     }
 
@@ -652,6 +681,23 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     { step: 4 as const, label: "확인" },
   ];
   const currentStepLabel = stepItems.find((item) => item.step === currentStep)?.label;
+  const reviewValues = form.watch();
+  const reviewLocationText =
+    [
+      reviewValues.location,
+      reviewValues.address,
+      reviewValues.placeName,
+    ]
+      .filter((value) => value && value.trim().length > 0)
+      .join(" / ") || "";
+  const reviewCoordinateText =
+    reviewValues.latitude && reviewValues.longitude
+      ? `${reviewValues.latitude}, ${reviewValues.longitude}`
+      : "";
+  const reviewTagsText =
+    reviewValues.tags && reviewValues.tags.length > 0
+      ? reviewValues.tags.join(", ")
+      : "";
 
   return (
     <Layout>
@@ -1039,39 +1085,133 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
           ) : null}
 
           {currentStep === 4 ? (
-          <Card className="mx-auto max-w-4xl border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)]">
-            <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
-              <div className="max-w-lg space-y-1">
-                <div className="mb-2 inline-flex w-fit rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
-                  4단계
-                </div>
-                <p className="text-base font-semibold text-foreground">
-                  입력 내용을 확인해 주세요.
-                </p>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  저장하면 마이페이지와 상세 페이지에서 바로 확인할 수 있어요.
-                </p>
-              </div>
-              <Button
-                type="submit"
-                className="hidden h-[3.2rem] rounded-full px-9 text-base font-semibold shadow-[0_22px_32px_-18px_hsl(var(--primary)/0.54)] transition-all hover:-translate-y-0.5 hover:shadow-[0_26px_38px_-18px_hsl(var(--primary)/0.6)] disabled:translate-y-0 disabled:shadow-none disabled:opacity-60 sm:ml-6 sm:inline-flex sm:min-w-[240px]"
-                size="lg"
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    처리 중...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="mr-2 h-4 w-4" />
-                    {submitLabel}
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
+            <div className="mx-auto max-w-4xl min-w-0 space-y-5">
+              <Card className="border-primary/14 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] shadow-[0_22px_38px_-30px_hsl(var(--primary)/0.18)]">
+                <CardHeader className="border-b border-primary/10 px-5 py-4">
+                  <div className="mb-1 inline-flex w-fit rounded-full border border-primary/12 bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
+                    4단계
+                  </div>
+                  <CardTitle className="text-base font-semibold">
+                    등록 전 마지막 확인
+                  </CardTitle>
+                  <CardDescription className="break-keep leading-6 [word-break:keep-all]">
+                    아직 게시글은 등록되지 않았어요. 아래 내용이 맞으면 마지막 등록 버튼을 눌러 주세요.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5 p-5">
+                  <section className="space-y-3 rounded-xl border border-border/65 bg-white/82 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">
+                        사진
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-lg"
+                        onClick={() => navigateToStep(1)}
+                      >
+                        <PencilLine className="mr-1.5 h-3.5 w-3.5" />
+                        수정
+                      </Button>
+                    </div>
+                    {imagePreviews.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+                        {imagePreviews.map((imageUrl, index) => (
+                          <div
+                            key={`review-${imageUrl}-${index}`}
+                            className="relative aspect-square overflow-hidden rounded-lg border border-border/70 bg-secondary"
+                          >
+                            <img
+                              src={imageUrl}
+                              alt={`등록 예정 이미지 ${index + 1}`}
+                              className="h-full w-full object-cover"
+                            />
+                            {index === 0 ? (
+                              <span className="absolute left-1.5 top-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                대표
+                              </span>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-border bg-secondary/40 px-3 py-6 text-center text-sm text-muted-foreground">
+                        등록할 사진이 없습니다.
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="space-y-3 rounded-xl border border-border/65 bg-white/82 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">
+                        물건 정보
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-lg"
+                        onClick={() => navigateToStep(2)}
+                      >
+                        <PencilLine className="mr-1.5 h-3.5 w-3.5" />
+                        수정
+                      </Button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <ReviewField label="제목" value={reviewValues.title} />
+                      <ReviewField
+                        label="카테고리"
+                        value={reviewValues.itemCategory}
+                      />
+                      <ReviewField label="색상" value={reviewValues.color} />
+                      <ReviewField label="크기" value={reviewValues.size} />
+                      <ReviewField
+                        label="연락처"
+                        value={
+                          reviewValues.contactInfo
+                            ? formatPhoneNumber(reviewValues.contactInfo)
+                            : ""
+                        }
+                      />
+                      <ReviewField label="태그" value={reviewTagsText} />
+                    </div>
+                    <ReviewField
+                      label="상세 설명"
+                      value={reviewValues.description}
+                    />
+                  </section>
+
+                  <section className="space-y-3 rounded-xl border border-border/65 bg-white/82 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">
+                        위치
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-lg"
+                        onClick={() => navigateToStep(3)}
+                      >
+                        <PencilLine className="mr-1.5 h-3.5 w-3.5" />
+                        수정
+                      </Button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <ReviewField
+                        label={currentConfig.locationLabel}
+                        value={reviewLocationText}
+                      />
+                      <ReviewField
+                        label="지도 좌표"
+                        value={reviewCoordinateText}
+                      />
+                    </div>
+                  </section>
+                </CardContent>
+              </Card>
+            </div>
           ) : null}
 
           <div className="mx-auto flex max-w-4xl flex-col-reverse gap-3 border-t border-border pt-5 sm:flex-row sm:items-center sm:justify-between">
