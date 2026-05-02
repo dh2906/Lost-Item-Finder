@@ -99,12 +99,7 @@ function getMatchEvidenceLabels(
   }
 
   if (!reasoning) {
-    return options?.hasDistance || options?.hasScore
-      ? [
-          ...(options?.hasDistance ? ["지역 일치"] : []),
-          ...(options?.hasScore ? ["신뢰도 반영"] : []),
-        ]
-      : [];
+    return options?.hasDistance ? ["지역 일치"] : [];
   }
 
   const labels: string[] = [];
@@ -115,7 +110,6 @@ function getMatchEvidenceLabels(
     [/크기|사이즈/, "크기 참고"],
     [/거리|위치|지역|장소/, "지역 일치"],
     [/날짜|기간|일 차이|일로/, "날짜 반영"],
-    [/점수|강한 후보|중간 수준/, "신뢰도 반영"],
   ];
 
   for (const [pattern, label] of checks) {
@@ -126,9 +120,6 @@ function getMatchEvidenceLabels(
 
   if (options?.hasDistance && !labels.includes("지역 일치")) {
     labels.push("지역 일치");
-  }
-  if (options?.hasScore && !labels.includes("신뢰도 반영")) {
-    labels.push("신뢰도 반영");
   }
 
   return labels.slice(0, 5);

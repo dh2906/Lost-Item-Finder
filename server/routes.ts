@@ -2003,11 +2003,47 @@ const COLOR_SYNONYM_GROUPS = [
   ["흰색", "화이트", "하양", "white", "ivory", "cream"],
   ["회색", "그레이", "gray", "grey", "은색", "실버", "silver"],
   ["갈색", "브라운", "brown", "베이지", "tan", "camel"],
-  ["파랑", "파란색", "블루", "남색", "네이비", "blue", "navy"],
+  [
+    "파랑",
+    "파란색",
+    "블루",
+    "남색",
+    "네이비",
+    "blue",
+    "navy",
+    "하늘색",
+    "스카이블루",
+    "skyblue",
+    "딥스카이블루",
+    "로열블루",
+    "코발트",
+    "cyan",
+    "아쿠아",
+    "청록",
+    "teal",
+    "turquoise",
+    "민트",
+    "민트색",
+  ],
   ["빨강", "빨간색", "레드", "red", "burgundy", "와인"],
-  ["초록", "초록색", "그린", "green", "olive", "khaki", "카키"],
+  [
+    "초록",
+    "초록색",
+    "그린",
+    "green",
+    "olive",
+    "khaki",
+    "카키",
+    "민트",
+    "민트색",
+    "청록",
+    "teal",
+    "turquoise",
+  ],
   ["노랑", "노란색", "옐로", "yellow", "gold", "골드"],
   ["보라", "보라색", "퍼플", "purple", "violet"],
+  ["분홍", "분홍색", "핑크", "pink", "rose", "로즈"],
+  ["주황", "주황색", "오렌지", "orange", "coral", "코랄"],
 ] as const;
 
 const LOCATION_SYNONYM_GROUPS = [
@@ -2029,6 +2065,63 @@ const KEYWORD_SYNONYM_GROUPS = [
   ["가죽", "레더", "leather"],
   ["충전케이스", "케이스", "case"],
   ["노트북가방", "노트북", "랩탑가방"],
+] as const;
+
+const KNOWN_REGION_TOKENS = [
+  "서울",
+  "부산",
+  "대구",
+  "인천",
+  "광주",
+  "대전",
+  "울산",
+  "세종",
+  "경기",
+  "강원",
+  "충남",
+  "충북",
+  "전남",
+  "전북",
+  "경남",
+  "경북",
+  "제주",
+  "강남",
+  "홍대",
+  "잠실",
+  "신촌",
+  "판교",
+  "분당",
+] as const;
+
+const LOCATION_TOKEN_SUFFIXES = [
+  "역",
+  "대",
+  "대학교",
+  "캠퍼스",
+  "학교",
+  "도서관",
+  "병원",
+  "공원",
+  "공항",
+  "터미널",
+  "정류장",
+  "백화점",
+  "마트",
+  "사거리",
+  "광장",
+  "아파트",
+  "빌딩",
+  "센터",
+  "거리",
+  "로",
+  "길",
+  "동",
+  "구",
+  "시",
+  "군",
+  "읍",
+  "면",
+  "리",
 ] as const;
 
 type NormalizableItemMetadata = {
@@ -2554,24 +2647,106 @@ function hasRequestedCategory(queryText: string): boolean {
   );
 }
 
+function normalizeColorQueryToken(token: string): string {
+  return normalizeComparableText(token)
+    .replace(/색상$/g, "")
+    .replace(/컬러$/g, "")
+    .replace(/색$/g, "");
+}
+
+function isColorLikeToken(token: string): boolean {
+  const normalizedToken = normalizeComparableText(token);
+  if (!normalizedToken) {
+    return false;
+  }
+
+  if (
+    normalizedToken.endsWith("색") ||
+    normalizedToken.endsWith("색상") ||
+    normalizedToken.endsWith("컬러")
+  ) {
+    return true;
+  }
+
+  return COLOR_SYNONYM_GROUPS.some((group) =>
+    group.some(
+      (term) =>
+        calculateTokenSimilarity(
+          normalizedToken,
+          normalizeComparableText(term),
+          COLOR_SYNONYM_GROUPS
+        ) >= 0.64
+    )
+  );
+}
+
+function extractRequestedColorTokens(queryText: string): string[] {
+  return Array.from(
+    new Set(
+      extractQueryKeywords(queryText)
+        .filter(isColorLikeToken)
+        .flatMap((token) => {
+          const normalizedToken = normalizeComparableText(token);
+          const simplifiedToken = normalizeColorQueryToken(token);
+          return [normalizedToken, simplifiedToken].filter(
+            (value): value is string => value.length >= 2
+          );
+        })
+    )
+  ).slice(0, 6);
+}
+
+function isLikelyLocationToken(token: string): boolean {
+  const normalizedToken = normalizeComparableText(token);
+  if (!normalizedToken) {
+    return false;
+  }
+
+  if (KNOWN_REGION_TOKENS.includes(normalizedToken as (typeof KNOWN_REGION_TOKENS)[number])) {
+    return true;
+  }
+
+  return LOCATION_TOKEN_SUFFIXES.some((suffix) => normalizedToken.endsWith(suffix));
+}
+
+function extractRequestedLocationTokens(queryText: string): string[] {
+  const categoryTokens = new Set(
+    extractQueryKeywords(queryText).filter((token) =>
+      CATEGORY_SYNONYM_GROUPS.some((group) =>
+        group.some(
+          (term) =>
+            calculateTokenSimilarity(
+              token,
+              normalizeComparableText(term),
+              CATEGORY_SYNONYM_GROUPS
+            ) >= 0.64
+        )
+      )
+    )
+  );
+  const colorTokens = new Set(extractRequestedColorTokens(queryText));
+
+  return Array.from(
+    new Set(
+      extractQueryKeywords(queryText).filter((token) => {
+        const normalizedToken = normalizeComparableText(token);
+        return (
+          isLikelyLocationToken(normalizedToken) &&
+          !categoryTokens.has(token) &&
+          !colorTokens.has(normalizedToken) &&
+          !colorTokens.has(normalizeColorQueryToken(normalizedToken))
+        );
+      })
+    )
+  ).slice(0, 6);
+}
+
 function getRequestedColorScore(queryText: string, item: VectorCandidate["item"]) {
-  const queryKeywords = extractQueryKeywords(queryText);
+  const requestedColorTokens = extractRequestedColorTokens(queryText);
   const itemColorTokens = extractQueryKeywords(
     [item.title, item.color, item.description, item.tags?.join(" ")]
       .filter(Boolean)
       .join(" ")
-  );
-  const requestedColorTokens = queryKeywords.filter((keyword) =>
-    COLOR_SYNONYM_GROUPS.some((group) =>
-      group.some(
-        (term) =>
-          calculateTokenSimilarity(
-            keyword,
-            normalizeComparableText(term),
-            COLOR_SYNONYM_GROUPS
-          ) >= 0.64
-      )
-    )
   );
 
   if (requestedColorTokens.length === 0) {
@@ -2589,18 +2764,44 @@ function getRequestedColorScore(queryText: string, item: VectorCandidate["item"]
 }
 
 function hasRequestedColor(queryText: string): boolean {
-  return extractQueryKeywords(queryText).some((keyword) =>
-    COLOR_SYNONYM_GROUPS.some((group) =>
-      group.some(
-        (term) =>
-          calculateTokenSimilarity(
-            keyword,
-            normalizeComparableText(term),
-            COLOR_SYNONYM_GROUPS
-          ) >= 0.64
-      )
-    )
+  return extractRequestedColorTokens(queryText).length > 0;
+}
+
+function getRequestedLocationScore(queryText: string, item: VectorCandidate["item"]) {
+  const requestedLocationTokens = extractRequestedLocationTokens(queryText);
+  const itemLocationTokens = extractQueryKeywords(
+    [
+      item.location,
+      item.address,
+      item.placeName,
+      item.region1,
+      item.region2,
+      item.region3,
+      item.description,
+      item.title,
+      item.tags?.join(" "),
+    ]
+      .filter(Boolean)
+      .join(" ")
   );
+
+  if (requestedLocationTokens.length === 0) {
+    return 1;
+  }
+
+  const matchedLocationCount = requestedLocationTokens.filter((keyword) =>
+    itemLocationTokens.some(
+      (itemKeyword) =>
+        calculateTokenSimilarity(keyword, itemKeyword, LOCATION_SYNONYM_GROUPS) >=
+        0.64
+    )
+  ).length;
+
+  return matchedLocationCount / requestedLocationTokens.length;
+}
+
+function hasRequestedLocation(queryText: string): boolean {
+  return extractRequestedLocationTokens(queryText).length > 0;
 }
 
 type AiCandidateEvaluation = {
@@ -2619,6 +2820,7 @@ function evaluateAiSearchCandidate(params: {
   const evidence = getMatchedQueryKeywords(queryText, candidate.item);
   const categoryScore = getRequestedCategoryScore(queryText, candidate.item);
   const colorScore = getRequestedColorScore(queryText, candidate.item);
+  const locationScore = getRequestedLocationScore(queryText, candidate.item);
   const evidenceLabels: string[] = [];
   const hasDirectEvidence =
     evidence.matchedKeywords.length > 0 || evidence.overlapScore >= 0.18;
@@ -2649,7 +2851,11 @@ function evaluateAiSearchCandidate(params: {
   } else if (colorScore === 1 && hasRequestedColor(queryText)) {
     evidenceLabels.push("색상 유사");
   }
-  if (candidate.distanceKm !== null) {
+  if (
+    candidate.distanceKm !== null ||
+    (locationScore > 0 && locationScore < 1) ||
+    (locationScore === 1 && hasRequestedLocation(queryText))
+  ) {
     evidenceLabels.push("지역 일치");
   }
 
@@ -2663,7 +2869,9 @@ function evaluateAiSearchCandidate(params: {
   if (colorScore < 1) {
     scoreCap = Math.min(scoreCap, colorScore === 0 ? 0.7 : 0.8);
   }
-  evidenceLabels.push("신뢰도 반영");
+  if (locationScore < 1) {
+    scoreCap = Math.min(scoreCap, locationScore === 0 ? 0.72 : 0.84);
+  }
 
   return {
     keep: true,

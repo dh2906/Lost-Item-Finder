@@ -40,7 +40,6 @@ function getMatchEvidenceLabels(reasoning: string): string[] {
     [/크기|사이즈/, "크기 참고"],
     [/거리|위치|지역|장소/, "위치 반영"],
     [/날짜|기간|일 차이|일로/, "날짜 반영"],
-    [/점수|강한 후보|중간 수준/, "신뢰도 반영"],
   ];
 
   for (const [pattern, label] of checks) {
