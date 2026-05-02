@@ -1,4 +1,4 @@
-import { useState, useRef, type ChangeEvent, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useState, useRef, type ChangeEvent, type DragEvent, type KeyboardEvent } from "react";
 import { Link } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -6,7 +6,6 @@ import { z } from "zod";
 import { Sparkles, Image as ImageIcon, Search as SearchIcon, X, Loader2, PlusCircle, MapPin } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ItemCard } from "@/components/item-card";
@@ -46,7 +45,7 @@ const searchSchema = z
   });
 
 type SearchFormValues = z.infer<typeof searchSchema>;
-type LocationMode = "none" | "nearby" | "region" | "map";
+type LocationMode = "none" | "map";
 
 const searchRadiusOptions = [
   { value: 0.1, label: "100m" },
@@ -62,7 +61,6 @@ export default function SearchPage() {
   const [isDragActive, setIsDragActive] = useState(false);
   const [showLocation, setShowLocation] = useState(false);
   const [locationMode, setLocationMode] = useState<LocationMode>("none");
-  const [isLocating, setIsLocating] = useState(false);
   const { toast } = useToast();
   const searchMutation = useSearchSimilar();
 
@@ -139,14 +137,25 @@ export default function SearchPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleLocationChange = (location: { latitude: string; longitude: string }) => {
+  const handleLocationChange = useCallback((location: { latitude: string; longitude: string }) => {
     form.setValue("latitude", location.latitude);
     form.setValue("longitude", location.longitude);
     form.setValue("radiusKm", form.getValues("radiusKm") ?? 1);
-  };
+  }, [form]);
 
   const toggleLocation = () => {
-    setShowLocation(!showLocation);
+    setShowLocation((current) => {
+      const nextOpen = !current;
+      if (nextOpen) {
+        setLocationMode("map");
+        form.setValue("location", "");
+        form.setValue("radiusKm", form.getValues("radiusKm") ?? 1);
+      } else {
+        setLocationMode("none");
+        clearLocationFilters();
+      }
+      return nextOpen;
+    });
   };
 
   const clearLocationFilters = () => {
@@ -165,68 +174,18 @@ export default function SearchPage() {
       return;
     }
 
-    if (nextMode === "region") {
-      form.setValue("latitude", "");
-      form.setValue("longitude", "");
-      form.setValue("radiusKm", undefined);
-      return;
-    }
-
     form.setValue("location", "");
     form.setValue("radiusKm", form.getValues("radiusKm") ?? 1);
-  };
-
-  const handleUseCurrentLocation = () => {
-    if (!navigator.geolocation) {
-      toast({
-        variant: "destructive",
-        title: "현재 위치를 사용할 수 없습니다",
-        description: "브라우저에서 위치 기능을 지원하지 않습니다.",
-      });
-      return;
-    }
-
-    setIsLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        form.setValue("latitude", position.coords.latitude.toFixed(6));
-        form.setValue("longitude", position.coords.longitude.toFixed(6));
-        form.setValue("radiusKm", form.getValues("radiusKm") ?? 1);
-        setIsLocating(false);
-        toast({
-          title: "현재 위치를 적용했어요",
-          description: "설정한 반경 안의 습득물을 함께 비교합니다.",
-        });
-      },
-      () => {
-        setIsLocating(false);
-        toast({
-          variant: "destructive",
-          title: "위치 확인 실패",
-          description: "브라우저 위치 권한을 확인한 뒤 다시 시도해 주세요.",
-        });
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
   };
 
   const onSubmit = async (data: SearchFormValues) => {
     try {
       const payload = {
         ...data,
-        location: locationMode === "region" ? data.location?.trim() : undefined,
-        latitude:
-          locationMode === "nearby" || locationMode === "map"
-            ? data.latitude
-            : undefined,
-        longitude:
-          locationMode === "nearby" || locationMode === "map"
-            ? data.longitude
-            : undefined,
-        radiusKm:
-          locationMode === "nearby" || locationMode === "map"
-            ? data.radiusKm
-            : undefined,
+        location: undefined,
+        latitude: locationMode === "map" ? data.latitude : undefined,
+        longitude: locationMode === "map" ? data.longitude : undefined,
+        radiusKm: locationMode === "map" ? data.radiusKm : undefined,
       };
 
       await searchMutation.mutateAsync(payload);
@@ -380,14 +339,12 @@ export default function SearchPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">전체 지역</SelectItem>
-                          <SelectItem value="nearby">내 근처</SelectItem>
-                          <SelectItem value="region">지역명 직접 입력</SelectItem>
                           <SelectItem value="map">지도에서 위치 지정</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
-                    {(locationMode === "nearby" || locationMode === "map") && (
+                    {locationMode === "map" && (
                       <div className="space-y-1.5">
                         <label className="text-xs font-medium text-muted-foreground">반경</label>
                         <Select
@@ -408,31 +365,6 @@ export default function SearchPage() {
                       </div>
                     )}
                   </div>
-
-                  {locationMode === "nearby" && (
-                    <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-border/70 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-sm text-muted-foreground">
-                        {form.watch("latitude") && form.watch("longitude")
-                          ? `현재 위치 기준 ${searchRadiusOptions.find((option) => option.value === form.watch("radiusKm"))?.label ?? "1km"} 이내`
-                          : "현재 위치를 가져와 주변 습득물을 검색합니다."}
-                      </div>
-                      <Button type="button" variant="outline" className="rounded-xl" onClick={handleUseCurrentLocation} disabled={isLocating}>
-                        {isLocating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <MapPin className="mr-2 h-4 w-4" />}
-                        현재 위치 사용
-                      </Button>
-                    </div>
-                  )}
-
-                  {locationMode === "region" && (
-                    <div className="mt-3 space-y-1.5">
-                      <label className="text-xs font-medium text-muted-foreground">지역명</label>
-                      <Input
-                        placeholder="예: 아산시, 서울특별시 강남구, 충청남도 천안시 동남구"
-                        className="h-11 rounded-2xl bg-white"
-                        {...form.register("location")}
-                      />
-                    </div>
-                  )}
 
                   {locationMode === "map" && (
                     <div className="mt-3 overflow-hidden rounded-[20px] border border-border/70 bg-white shadow-card">

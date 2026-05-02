@@ -20,6 +20,20 @@ interface MarkerPosition {
   lng: number;
 }
 
+function areSamePosition(
+  current: MarkerPosition | null,
+  next: MarkerPosition
+): boolean {
+  if (!current) {
+    return false;
+  }
+
+  return (
+    Math.abs(current.lat - next.lat) < 0.000001 &&
+    Math.abs(current.lng - next.lng) < 0.000001
+  );
+}
+
 export function LocationPicker({ value, onChange, height = "300px" }: LocationPickerProps) {
   const [loading, error] = useKakaoLoader({
     appkey: import.meta.env.VITE_KAKAO_MAP_KEY || "",
@@ -39,6 +53,8 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [isSearchingPlace, setIsSearchingPlace] = useState(false);
   const mapRef = useRef<kakao.maps.Map | null>(null);
+  const initializedRef = useRef(false);
+  const manualSelectionRef = useRef(false);
 
   const syncCoordinates = useCallback(
     (nextPosition: MarkerPosition, nextAddress?: string, nextPlaceName?: string) => {
@@ -71,22 +87,43 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
     });
   }, [syncCoordinates]);
 
-  // 초기 위치 설정 (GPS 또는 기본값)
+  // 초기 위치 설정 (GPS 또는 기본값). 이후 사용자가 클릭한 좌표는 다시 GPS로 덮지 않는다.
   useEffect(() => {
     if (value?.latitude && value?.longitude) {
       const nextPosition = {
         lat: parseFloat(value.latitude),
         lng: parseFloat(value.longitude),
       };
-      setPosition(nextPosition);
-      getAddressFromCoords(nextPosition.lat, nextPosition.lng);
+
+      if (!Number.isFinite(nextPosition.lat) || !Number.isFinite(nextPosition.lng)) {
+        return;
+      }
+
+      setPosition((currentPosition) => {
+        if (areSamePosition(currentPosition, nextPosition)) {
+          return currentPosition;
+        }
+        getAddressFromCoords(nextPosition.lat, nextPosition.lng);
+        return nextPosition;
+      });
       setIsLocating(false);
       return;
     }
 
+    if (initializedRef.current) {
+      return;
+    }
+
+    initializedRef.current = true;
+
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
+          if (manualSelectionRef.current) {
+            setIsLocating(false);
+            return;
+          }
+
           const nextPosition = {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
@@ -117,6 +154,7 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
   const handlePositionChange = (marker: any) => {
     const pos = marker.getPosition();
     const newPosition = { lat: pos.getLat(), lng: pos.getLng() };
+    manualSelectionRef.current = true;
     setPosition(newPosition);
     getAddressFromCoords(newPosition.lat, newPosition.lng);
   };
@@ -124,6 +162,7 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
   const handleMapClick = (_: any, mouseEvent: any) => {
     const latlng = mouseEvent.latLng;
     const newPosition = { lat: latlng.getLat(), lng: latlng.getLng() };
+    manualSelectionRef.current = true;
     setPosition(newPosition);
     getAddressFromCoords(newPosition.lat, newPosition.lng);
   };
@@ -145,6 +184,7 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
           lat: pos.coords.latitude,
           lng: pos.coords.longitude,
         };
+        manualSelectionRef.current = false;
         setPosition(newPosition);
         getAddressFromCoords(newPosition.lat, newPosition.lng);
         setIsGettingLocation(false);
@@ -191,6 +231,7 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
         firstResult.road_address_name || firstResult.address_name || keyword;
       const nextPlaceName = firstResult.place_name || keyword;
 
+      manualSelectionRef.current = true;
       setPosition(nextPosition);
       setAddress(
         nextAddress && nextPlaceName && !nextAddress.includes(nextPlaceName)
