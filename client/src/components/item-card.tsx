@@ -89,6 +89,31 @@ function splitLocation(location?: string | null): {
   };
 }
 
+function getMatchEvidenceLabels(reasoning?: string): string[] {
+  if (!reasoning) {
+    return [];
+  }
+
+  const labels: string[] = [];
+  const checks: Array<[RegExp, string]> = [
+    [/키워드|표현|특징|태그/, "특징 일치"],
+    [/카테고리|분류/, "분류 유사"],
+    [/색상|색깔/, "색상 유사"],
+    [/크기|사이즈/, "크기 참고"],
+    [/거리|위치|지역|장소/, "위치 반영"],
+    [/날짜|기간|일 차이|일로/, "날짜 반영"],
+    [/점수|강한 후보|중간 수준/, "신뢰도 반영"],
+  ];
+
+  for (const [pattern, label] of checks) {
+    if (pattern.test(reasoning) && !labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+
+  return labels.slice(0, 4);
+}
+
 export function ItemCard({
   item,
   score,
@@ -115,6 +140,7 @@ export function ItemCard({
     primaryImageUrl && !(isLost112Item && isPlaceholderImageUrl(primaryImageUrl));
   const displayLocation = splitLocation(item.location);
   const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
+  const matchEvidenceLabels = getMatchEvidenceLabels(reasoning);
 
   const getMatchBadge = (scoreValue?: number) => {
     if (scoreValue === undefined) return null;
@@ -314,6 +340,18 @@ export function ItemCard({
 
             {!isCompact && reasoning ? (
               <div className="mt-2 overflow-hidden rounded-xl border border-primary/10 bg-accent transition-colors">
+                {matchEvidenceLabels.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 border-b border-primary/10 px-3 py-2">
+                    {matchEvidenceLabels.map((label) => (
+                      <span
+                        key={label}
+                        className="inline-flex items-center rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-primary"
+                      >
+                        {label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   onClick={toggleReason}

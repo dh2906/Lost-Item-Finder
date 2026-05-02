@@ -215,11 +215,7 @@ export function Layout({ children }: { children: ReactNode }) {
                     >
                       <button
                         type="button"
-                        onClick={() =>
-                          setOpenNavMenu((current) =>
-                            current === item.href ? null : item.href
-                          )
-                        }
+                        onClick={() => handleMenuNavigate(item.href)}
                         className={cn(
                           "relative inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200",
                           active || isOpen

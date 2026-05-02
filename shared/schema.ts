@@ -52,6 +52,9 @@ export const items = pgTable(
     longitude: text("longitude"),
     date: timestamp("date").defaultNow(),
     contactInfo: text("contact_info"),
+    // External fields are reserved for third-party source records such as
+    // Lost112. User-created posts keep these null so source-specific behavior
+    // stays explicit at the data boundary.
     externalSource: text("external_source"),
     externalId: text("external_id"),
     externalUrl: text("external_url"),

@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Sparkles,
   SearchX,
   XCircle,
 } from "lucide-react";
@@ -29,6 +30,27 @@ const statusLabels = {
 
 const PAGE_SIZE = 8;
 type MatchFilter = "active" | "saved" | "hidden";
+
+function getMatchEvidenceLabels(reasoning: string): string[] {
+  const labels: string[] = [];
+  const checks: Array<[RegExp, string]> = [
+    [/키워드|표현|특징|태그/, "특징 일치"],
+    [/카테고리|분류/, "분류 유사"],
+    [/색상|색깔/, "색상 유사"],
+    [/크기|사이즈/, "크기 참고"],
+    [/거리|위치|지역|장소/, "위치 반영"],
+    [/날짜|기간|일 차이|일로/, "날짜 반영"],
+    [/점수|강한 후보|중간 수준/, "신뢰도 반영"],
+  ];
+
+  for (const [pattern, label] of checks) {
+    if (pattern.test(reasoning) && !labels.includes(label)) {
+      labels.push(label);
+    }
+  }
+
+  return labels.slice(0, 5);
+}
 
 export default function MatchesPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -224,6 +246,22 @@ export default function MatchesPage() {
                             매칭 점수 {Math.round(match.score * 100)}%
                           </Badge>
                           <span>내 분실물: {getDisplayTitle(match.lostItem)}</span>
+                        </div>
+                        <div className="rounded-xl border border-primary/10 bg-accent/70 px-3 py-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Sparkles className="h-3.5 w-3.5 text-primary" />
+                            {getMatchEvidenceLabels(match.matchReason).map((label) => (
+                              <span
+                                key={label}
+                                className="rounded-md bg-white px-2 py-1 text-[11px] font-semibold text-primary"
+                              >
+                                {label}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="mt-2 break-keep text-xs leading-5 text-muted-foreground [word-break:keep-all]">
+                            {match.matchReason}
+                          </p>
                         </div>
                         <ItemCard
                           item={match.foundItem}

@@ -73,6 +73,9 @@ const EMBEDDING_DIMENSIONS = Number(
     768
 );
 const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
+const LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT = Number(
+  process.env.LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT ?? 500
+);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 12);
 const AUTO_MATCH_RESULT_COUNT = Number(
   process.env.AUTO_MATCH_RESULT_COUNT ?? 5
@@ -85,6 +88,9 @@ const AUTO_MATCH_JOB_TIMEOUT_MS = Number(
 );
 const MIN_VECTOR_MATCH_SCORE = Number(
   process.env.MIN_VECTOR_MATCH_SCORE ?? 0.22
+);
+const MIN_LOCATION_VECTOR_MATCH_SCORE = Number(
+  process.env.MIN_LOCATION_VECTOR_MATCH_SCORE ?? 0.08
 );
 const MIN_FINAL_MATCH_SCORE = Number(process.env.MIN_FINAL_MATCH_SCORE ?? 0.42);
 const MIN_FALLBACK_MATCH_SCORE = Number(
@@ -2134,6 +2140,10 @@ function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
   return normalizedItem;
 }
 
+function buildDuplicateItemWindowStart(): Date {
+  return new Date(Date.now() - 5000);
+}
+
 function areSameNormalizedValue(
   left?: string | null,
   right?: string | null
@@ -2676,12 +2686,25 @@ function buildAutomaticMatchReason(params: {
   distanceKm: number | null;
 }): string {
   const { sourceItem, candidateItem, score, distanceKm } = params;
-  return buildReasoningFromEvidence({
+  const baseReason = buildReasoningFromEvidence({
     queryText: buildItemSearchText(sourceItem),
     item: candidateItem,
     matchScore: score,
     distanceKm,
   });
+  const dateScore = calculateDateClosenessScore(sourceItem, candidateItem);
+  if (dateScore <= 0 || !sourceItem.date || !candidateItem.date) {
+    return baseReason;
+  }
+
+  const diffDays = Math.abs(
+    Math.round(
+      (new Date(sourceItem.date).getTime() -
+        new Date(candidateItem.date).getTime()) /
+        (1000 * 60 * 60 * 24)
+    )
+  );
+  return `${baseReason} 날짜 차이는 약 ${diffDays}일로 자동 매칭 기준에 함께 반영했습니다.`;
 }
 
 function getAutomaticRerankImageUrl(item: FoundItemForAutoMatch): string | undefined {
@@ -4060,6 +4083,21 @@ export async function registerRoutes(
         input.title
       );
       const normalizedInput = normalizeItemMetadata(input);
+      const duplicateItem = await storage.findRecentDuplicateUserItem(
+        {
+          ...normalizedInput,
+          userId: req.user?.id ?? null,
+        },
+        buildDuplicateItemWindowStart()
+      );
+
+      if (duplicateItem) {
+        return res.status(201).json({
+          ...duplicateItem,
+          automaticMatchCount: 0,
+        });
+      }
+
       const item = await storage.createItem({
         ...normalizedInput,
         userId: req.user?.id ?? null,
@@ -4420,6 +4458,13 @@ export async function registerRoutes(
       const effectiveRadiusKm = searchCoordinates
         ? radiusKm ?? DEFAULT_AI_SEARCH_RADIUS_KM
         : undefined;
+      const hasLocationConstraint = Boolean(searchLocation || searchCoordinates);
+      const vectorCandidateCount = hasLocationConstraint
+        ? Math.max(VECTOR_CANDIDATE_COUNT, LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT)
+        : VECTOR_CANDIDATE_COUNT;
+      const minVectorMatchScore = hasLocationConstraint
+        ? MIN_LOCATION_VECTOR_MATCH_SCORE
+        : MIN_VECTOR_MATCH_SCORE;
       await backfillItemEmbeddings("found");
 
       const queryParts: string[] = [];
@@ -4449,11 +4494,11 @@ export async function registerRoutes(
       const vectorMatches = await storage.searchItemsByEmbedding(
         "found",
         queryEmbedding,
-        VECTOR_CANDIDATE_COUNT
+        vectorCandidateCount
       );
 
       const filteredVectorMatches: RankedVectorCandidate[] = vectorMatches
-        .filter((result) => result.score >= MIN_VECTOR_MATCH_SCORE)
+        .filter((result) => result.score >= minVectorMatchScore)
         .map((result) => {
           const itemLatitude = parseCoordinate(result.item.latitude);
           const itemLongitude = parseCoordinate(result.item.longitude);

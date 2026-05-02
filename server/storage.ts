@@ -215,6 +215,10 @@ export interface IStorage {
     filters?: { type?: "lost" | "found"; status?: ItemStatus }
   ): Promise<Item[]>;
   getItem(id: number): Promise<Item | undefined>;
+  findRecentDuplicateUserItem(
+    item: InsertItem & { userId?: number | null },
+    since: Date
+  ): Promise<Item | undefined>;
   createItem(item: InsertItem & { userId?: number | null }): Promise<Item>;
   upsertExternalFoundItem(item: ExternalFoundItemInput): Promise<{
     item: Item;
@@ -523,6 +527,44 @@ export class DatabaseStorage implements IStorage {
   async getItem(id: number): Promise<Item | undefined> {
     const [item] = await db.select().from(items).where(eq(items.id, id));
     return item;
+  }
+
+  async findRecentDuplicateUserItem(
+    item: InsertItem & { userId?: number | null },
+    since: Date
+  ): Promise<Item | undefined> {
+    const conditions = [
+      eq(items.reportType, item.reportType),
+      eq(items.title, item.title),
+      gte(items.date, since),
+    ];
+
+    if (item.userId) {
+      conditions.push(eq(items.userId, item.userId));
+    } else {
+      conditions.push(isNull(items.userId));
+    }
+
+    if (item.description) {
+      conditions.push(eq(items.description, item.description));
+    } else {
+      conditions.push(isNull(items.description));
+    }
+
+    if (item.imageUrl) {
+      conditions.push(eq(items.imageUrl, item.imageUrl));
+    } else {
+      conditions.push(isNull(items.imageUrl));
+    }
+
+    const [duplicateItem] = await db
+      .select()
+      .from(items)
+      .where(and(...conditions))
+      .orderBy(desc(items.id))
+      .limit(1);
+
+    return duplicateItem;
   }
 
   async createItem(insertItem: InsertItem & { userId?: number | null }): Promise<Item> {

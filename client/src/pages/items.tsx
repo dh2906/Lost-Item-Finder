@@ -32,7 +32,7 @@ type ItemTab = "found" | "lost";
 type ItemDateRange = "all" | "7d" | "30d" | "90d";
 type ItemSortOrder = "latest" | "oldest";
 type ItemSourceFilter = "all" | "user" | "lost112";
-const ITEMS_PAGE_SIZE = 24;
+const ITEMS_PAGE_SIZE = 16;
 
 type ItemsPageFilters = {
   type: ItemTab;

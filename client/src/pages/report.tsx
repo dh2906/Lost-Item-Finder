@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { useLocation } from "wouter";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { Redirect, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -141,6 +141,14 @@ function getStepFromPath(pathname: string): ReportStep {
   return reportStepBySlug[slug] ?? 1;
 }
 
+function isReportFlowPath(pathname: string): boolean {
+  return (
+    pathname === "/report" ||
+    pathname.startsWith("/report/") ||
+    /^\/item\/\d+\/edit(?:\/|$)/.test(pathname)
+  );
+}
+
 function LoadingState() {
   return (
     <Layout>
@@ -194,6 +202,8 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   );
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [completedItemId, setCompletedItemId] = useState<number | null>(null);
+  const isFinalSubmitInFlightRef = useRef(false);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -215,7 +225,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     },
   });
 
-  const getReportStepPath = (step: ReportStep) => {
+  const getReportStepPath = useCallback((step: ReportStep) => {
     const slug = reportStepSlugs[step];
 
     if (isEditMode && itemId) {
@@ -226,7 +236,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     const queryString =
       !forcedType && reportType === "lost" ? "?type=lost" : "";
     return `${basePath}/${slug}${queryString}`;
-  };
+  }, [forcedType, isEditMode, itemId, reportType]);
 
   const navigateToStep = (step: ReportStep) => {
     setCurrentStep(step);
@@ -234,19 +244,31 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   };
 
   useEffect(() => {
+    if (completedItemId !== null) {
+      return;
+    }
+
     const nextStep = getStepFromPath(location.split("?")[0]);
     setCurrentStep(nextStep);
-  }, [location]);
+  }, [completedItemId, location]);
 
   useEffect(() => {
+    if (completedItemId !== null) {
+      return;
+    }
+
     const path = location.split("?")[0];
+    if (!isReportFlowPath(path)) {
+      return;
+    }
+
     const hasExplicitStep =
       path.split("/").some((segment) => reportStepBySlug[segment] !== undefined);
 
     if (!hasExplicitStep) {
       setLocation(getReportStepPath(currentStep));
     }
-  }, [currentStep, getReportStepPath, location, setLocation]);
+  }, [completedItemId, currentStep, getReportStepPath, location, setLocation]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -501,6 +523,10 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   };
 
   const onSubmit = async (data: FormValues) => {
+    if (completedItemId !== null || isFinalSubmitInFlightRef.current) {
+      return;
+    }
+
     if (currentStep !== 4) {
       navigateToStep(4);
       return;
@@ -524,6 +550,8 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     }
 
     try {
+      isFinalSubmitInFlightRef.current = true;
+
       if (isEditMode && itemId) {
         await updateMutation.mutateAsync({
           itemId,
@@ -548,6 +576,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
           title: "게시글이 수정되었어요.",
           description: "변경 내용이 바로 반영되었어요.",
         });
+        setCompletedItemId(itemId);
         setLocation(`/item/${itemId}`);
         return;
       }
@@ -558,11 +587,13 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       });
 
       toast({
-          title: "물건 정보가 등록되었어요.",
+        title: "물건 정보가 등록되었어요.",
         description: "상세 페이지로 이동합니다.",
       });
+      setCompletedItemId(createdItem.id);
       setLocation(`/item/${createdItem.id}`);
     } catch (error) {
+      isFinalSubmitInFlightRef.current = false;
       const description =
         error instanceof Error ? error.message : "처리 중 문제가 발생했습니다.";
 
@@ -660,9 +691,17 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     );
   }
 
+  if (completedItemId !== null) {
+    return <Redirect to={`/item/${completedItemId}`} />;
+  }
+
   const currentConfig = config[reportType];
   const isSubmitting =
-    createMutation.isPending || updateMutation.isPending || isAnalyzing;
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    isAnalyzing ||
+    isFinalSubmitInFlightRef.current ||
+    completedItemId !== null;
   const pageTitle = isEditMode
     ? reportType === "found"
       ? "주운 물건 정보 수정"
@@ -1241,6 +1280,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                   type="submit"
                   className="h-11 min-w-[180px] rounded-lg px-5 font-semibold"
                   disabled={isSubmitting}
+                  aria-busy={isSubmitting}
                 >
                   {isSubmitting ? (
                     <>
