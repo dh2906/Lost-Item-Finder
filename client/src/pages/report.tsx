@@ -119,20 +119,24 @@ const config = {
   }
 >;
 
-function getInitialReportType(forcedType?: ReportType): ReportType {
+function getInitialReportType(
+  forcedType?: ReportType,
+  pathname = window.location.pathname,
+  search = window.location.search
+): ReportType {
   if (forcedType) {
     return forcedType;
   }
 
-  if (window.location.pathname === "/report/lost") {
+  if (pathname === "/report/lost" || pathname.startsWith("/report/lost/")) {
     return "lost";
   }
 
-  if (window.location.pathname === "/report/found") {
+  if (pathname === "/report/found" || pathname.startsWith("/report/found/")) {
     return "found";
   }
 
-  const params = new URLSearchParams(window.location.search);
+  const params = new URLSearchParams(search);
   return params.get("type") === "lost" ? "lost" : "found";
 }
 
@@ -185,6 +189,7 @@ function ReviewField({
 export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const isEditMode = typeof itemId === "number" && itemId > 0;
   const [location, setLocation] = useLocation();
+  const [pathname, search = ""] = location.split("?");
   const { toast } = useToast();
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -195,10 +200,10 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const updateMutation = useUpdateItem();
 
   const [reportType, setReportType] = useState<ReportType>(() =>
-    getInitialReportType(forcedType)
+    getInitialReportType(forcedType, pathname, search)
   );
   const [currentStep, setCurrentStep] = useState<ReportStep>(() =>
-    getStepFromPath(window.location.pathname)
+    getStepFromPath(pathname)
   );
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -208,7 +213,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      reportType: getInitialReportType(forcedType),
+      reportType: getInitialReportType(forcedType, pathname, search),
       title: "",
       description: "",
       itemCategory: "",
@@ -225,16 +230,16 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     },
   });
 
-  const getReportStepPath = useCallback((step: ReportStep) => {
+  const getReportStepPath = useCallback((step: ReportStep, targetType = reportType) => {
     const slug = reportStepSlugs[step];
 
     if (isEditMode && itemId) {
       return `/item/${itemId}/edit/${slug}`;
     }
 
-    const basePath = forcedType ? `/report/${forcedType}` : "/report";
+    const basePath = forcedType ? `/report/${targetType}` : "/report";
     const queryString =
-      !forcedType && reportType === "lost" ? "?type=lost" : "";
+      !forcedType && targetType === "lost" ? "?type=lost" : "";
     return `${basePath}/${slug}${queryString}`;
   }, [forcedType, isEditMode, itemId, reportType]);
 
@@ -275,13 +280,13 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       return;
     }
 
-    const nextReportType = getInitialReportType(forcedType);
+    const nextReportType = getInitialReportType(forcedType, pathname, search);
     setReportType(nextReportType);
     form.setValue("reportType", nextReportType, {
       shouldDirty: false,
       shouldTouch: false,
     });
-  }, [forcedType, form, isEditMode, location]);
+  }, [forcedType, form, isEditMode, pathname, search]);
 
   useEffect(() => {
     if (!isEditMode || !existingItem) {
