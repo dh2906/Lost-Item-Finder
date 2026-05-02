@@ -205,69 +205,55 @@ export function Layout({ children }: { children: ReactNode }) {
                       location.startsWith(`${itemPath}/`));
 
                 if (item.children?.length) {
-                  const isOpen = openNavMenu === item.href;
                   return (
-                    <div
-                      key={item.href}
-                      className="relative"
-                      onMouseEnter={() => setOpenNavMenu(item.href)}
-                      onMouseLeave={() => setOpenNavMenu(null)}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleMenuNavigate(item.href)}
+                    <details key={item.href} className="group relative">
+                      <summary
                         className={cn(
-                          "relative inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200",
-                          active || isOpen
+                          "relative inline-flex cursor-pointer list-none items-center rounded-lg px-3.5 py-2 text-sm font-semibold transition-all duration-200 [&::-webkit-details-marker]:hidden",
+                          active
                             ? "bg-primary text-primary-foreground"
                             : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                         )}
                       >
                         {item.label}
-                        <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
-                      </button>
+                        <ChevronDown className="ml-1.5 h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+                      </summary>
+                      <div className="absolute left-1/2 top-full z-50 mt-3 hidden w-64 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_12px_rgba(0,0,0,0.10)] group-open:block">
+                        {item.children.map((child) => {
+                          const childPath = child.href.split("?")[0];
+                          const isChildActive =
+                            location === childPath ||
+                            location.startsWith(`${childPath}?`) ||
+                            location.startsWith(`${childPath}/`);
 
-                      {isOpen && (
-                        <>
-                          <div
-                            className="absolute inset-x-0 top-full h-4"
-                            aria-hidden="true"
-                          />
-                          <div className="absolute left-1/2 top-full z-50 mt-3 w-64 -translate-x-1/2 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-[0_4px_12px_rgba(0,0,0,0.10)]">
-                            {item.children.map((child) => {
-                              const childPath = child.href.split("?")[0];
-                              const isChildActive =
-                                location === childPath ||
-                                location.startsWith(`${childPath}?`) ||
-                                location.startsWith(`${childPath}/`);
-
-                              return (
-                                <button
-                                  key={child.href}
-                                  type="button"
-                                  onClick={() => handleMenuNavigate(child.href)}
-                                  className={cn(
-                                    "block w-full rounded-lg px-3 py-2.5 text-left text-sm transition-colors",
-                                    isChildActive
-                                      ? "bg-accent text-accent-foreground"
-                                      : "text-foreground hover:bg-accent hover:text-accent-foreground"
-                                  )}
-                                >
-                                  <span className="block font-semibold">
-                                    {child.label}
+                          return (
+                            <a
+                              key={child.href}
+                              href={child.href}
+                              onClick={() => {
+                                setOpenNavMenu(null);
+                                setMobileMenuOpen(false);
+                              }}
+                              className={cn(
+                                "block w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
+                                isChildActive
+                                  ? "bg-accent text-accent-foreground"
+                                  : "text-foreground"
+                              )}
+                            >
+                              <span className="flex min-w-0 flex-col">
+                                <span className="font-semibold">{child.label}</span>
+                                {child.description ? (
+                                  <span className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                                    {child.description}
                                   </span>
-                                  {child.description ? (
-                                    <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                                      {child.description}
-                                    </span>
-                                  ) : null}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </>
-                      )}
-                    </div>
+                                ) : null}
+                              </span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </details>
                   );
                 }
 
