@@ -441,6 +441,7 @@ export default function SearchPage() {
                         item={result.item}
                         score={result.score}
                         reasoning={result.reasoning}
+                        evidenceLabels={result.evidenceLabels}
                         distanceText={typeof result.distanceKm === "number" ? formatDistance(result.distanceKm) : undefined}
                         imageLoading={index < 3 ? "eager" : "lazy"}
                       />

@@ -541,6 +541,7 @@ export const api = {
             item: z.custom<typeof items.$inferSelect>(),
             score: z.number(),
             reasoning: z.string(),
+            evidenceLabels: z.array(z.string()).optional(),
             distanceKm: z.number().nullable().optional(),
           })
         ),

@@ -2539,6 +2539,21 @@ function getRequestedCategoryScore(queryText: string, item: VectorCandidate["ite
   return matchedCategoryCount / requestedCategoryTokens.length;
 }
 
+function hasRequestedCategory(queryText: string): boolean {
+  return extractQueryKeywords(queryText).some((keyword) =>
+    CATEGORY_SYNONYM_GROUPS.some((group) =>
+      group.some(
+        (term) =>
+          calculateTokenSimilarity(
+            keyword,
+            normalizeComparableText(term),
+            CATEGORY_SYNONYM_GROUPS
+          ) >= 0.64
+      )
+    )
+  );
+}
+
 function getRequestedColorScore(queryText: string, item: VectorCandidate["item"]) {
   const queryKeywords = extractQueryKeywords(queryText);
   const itemColorTokens = extractQueryKeywords(
@@ -2573,30 +2588,69 @@ function getRequestedColorScore(queryText: string, item: VectorCandidate["item"]
   return matchedColorCount / requestedColorTokens.length;
 }
 
+function hasRequestedColor(queryText: string): boolean {
+  return extractQueryKeywords(queryText).some((keyword) =>
+    COLOR_SYNONYM_GROUPS.some((group) =>
+      group.some(
+        (term) =>
+          calculateTokenSimilarity(
+            keyword,
+            normalizeComparableText(term),
+            COLOR_SYNONYM_GROUPS
+          ) >= 0.64
+      )
+    )
+  );
+}
+
+type AiCandidateEvaluation = {
+  keep: boolean;
+  scoreCap: number;
+  evidenceLabels: string[];
+};
+
 function evaluateAiSearchCandidate(params: {
   queryText: string;
   candidate: RankedVectorCandidate;
   hasLocationConstraint: boolean;
   rerankEnabled: boolean;
-}): { keep: boolean; scoreCap: number } {
+}): AiCandidateEvaluation {
   const { queryText, candidate, hasLocationConstraint, rerankEnabled } = params;
   const evidence = getMatchedQueryKeywords(queryText, candidate.item);
   const categoryScore = getRequestedCategoryScore(queryText, candidate.item);
   const colorScore = getRequestedColorScore(queryText, candidate.item);
+  const evidenceLabels: string[] = [];
   const hasDirectEvidence =
     evidence.matchedKeywords.length > 0 || evidence.overlapScore >= 0.18;
   const weakSemanticMatch = candidate.score < 0.18 && evidence.overlapScore < 0.16;
 
   if (categoryScore === 0 && candidate.score < 0.55) {
-    return { keep: false, scoreCap: 0 };
+    return { keep: false, scoreCap: 0, evidenceLabels: [] };
   }
 
   if (!hasDirectEvidence && weakSemanticMatch) {
-    return { keep: false, scoreCap: 0 };
+    return { keep: false, scoreCap: 0, evidenceLabels: [] };
   }
 
   if (hasLocationConstraint && !hasDirectEvidence && candidate.score < 0.28) {
-    return { keep: false, scoreCap: 0 };
+    return { keep: false, scoreCap: 0, evidenceLabels: [] };
+  }
+
+  if (hasDirectEvidence) {
+    evidenceLabels.push("특징 일치");
+  }
+  if (categoryScore > 0 && categoryScore < 1) {
+    evidenceLabels.push("분류 유사");
+  } else if (categoryScore === 1 && hasRequestedCategory(queryText)) {
+    evidenceLabels.push("분류 유사");
+  }
+  if (colorScore > 0 && colorScore < 1) {
+    evidenceLabels.push("색상 유사");
+  } else if (colorScore === 1 && hasRequestedColor(queryText)) {
+    evidenceLabels.push("색상 유사");
+  }
+  if (candidate.distanceKm !== null) {
+    evidenceLabels.push("지역 일치");
   }
 
   let scoreCap = rerankEnabled ? 0.96 : 0.82;
@@ -2609,8 +2663,13 @@ function evaluateAiSearchCandidate(params: {
   if (colorScore < 1) {
     scoreCap = Math.min(scoreCap, colorScore === 0 ? 0.7 : 0.8);
   }
+  evidenceLabels.push("신뢰도 반영");
 
-  return { keep: true, scoreCap };
+  return {
+    keep: true,
+    scoreCap,
+    evidenceLabels: Array.from(new Set(evidenceLabels)).slice(0, 5),
+  };
 }
 
 function rescaleAiSearchScores<T extends AiSearchResult>(
@@ -3598,6 +3657,7 @@ type AiSearchResult = {
   item: VectorCandidate["item"];
   score: number;
   scoreCap?: number;
+  evidenceLabels?: string[];
   distanceKm: number | null;
   reasoning: string;
   llmReasoning?: string;
@@ -4812,6 +4872,8 @@ export async function registerRoutes(
             item: vectorMatch.item,
             score: blendedScore,
             scoreCap: candidateEvaluationById.get(vectorMatch.item.id)?.scoreCap,
+            evidenceLabels: candidateEvaluationById.get(vectorMatch.item.id)
+              ?.evidenceLabels,
             distanceKm: vectorMatch.distanceKm,
             llmReasoning: result.reasoning,
             reasoning: buildReasoningFromEvidence({
@@ -4849,6 +4911,8 @@ export async function registerRoutes(
               item: result.item,
               score,
               scoreCap: candidateEvaluationById.get(result.item.id)?.scoreCap,
+              evidenceLabels: candidateEvaluationById.get(result.item.id)
+                ?.evidenceLabels,
               distanceKm: result.distanceKm,
               reasoning: buildReasoningFromEvidence({
                 queryText,

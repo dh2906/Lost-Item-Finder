@@ -24,6 +24,7 @@ interface ItemCardProps {
   item: Item;
   score?: number;
   reasoning?: string;
+  evidenceLabels?: string[];
   distanceText?: string;
   className?: string;
   variant?: "default" | "compact" | "list";
@@ -91,8 +92,12 @@ function splitLocation(location?: string | null): {
 
 function getMatchEvidenceLabels(
   reasoning?: string,
-  options?: { hasDistance?: boolean; hasScore?: boolean }
+  options?: { explicitLabels?: string[]; hasDistance?: boolean; hasScore?: boolean }
 ): string[] {
+  if (options?.explicitLabels?.length) {
+    return Array.from(new Set(options.explicitLabels)).slice(0, 5);
+  }
+
   if (!reasoning) {
     return options?.hasDistance || options?.hasScore
       ? [
@@ -133,6 +138,7 @@ export function ItemCard({
   item,
   score,
   reasoning,
+  evidenceLabels,
   distanceText,
   className,
   variant = "default",
@@ -155,6 +161,7 @@ export function ItemCard({
   const displayLocation = splitLocation(item.location);
   const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
   const matchEvidenceLabels = getMatchEvidenceLabels(reasoning, {
+    explicitLabels: evidenceLabels,
     hasDistance: Boolean(distanceText),
     hasScore: score !== undefined,
   });
