@@ -7,7 +7,7 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
-  ImageOff,
+  CameraOff,
   ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -172,7 +172,7 @@ export function ItemCard({
               />
             ) : (
               <div className="flex h-full w-full flex-col items-center justify-center gap-2 border-b border-dashed border-border bg-[linear-gradient(180deg,hsl(var(--secondary))_0%,white_100%)] px-4 text-center">
-                <ImageOff className="h-8 w-8 text-primary/55" />
+                <CameraOff className="h-8 w-8 text-primary/55" />
                 <div className="space-y-1">
                   <span className="block text-xs font-semibold text-foreground/75">
                     {isLost112Item ? "제공된 사진 없음" : "사진 없음"}

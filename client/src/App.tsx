@@ -39,17 +39,32 @@ function DefaultReportPage() {
   return <ReportPage />;
 }
 
+const reportStepPattern = /\/(photo|info|location|confirm)$/;
+
+function getTransitionKey(location: string): string {
+  const [path, query = ""] = location.split("?");
+
+  if (
+    /^\/report\/(found|lost)\/(photo|info|location|confirm)$/.test(path) ||
+    /^\/item\/\d+\/edit\/(photo|info|location|confirm)$/.test(path)
+  ) {
+    return `${path.replace(reportStepPattern, "")}${query ? `?${query}` : ""}`;
+  }
+
+  return location;
+}
+
 function getPageTitle(location: string): string {
   const path = location.split("?")[0];
 
   if (path === "/") return "Findy - 분실물 매칭 서비스";
   if (path === "/install") return "앱 설치 | Findy";
-  if (path === "/report/found") return "주운 물건 등록 | Findy";
-  if (path === "/report/lost") return "잃어버린 물건 등록 | Findy";
-  if (path === "/report") return "물건 등록 | Findy";
+  if (path === "/report/found" || path.startsWith("/report/found/")) return "주운 물건 등록 | Findy";
+  if (path === "/report/lost" || path.startsWith("/report/lost/")) return "잃어버린 물건 등록 | Findy";
+  if (path === "/report" || path.startsWith("/report/")) return "물건 등록 | Findy";
   if (path === "/search") return "분실물 찾기 | Findy";
   if (path === "/items") return "습득물 찾기 | Findy";
-  if (path.startsWith("/item/") && path.endsWith("/edit")) return "게시글 수정 | Findy";
+  if (/^\/item\/\d+\/edit(\/.*)?$/.test(path)) return "게시글 수정 | Findy";
   if (path.startsWith("/item/")) return "게시글 상세 | Findy";
   if (path === "/mypage") return "마이페이지 | Findy";
   if (path === "/admin") return "관리자 | Findy";
@@ -64,6 +79,7 @@ function getPageTitle(location: string): string {
 
 function Router() {
   const [location] = useLocation();
+  const transitionKey = getTransitionKey(location);
 
   useEffect(() => {
     document.title = getPageTitle(location);
@@ -73,7 +89,7 @@ function Router() {
   return (
     <AnimatePresence mode="wait" initial={false}>
       <motion.div
-        key={location}
+        key={transitionKey}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -6 }}
@@ -82,14 +98,29 @@ function Router() {
         <Switch location={location}>
           <Route path="/" component={Home} />
           <Route path="/install" component={InstallPage} />
+          <Route path="/report/found/:step">
+            <ProtectedRoute>
+              <FoundReportPage />
+            </ProtectedRoute>
+          </Route>
           <Route path="/report/found">
             <ProtectedRoute>
               <FoundReportPage />
             </ProtectedRoute>
           </Route>
+          <Route path="/report/lost/:step">
+            <ProtectedRoute>
+              <LostReportPage />
+            </ProtectedRoute>
+          </Route>
           <Route path="/report/lost">
             <ProtectedRoute>
               <LostReportPage />
+            </ProtectedRoute>
+          </Route>
+          <Route path="/report/:step">
+            <ProtectedRoute>
+              <DefaultReportPage />
             </ProtectedRoute>
           </Route>
           <Route path="/report">
@@ -99,6 +130,11 @@ function Router() {
           </Route>
           <Route path="/search" component={SearchPage} />
           <Route path="/items" component={ItemsPage} />
+          <Route path="/item/:id/edit/:step">
+            <ProtectedRoute>
+              <EditItemPage />
+            </ProtectedRoute>
+          </Route>
           <Route path="/item/:id/edit">
             <ProtectedRoute>
               <EditItemPage />

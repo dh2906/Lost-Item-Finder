@@ -568,6 +568,10 @@ export default function ItemsPage() {
         setSelectedRegion2("");
         setSelectedRegion3("");
         setIsLocating(false);
+        toast({
+          title: "현재 위치를 적용했어요",
+          description: "지역 필터를 해제하고 현재 위치 반경으로 전환했습니다.",
+        });
       },
       () => {
         setIsLocating(false);

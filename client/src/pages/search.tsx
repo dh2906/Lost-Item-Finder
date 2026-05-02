@@ -193,6 +193,10 @@ export default function SearchPage() {
         form.setValue("longitude", position.coords.longitude.toFixed(6));
         form.setValue("radiusKm", form.getValues("radiusKm") ?? 1);
         setIsLocating(false);
+        toast({
+          title: "현재 위치를 적용했어요",
+          description: "설정한 반경 안의 습득물을 함께 비교합니다.",
+        });
       },
       () => {
         setIsLocating(false);

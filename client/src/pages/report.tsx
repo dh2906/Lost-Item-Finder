@@ -55,6 +55,8 @@ const formSchema = z.object({
   tags: z.array(z.string()).optional(),
   imageUrls: z.array(z.string()).max(MAX_ITEM_IMAGE_COUNT).optional(),
   reportType: z.enum(["found", "lost"]).default("found"),
+  address: z.string().optional(),
+  placeName: z.string().optional(),
   latitude: z.string().optional(),
   longitude: z.string().optional(),
 });
@@ -66,6 +68,19 @@ type ReportPageProps = {
   forcedType?: ReportType;
   itemId?: number;
 };
+const reportStepSlugs: Record<ReportStep, string> = {
+  1: "photo",
+  2: "info",
+  3: "location",
+  4: "confirm",
+};
+const reportStepBySlug = Object.entries(reportStepSlugs).reduce(
+  (acc, [step, slug]) => {
+    acc[slug] = Number(step) as ReportStep;
+    return acc;
+  },
+  {} as Record<string, ReportStep>
+);
 
 const config = {
   found: {
@@ -120,6 +135,11 @@ function getInitialReportType(forcedType?: ReportType): ReportType {
   return params.get("type") === "lost" ? "lost" : "found";
 }
 
+function getStepFromPath(pathname: string): ReportStep {
+  const slug = pathname.split("/").filter(Boolean).at(-1) ?? "";
+  return reportStepBySlug[slug] ?? 1;
+}
+
 function LoadingState() {
   return (
     <Layout>
@@ -151,7 +171,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const [reportType, setReportType] = useState<ReportType>(() =>
     getInitialReportType(forcedType)
   );
-  const [currentStep, setCurrentStep] = useState<ReportStep>(1);
+  const [currentStep, setCurrentStep] = useState<ReportStep>(() =>
+    getStepFromPath(window.location.pathname)
+  );
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -168,10 +190,45 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       contactInfo: "",
       tags: [],
       imageUrls: [],
+      address: "",
+      placeName: "",
       latitude: "",
       longitude: "",
     },
   });
+
+  const getReportStepPath = (step: ReportStep) => {
+    const slug = reportStepSlugs[step];
+
+    if (isEditMode && itemId) {
+      return `/item/${itemId}/edit/${slug}`;
+    }
+
+    const basePath = forcedType ? `/report/${forcedType}` : "/report";
+    const queryString =
+      !forcedType && reportType === "lost" ? "?type=lost" : "";
+    return `${basePath}/${slug}${queryString}`;
+  };
+
+  const navigateToStep = (step: ReportStep) => {
+    setCurrentStep(step);
+    setLocation(getReportStepPath(step));
+  };
+
+  useEffect(() => {
+    const nextStep = getStepFromPath(location.split("?")[0]);
+    setCurrentStep(nextStep);
+  }, [location]);
+
+  useEffect(() => {
+    const path = location.split("?")[0];
+    const hasExplicitStep =
+      path.split("/").some((segment) => reportStepBySlug[segment] !== undefined);
+
+    if (!hasExplicitStep) {
+      setLocation(getReportStepPath(currentStep));
+    }
+  }, [currentStep, getReportStepPath, location, setLocation]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -206,6 +263,8 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       contactInfo: existingItem.contactInfo ?? "",
       tags: existingItem.tags ?? [],
       imageUrls: nextImageUrls,
+      address: existingItem.address ?? "",
+      placeName: existingItem.placeName ?? "",
       latitude: existingItem.latitude ?? "",
       longitude: existingItem.longitude ?? "",
     });
@@ -226,9 +285,36 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   const handleLocationChange = (nextLocation: {
     latitude: string;
     longitude: string;
+    address?: string;
+    placeName?: string;
   }) => {
-    form.setValue("latitude", nextLocation.latitude);
-    form.setValue("longitude", nextLocation.longitude);
+    form.setValue("latitude", nextLocation.latitude, {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+    form.setValue("longitude", nextLocation.longitude, {
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+
+    if (nextLocation.address) {
+      form.setValue("address", nextLocation.address, {
+        shouldDirty: true,
+        shouldTouch: true,
+      });
+      form.setValue("placeName", nextLocation.placeName ?? nextLocation.address, {
+        shouldDirty: true,
+        shouldTouch: true,
+      });
+
+      const currentLocationText = form.getValues("location")?.trim();
+      if (!currentLocationText) {
+        form.setValue("location", nextLocation.address, {
+          shouldDirty: true,
+          shouldTouch: true,
+        });
+      }
+    }
   };
 
   const syncImagePreviews = (nextImages: string[]) => {
@@ -422,6 +508,8 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
             contactInfo: data.contactInfo,
             tags: data.tags,
             imageUrls: data.imageUrls,
+            address: data.address,
+            placeName: data.placeName,
             latitude: data.latitude,
             longitude: data.longitude,
           },
@@ -467,7 +555,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
         });
         return;
       }
-      setCurrentStep(2);
+      navigateToStep(2);
       return;
     }
 
@@ -476,17 +564,17 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       if (!isValid) {
         return;
       }
-      setCurrentStep(3);
+      navigateToStep(3);
       return;
     }
 
     if (currentStep === 3) {
-      setCurrentStep(4);
+      navigateToStep(4);
     }
   };
 
   const goToPreviousStep = () => {
-    setCurrentStep((step) => Math.max(1, step - 1) as ReportStep);
+    navigateToStep(Math.max(1, currentStep - 1) as ReportStep);
   };
 
   if (isEditMode && isItemLoading) {
@@ -622,7 +710,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                 <button
                   key={item.step}
                   type="button"
-                  onClick={() => setCurrentStep(item.step)}
+                  onClick={() => navigateToStep(item.step)}
                   className={cn(
                     "min-h-11 rounded-lg px-2 text-xs font-semibold transition-colors sm:text-sm",
                     currentStep === item.step

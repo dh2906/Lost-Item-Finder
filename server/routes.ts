@@ -10,7 +10,7 @@ import { normalizeItemImageUrls } from "@shared/item-images";
 import { z } from "zod";
 import OpenAI from "openai";
 import { db } from "./db";
-import { and, eq, ne, or, desc, asc, isNull } from "drizzle-orm";
+import { and, eq, ne, or, desc, asc, isNull, gte } from "drizzle-orm";
 import {
   chatRooms,
   chatMessages,
@@ -40,18 +40,26 @@ const qwen = process.env.QWEN_API_KEY
     })
   : null;
 
-const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5.4-mini";
+const GPT_TEXT_MODEL = process.env.OPENAI_TEXT_MODEL ?? "gpt-5-nano";
 const QWEN_VISION_MODEL = process.env.QWEN_VISION_MODEL ?? "qwen3.5-plus";
 const QWEN_TEXT_MODEL = process.env.QWEN_TEXT_MODEL ?? QWEN_VISION_MODEL;
 const LOST112_NORMALIZE_PROVIDER = (
-  process.env.LOST112_NORMALIZE_PROVIDER ?? (qwen ? "qwen" : "openai")
+  process.env.LOST112_NORMALIZE_PROVIDER ?? "none"
 ).toLowerCase();
 const LOST112_NORMALIZE_MODEL =
   process.env.LOST112_NORMALIZE_MODEL ??
   (LOST112_NORMALIZE_PROVIDER === "qwen" ? QWEN_TEXT_MODEL : GPT_TEXT_MODEL);
 const EMBEDDING_PROVIDER = (
-  process.env.EMBEDDING_PROVIDER ?? "openai"
+  process.env.EMBEDDING_PROVIDER ?? "local"
 ).toLowerCase();
+const AI_RERANK_ENABLED = process.env.AI_RERANK_ENABLED === "true";
+const AI_RERANK_MAX_CANDIDATES = Number(
+  process.env.AI_RERANK_MAX_CANDIDATES ?? 10
+);
+const AUTOMATIC_MATCH_QUEUE_ENABLED =
+  process.env.AUTOMATIC_MATCH_QUEUE_ENABLED === "true";
+const OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED =
+  process.env.OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED === "true";
 const OPENAI_EMBEDDING_MODEL =
   process.env.OPENAI_EMBEDDING_MODEL ?? "text-embedding-3-small";
 const LOCAL_EMBEDDING_MODEL =
@@ -97,7 +105,7 @@ const embeddingRelevantFields = new Set([
 const AUTO_MATCH_CANDIDATE_LIMIT = Number(
   process.env.AUTO_MATCH_CANDIDATE_LIMIT ?? 120
 );
-const AUTO_MATCH_MIN_SCORE = Number(process.env.AUTO_MATCH_MIN_SCORE ?? 0.42);
+const AUTO_MATCH_MIN_SCORE = Number(process.env.AUTO_MATCH_MIN_SCORE ?? 0.62);
 const AUTO_MATCH_MIN_VECTOR_SCORE = Number(
   process.env.AUTO_MATCH_MIN_VECTOR_SCORE ?? 0.3
 );
@@ -107,7 +115,10 @@ const AUTO_MATCH_MIN_KEYWORD_SCORE = Number(
 const AUTO_MATCH_MIN_CATEGORY_SCORE = Number(
   process.env.AUTO_MATCH_MIN_CATEGORY_SCORE ?? 0.2
 );
-const AUTO_MATCH_MAX_RESULTS = Number(process.env.AUTO_MATCH_MAX_RESULTS ?? 12);
+const AUTO_MATCH_MAX_RESULTS = Number(process.env.AUTO_MATCH_MAX_RESULTS ?? 5);
+const AUTO_MATCH_DATE_WINDOW_DAYS = Number(
+  process.env.AUTO_MATCH_DATE_WINDOW_DAYS ?? 90
+);
 const LOST112_SYNC_ENABLED = process.env.LOST112_SYNC_ENABLED !== "false";
 const LOST112_SYNC_INTERVAL_MS = Number(
   process.env.LOST112_SYNC_INTERVAL_MS ?? 1000 * 60 * 30
@@ -118,6 +129,9 @@ const LOST112_SYNC_INITIAL_DELAY_MS = Number(
 const LOST112_SYNC_NUM_ROWS = Number(process.env.LOST112_SYNC_NUM_ROWS ?? 100);
 const LOST112_SYNC_MAX_PAGES = Number(process.env.LOST112_SYNC_MAX_PAGES ?? 10);
 const LOST112_SYNC_START_PAGE = Number(process.env.LOST112_SYNC_START_PAGE ?? 1);
+const LOST112_SYNC_LOOKBACK_DAYS = Number(
+  process.env.LOST112_SYNC_LOOKBACK_DAYS ?? 1
+);
 const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY;
 
 function getQwenClient(): OpenAI {
@@ -136,6 +150,30 @@ function getLost112TodayYmd(): string {
   })
     .format(new Date())
     .replace(/-/g, "");
+}
+
+function getLost112DateOffsetYmd(offsetDays: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })
+    .format(date)
+    .replace(/-/g, "");
+}
+
+function getDefaultLost112SyncDateRange(): {
+  startDate: string;
+  endDate: string;
+} {
+  const lookbackDays = Math.max(0, LOST112_SYNC_LOOKBACK_DAYS);
+  return {
+    startDate: getLost112DateOffsetYmd(-lookbackDays),
+    endDate: getLost112TodayYmd(),
+  };
 }
 
 function getLost112NormalizeClient(): OpenAI {
@@ -353,6 +391,13 @@ type Lost112FetchedPage = {
   rawCount: number;
 };
 
+function normalizeLost112DateParam(value?: string): string {
+  if (!value) {
+    return "";
+  }
+  return value.replace(/\D/g, "").slice(0, 8);
+}
+
 type Lost112SyncOptions = {
   apiKey: string;
   category?: string;
@@ -541,6 +586,8 @@ async function fetchLost112ItemsPage({
   const safeNumOfRows = Math.min(100, Math.max(1, numOfRows));
   const normalizedCategory = category.trim();
   const normalizedRegion = region.trim();
+  const normalizedStartDate = normalizeLost112DateParam(startDate);
+  const normalizedEndDate = normalizeLost112DateParam(endDate);
 
   const hasRegionCode =
     normalizedRegion && LOST112_REGION_CODES[normalizedRegion];
@@ -556,8 +603,8 @@ async function fetchLost112ItemsPage({
     _type: "json",
   });
 
-  if (startDate) params.set("START_YMD", startDate);
-  if (endDate) params.set("END_YMD", endDate);
+  if (normalizedStartDate) params.set("START_YMD", normalizedStartDate);
+  if (normalizedEndDate) params.set("END_YMD", normalizedEndDate);
 
   // API에 지역 코드 전달
   if (hasRegionCode) {
@@ -1205,11 +1252,12 @@ async function runLost112Sync({
       progress.totalToProcess = fetchedItems.length;
       touchLost112ActiveSyncRun(progress);
 
-      if (pageData.items.length < pageData.numOfRows) {
+      if (pageData.rawCount < pageData.numOfRows) {
         console.log("[Lost112 Sync] stopping page scan:", {
           page: pageData.pageNo,
           reason: "page returned fewer items than requested",
           filteredCount: pageData.items.length,
+          rawCount: pageData.rawCount,
           numOfRows: pageData.numOfRows,
         });
         break;
@@ -1502,7 +1550,7 @@ function startLost112SyncScheduler(): void {
     startPage: LOST112_SYNC_START_PAGE,
     numOfRows: LOST112_SYNC_NUM_ROWS,
     maxPages: LOST112_SYNC_MAX_PAGES,
-    dateRange: "today",
+    lookbackDays: LOST112_SYNC_LOOKBACK_DAYS,
   });
 
   const runScheduledSync = async () => {
@@ -1513,19 +1561,19 @@ function startLost112SyncScheduler(): void {
 
     isRunning = true;
     try {
-      const todayYmd = getLost112TodayYmd();
+      const { startDate, endDate } = getDefaultLost112SyncDateRange();
       const result = await runLost112Sync({
         apiKey,
-        startDate: todayYmd,
-        endDate: todayYmd,
+        startDate,
+        endDate,
         page: LOST112_SYNC_START_PAGE,
         numOfRows: LOST112_SYNC_NUM_ROWS,
         maxPages: LOST112_SYNC_MAX_PAGES,
         trigger: "scheduled",
       });
       console.log("[Lost112 Sync] scheduled job completed:", {
-        startDate: todayYmd,
-        endDate: todayYmd,
+        startDate,
+        endDate,
         fetchedCount: result.fetchedCount,
         createdCount: result.createdCount,
         updatedCount: result.updatedCount,
@@ -1562,6 +1610,11 @@ function itemMatchesLocationText(item: Item, locationText?: string): boolean {
   const locationHaystack = [
     item.title,
     item.location,
+    item.address,
+    item.placeName,
+    item.region1,
+    item.region2,
+    item.region3,
     item.description,
     item.itemCategory,
     item.contactInfo,
@@ -2242,15 +2295,68 @@ function calculateLocationTextSimilarity(
 ): number {
   const normalizedSource = normalizeItemMetadata(source);
   const normalizedCandidate = normalizeItemMetadata(candidate);
-  const sourceTokens = extractQueryKeywords(normalizedSource.location ?? "");
+  const sourceTokens = extractQueryKeywords(
+    [
+      normalizedSource.region1,
+      normalizedSource.region2,
+      normalizedSource.region3,
+      normalizedSource.address,
+      normalizedSource.placeName,
+      normalizedSource.location,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
   const candidateTokens = extractQueryKeywords(
-    normalizedCandidate.location ?? ""
+    [
+      normalizedCandidate.region1,
+      normalizedCandidate.region2,
+      normalizedCandidate.region3,
+      normalizedCandidate.address,
+      normalizedCandidate.placeName,
+      normalizedCandidate.location,
+    ]
+      .filter(Boolean)
+      .join(" ")
   );
   return calculateTokenSetSimilarity(
     sourceTokens,
     candidateTokens,
     LOCATION_SYNONYM_GROUPS
   );
+}
+
+function calculateRegionAffinityScore(source: Item, candidate: Item): number {
+  const regionFields: Array<"region1" | "region2" | "region3"> = [
+    "region1",
+    "region2",
+    "region3",
+  ];
+  const knownRegionPairs = regionFields
+    .map((field) => ({
+      source: source[field]?.trim(),
+      candidate: candidate[field]?.trim(),
+    }))
+    .filter(({ source, candidate }) => source && candidate);
+
+  if (knownRegionPairs.length === 0) {
+    return 0.2;
+  }
+
+  const matchedCount = knownRegionPairs.filter(
+    ({ source, candidate }) => source === candidate
+  ).length;
+
+  if (matchedCount === knownRegionPairs.length) {
+    return 1;
+  }
+  if (matchedCount >= 2) {
+    return 0.76;
+  }
+  if (matchedCount === 1) {
+    return 0.46;
+  }
+  return 0;
 }
 
 function calculateDateClosenessScore(source: Item, candidate: Item): number {
@@ -2281,18 +2387,84 @@ function calculateDistanceScore(distanceKm: number | null): number {
     return 0;
   }
   if (distanceKm <= 1) {
-    return 0.35;
+    return 1;
   }
   if (distanceKm <= 3) {
-    return 0.2;
+    return 0.86;
   }
   if (distanceKm <= 10) {
-    return 0.08;
+    return 0.62;
   }
   if (distanceKm <= 30) {
-    return 0.02;
+    return 0.34;
+  }
+  if (distanceKm <= 80) {
+    return 0.16;
   }
   return 0;
+}
+
+function calculateSearchDistanceScore(
+  distanceKm: number | null,
+  radiusKm?: number
+): number {
+  if (distanceKm === null) {
+    return 0;
+  }
+
+  const normalizedRadiusKm = Math.max(
+    0.1,
+    radiusKm ?? DEFAULT_AI_SEARCH_RADIUS_KM
+  );
+  const ratio = distanceKm / normalizedRadiusKm;
+
+  if (ratio <= 0.1) {
+    return 1;
+  }
+  if (ratio <= 0.25) {
+    return 0.92;
+  }
+  if (ratio <= 0.5) {
+    return 0.78;
+  }
+  if (ratio <= 0.75) {
+    return 0.58;
+  }
+  if (ratio <= 1) {
+    return 0.38;
+  }
+  return 0;
+}
+
+function blendAiSearchScore(params: {
+  vectorScore: number;
+  llmScore: number;
+  distanceKm: number | null;
+  radiusKm?: number;
+}): number {
+  const { vectorScore, llmScore, distanceKm, radiusKm } = params;
+
+  if (distanceKm === null) {
+    return Number((vectorScore * 0.35 + llmScore * 0.65).toFixed(4));
+  }
+
+  const distanceScore = calculateSearchDistanceScore(distanceKm, radiusKm);
+  return Number(
+    (vectorScore * 0.25 + llmScore * 0.5 + distanceScore * 0.25).toFixed(4)
+  );
+}
+
+function blendAiSearchFallbackScore(
+  vectorScore: number,
+  distanceKm: number | null,
+  radiusKm?: number
+): number {
+  if (distanceKm === null) {
+    return Math.max(0, Math.min(1, Number(vectorScore.toFixed(4))));
+  }
+
+  const distanceScore = calculateSearchDistanceScore(distanceKm, radiusKm);
+  return Number((vectorScore * 0.7 + distanceScore * 0.3).toFixed(4));
 }
 
 function calculateCosineSimilarity(
@@ -2341,6 +2513,42 @@ function calculateMatchDistanceKm(
   );
 }
 
+function isMatchDateDirectionValid(source: Item, candidate: Item): boolean {
+  if (!source.date || !candidate.date) {
+    return true;
+  }
+
+  const sourceTime = new Date(source.date).getTime();
+  const candidateTime = new Date(candidate.date).getTime();
+  if (!Number.isFinite(sourceTime) || !Number.isFinite(candidateTime)) {
+    return true;
+  }
+
+  const foundTime =
+    source.reportType === "found" ? sourceTime : candidateTime;
+  const lostTime =
+    source.reportType === "lost" ? sourceTime : candidateTime;
+  if (foundTime < lostTime) {
+    return false;
+  }
+
+  const diffDays = (foundTime - lostTime) / (1000 * 60 * 60 * 24);
+  return diffDays <= AUTO_MATCH_DATE_WINDOW_DAYS;
+}
+
+function isAutomaticMatchCandidateAllowed(params: {
+  sourceItem: Item;
+  candidateItem: Item;
+}): boolean {
+  const { sourceItem, candidateItem } = params;
+
+  if (!isMatchDateDirectionValid(sourceItem, candidateItem)) {
+    return false;
+  }
+
+  return true;
+}
+
 function calculateAutomaticMatchScore(params: {
   sourceItem: Item;
   candidateItem: Item;
@@ -2349,6 +2557,8 @@ function calculateAutomaticMatchScore(params: {
   distanceKm: number | null;
 }): number {
   const { sourceEmbedding, candidateEmbedding, distanceKm } = params;
+  const rawSourceItem = params.sourceItem;
+  const rawCandidateItem = params.candidateItem;
   const sourceItem = normalizeItemMetadata(params.sourceItem);
   const candidateItem = normalizeItemMetadata(params.candidateItem);
 
@@ -2364,9 +2574,19 @@ function calculateAutomaticMatchScore(params: {
   );
   const keywordScore = calculateKeywordOverlapScore(sourceItem, candidateItem);
   const dateScore = calculateDateClosenessScore(sourceItem, candidateItem);
+  const distanceScore = calculateDistanceScore(distanceKm);
+  const locationTextScore = calculateLocationTextSimilarity(
+    sourceItem,
+    candidateItem
+  );
+  const regionScore = calculateRegionAffinityScore(
+    rawSourceItem,
+    rawCandidateItem
+  );
   const locationScore = Math.max(
-    calculateDistanceScore(distanceKm),
-    calculateLocationTextSimilarity(sourceItem, candidateItem)
+    distanceScore,
+    locationTextScore,
+    regionScore
   );
   const vectorScore = calculateCosineSimilarity(
     sourceEmbedding,
@@ -2386,16 +2606,62 @@ function calculateAutomaticMatchScore(params: {
   if (dateScore === 0 && locationScore === 0 && vectorScore < 0.34) {
     return 0;
   }
+  if (
+    locationScore < 0.2 &&
+    categoryScore < 0.75 &&
+    keywordScore < 0.55 &&
+    vectorScore < 0.62
+  ) {
+    return 0;
+  }
 
   const blendedScore =
-    categoryScore * 0.18 +
+    categoryScore * 0.17 +
     colorScore * 0.08 +
-    keywordScore * 0.26 +
+    keywordScore * 0.25 +
     dateScore * 0.18 +
-    locationScore * 0.06 +
-    vectorScore * 0.24;
+    locationScore * 0.14 +
+    vectorScore * 0.18;
 
-  return Math.max(0, Math.min(1, Number(blendedScore.toFixed(4))));
+  const sameFineRegion = regionScore >= 1;
+  const sameBroadRegion = regionScore >= 0.46;
+  const isNearby = distanceKm !== null && distanceKm <= 3;
+  const isReasonablyNear = distanceKm !== null && distanceKm <= 10;
+  const hasStrongIdentityEvidence =
+    (categoryScore >= 0.72 && keywordScore >= 0.5) ||
+    (categoryScore >= 0.72 && colorScore >= 0.7 && vectorScore >= 0.42) ||
+    (keywordScore >= 0.72 && vectorScore >= 0.42) ||
+    vectorScore >= 0.72;
+  const hasLocationSupport =
+    sameBroadRegion || isReasonablyNear || locationTextScore >= 0.45;
+
+  let adjustedScore = blendedScore;
+
+  if (sameFineRegion) {
+    adjustedScore += 0.08;
+  } else if (sameBroadRegion) {
+    adjustedScore += 0.04;
+  }
+
+  if (isNearby) {
+    adjustedScore += 0.08;
+  } else if (isReasonablyNear) {
+    adjustedScore += 0.04;
+  }
+
+  if (dateScore >= 0.75) {
+    adjustedScore += 0.04;
+  }
+
+  if (hasStrongIdentityEvidence && !hasLocationSupport) {
+    adjustedScore -= 0.06;
+  }
+
+  if (!hasStrongIdentityEvidence && !hasLocationSupport) {
+    adjustedScore -= 0.16;
+  }
+
+  return Math.max(0, Math.min(1, Number(adjustedScore.toFixed(4))));
 }
 
 function formatStoredMatchScore(score: number): number {
@@ -2807,6 +3073,15 @@ async function findAutomaticMatchesForFoundItem(
   const matchesToPersist = candidateLostItems
     .map((lostItem) => {
       const distanceKm = calculateMatchDistanceKm(foundItem, lostItem);
+      if (
+        !isAutomaticMatchCandidateAllowed({
+          sourceItem: foundItem,
+          candidateItem: lostItem,
+        })
+      ) {
+        return null;
+      }
+
       const normalizedScore = calculateAutomaticMatchScore({
         sourceItem: foundItem,
         candidateItem: lostItem,
@@ -2933,6 +3208,15 @@ async function findAutomaticMatchesForLostItem(
   const matchesToPersist = candidateFoundItems
     .map((foundItem) => {
       const distanceKm = calculateMatchDistanceKm(lostItem, foundItem);
+      if (
+        !isAutomaticMatchCandidateAllowed({
+          sourceItem: lostItem,
+          candidateItem: foundItem,
+        })
+      ) {
+        return null;
+      }
+
       const normalizedScore = calculateAutomaticMatchScore({
         sourceItem: lostItem,
         candidateItem: foundItem,
@@ -3088,6 +3372,10 @@ function queueAutomaticMatchNotificationsForFoundItem(
   foundItem: FoundItemForAutoMatch,
   existingEmbedding?: number[]
 ): void {
+  if (!AUTOMATIC_MATCH_QUEUE_ENABLED) {
+    return;
+  }
+
   automaticMatchQueue = automaticMatchQueue
     .catch(() => undefined)
     .then(() =>
@@ -3559,6 +3847,14 @@ export async function registerRoutes(
           typeof req.query.type === "string"
             ? (req.query.type as "lost" | "found")
             : undefined,
+        page:
+          typeof req.query.page === "string"
+            ? Number.parseInt(req.query.page, 10)
+            : undefined,
+        limit:
+          typeof req.query.limit === "string"
+            ? Number.parseInt(req.query.limit, 10)
+            : undefined,
       });
       res.json(itemList);
     } catch (err) {
@@ -3983,15 +4279,17 @@ export async function registerRoutes(
       );
 
       const rawResult = rawAnalyzeImageSchema.parse(JSON.parse(content));
-      const normalizedResult = await normalizeAnalyzeImageMetadata(
-        rawResult
-      ).catch((normalizationError) => {
-        console.error(
-          "Failed to normalize image metadata:",
-          normalizationError
-        );
-        return buildLocalAnalyzeImageResult(rawResult);
-      });
+      const normalizedResult = OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED
+        ? await normalizeAnalyzeImageMetadata(rawResult).catch(
+            (normalizationError) => {
+              console.error(
+                "Failed to normalize image metadata:",
+                normalizationError
+              );
+              return buildLocalAnalyzeImageResult(rawResult);
+            }
+          )
+        : buildLocalAnalyzeImageResult(rawResult);
 
       let finalImageBase64 = input.imageUrl;
 
@@ -4115,12 +4413,20 @@ export async function registerRoutes(
         return res.json([]);
       }
 
-      const rerankedMatches = await rerankCandidates({
-        prompt: input.prompt,
-        imageUrl: input.imageUrl,
-        queryText,
-        candidates: filteredVectorMatches,
-      });
+      const rerankedMatches = AI_RERANK_ENABLED
+        ? await rerankCandidates({
+            prompt: input.prompt,
+            imageUrl: input.imageUrl,
+            queryText,
+            candidates: filteredVectorMatches.slice(0, AI_RERANK_MAX_CANDIDATES),
+          }).catch((rerankError) => {
+            console.error(
+              "[AI Search] rerank failed; using vector fallback:",
+              rerankError
+            );
+            return [];
+          })
+        : [];
 
       const vectorMatchById = new Map(
         filteredVectorMatches.map((candidate) => [candidate.item.id, candidate])
@@ -4134,9 +4440,12 @@ export async function registerRoutes(
           }
 
           const llmScore = Math.max(0, Math.min(1, result.score));
-          const blendedScore = Number(
-            (vectorMatch.score * 0.35 + llmScore * 0.65).toFixed(4)
-          );
+          const blendedScore = blendAiSearchScore({
+            vectorScore: vectorMatch.score,
+            llmScore,
+            distanceKm: vectorMatch.distanceKm,
+            radiusKm: effectiveRadiusKm,
+          });
 
           return {
             item: vectorMatch.item,
@@ -4161,24 +4470,47 @@ export async function registerRoutes(
             reasoning: string;
           } => Boolean(result) && (result?.score ?? 0) >= MIN_FINAL_MATCH_SCORE
         )
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => {
+          if (b.score !== a.score) {
+            return b.score - a.score;
+          }
+          if (a.distanceKm === null) return 1;
+          if (b.distanceKm === null) return -1;
+          return a.distanceKm - b.distanceKm;
+        })
         .slice(0, FINAL_RESULT_COUNT);
 
       if (searchResults.length === 0) {
         const fallbackResults = filteredVectorMatches
-          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE)
-          .slice(0, FINAL_RESULT_COUNT)
-          .map((result) => ({
-            item: result.item,
-            score: Math.max(0, Math.min(1, result.score)),
-            distanceKm: result.distanceKm,
-            reasoning: buildReasoningFromEvidence({
-              queryText,
+          .map((result) => {
+            const score = blendAiSearchFallbackScore(
+              result.score,
+              result.distanceKm,
+              effectiveRadiusKm
+            );
+
+            return {
               item: result.item,
-              matchScore: result.score,
+              score,
               distanceKm: result.distanceKm,
-            }),
-          }));
+              reasoning: buildReasoningFromEvidence({
+                queryText,
+                item: result.item,
+                matchScore: score,
+                distanceKm: result.distanceKm,
+              }),
+            };
+          })
+          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE)
+          .sort((a, b) => {
+            if (b.score !== a.score) {
+              return b.score - a.score;
+            }
+            if (a.distanceKm === null) return 1;
+            if (b.distanceKm === null) return -1;
+            return a.distanceKm - b.distanceKm;
+          })
+          .slice(0, FINAL_RESULT_COUNT)
 
         return res.json(fallbackResults);
       }
@@ -4227,10 +4559,17 @@ export async function registerRoutes(
       }
 
       const existingRoom = await db.query.chatRooms.findFirst({
-        where: and(
-          eq(chatRooms.itemId, itemId),
-          eq(chatRooms.senderId, senderId),
-          eq(chatRooms.receiverId, receiverId)
+        where: or(
+          and(
+            eq(chatRooms.itemId, itemId),
+            eq(chatRooms.senderId, senderId),
+            eq(chatRooms.receiverId, receiverId)
+          ),
+          and(
+            eq(chatRooms.itemId, itemId),
+            eq(chatRooms.senderId, receiverId),
+            eq(chatRooms.receiverId, senderId)
+          )
         ),
       });
 
@@ -4393,6 +4732,7 @@ export async function registerRoutes(
         if (!content || content.trim() === "") {
           return res.status(400).json({ message: "메시지 내용이 필요합니다" });
         }
+        const normalizedContent = content.trim();
 
         const room = await db.query.chatRooms.findFirst({
           where: eq(chatRooms.id, roomId),
@@ -4405,12 +4745,27 @@ export async function registerRoutes(
           return res.status(403).json({ message: "접근 권한이 없습니다" });
         }
 
+        const duplicateCutoff = new Date(Date.now() - 5000);
+        const recentDuplicate = await db.query.chatMessages.findFirst({
+          where: and(
+            eq(chatMessages.roomId, roomId),
+            eq(chatMessages.senderId, senderId),
+            eq(chatMessages.content, normalizedContent),
+            gte(chatMessages.createdAt, duplicateCutoff)
+          ),
+          orderBy: desc(chatMessages.id),
+        });
+
+        if (recentDuplicate) {
+          return res.status(200).json(recentDuplicate);
+        }
+
         const [message] = await db
           .insert(chatMessages)
           .values({
             roomId,
             senderId,
-            content: content.trim(),
+            content: normalizedContent,
             isRead: 0,
           })
           .returning();
@@ -4434,9 +4789,9 @@ export async function registerRoutes(
             fcmToken: receiver.fcmToken,
             title: `${senderName}님의 새 메시지`,
             body:
-              content.trim().length > 50
-                ? content.trim().slice(0, 50) + "..."
-                : content.trim(),
+              normalizedContent.length > 50
+                ? normalizedContent.slice(0, 50) + "..."
+                : normalizedContent,
             data: { roomId: String(roomId) },
           });
         }
@@ -4461,9 +4816,11 @@ export async function registerRoutes(
       }
 
       const input = api.lost112.sync.input.parse(req.body ?? {}) ?? {};
-      const defaultSyncDate = getLost112TodayYmd();
-      const startDate = input.startDate ?? input.endDate ?? defaultSyncDate;
-      const endDate = input.endDate ?? input.startDate ?? defaultSyncDate;
+      const defaultDateRange = getDefaultLost112SyncDateRange();
+      const startDate =
+        input.startDate ?? input.endDate ?? defaultDateRange.startDate;
+      const endDate =
+        input.endDate ?? input.startDate ?? defaultDateRange.endDate;
       const result = await runLost112Sync({
         apiKey,
         category: input.category,

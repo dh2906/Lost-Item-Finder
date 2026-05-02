@@ -37,6 +37,9 @@ import { promisify } from "util";
 
 const scryptAsync = promisify(scrypt);
 const DEFAULT_LOCATION_RADIUS_KM = 5;
+const AUTO_MATCH_DATE_WINDOW_DAYS = Number(
+  process.env.AUTO_MATCH_DATE_WINDOW_DAYS ?? 90
+);
 
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
@@ -285,8 +288,15 @@ export interface IStorage {
   getAdminItems(filters?: {
     search?: string;
     type?: "lost" | "found";
+    page?: number;
     limit?: number;
-  }): Promise<AdminItemRecord[]>;
+  }): Promise<{
+    items: AdminItemRecord[];
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }>;
   deleteItemByAdmin(itemId: number): Promise<boolean>;
 }
 
@@ -723,25 +733,67 @@ export class DatabaseStorage implements IStorage {
       eq(items.reportType, targetReportType),
       eq(items.status, "active"),
     ];
+    const sourceLatitude = Number.parseFloat(sourceItem.latitude ?? "");
+    const sourceLongitude = Number.parseFloat(sourceItem.longitude ?? "");
+    const hasSourceCoordinates =
+      Number.isFinite(sourceLatitude) && Number.isFinite(sourceLongitude);
+    const latitudeValue = sql<number | null>`
+      case
+        when ${items.latitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+          then ${items.latitude}::double precision
+        else null
+      end
+    `;
+    const longitudeValue = sql<number | null>`
+      case
+        when ${items.longitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+          then ${items.longitude}::double precision
+        else null
+      end
+    `;
+    const distanceKm = hasSourceCoordinates
+      ? sql<number>`
+          6371 * acos(
+            least(
+              1,
+              greatest(
+                -1,
+                cos(radians(${sourceLatitude})) *
+                cos(radians(${latitudeValue})) *
+                cos(radians(${longitudeValue}) - radians(${sourceLongitude})) +
+                sin(radians(${sourceLatitude})) *
+                sin(radians(${latitudeValue}))
+              )
+            )
+          )
+        `
+      : null;
 
     if (sourceItem.userId) {
       conditions.push(or(ne(items.userId, sourceItem.userId), isNull(items.userId))!);
     }
 
     if (sourceItem.date) {
-      const windowStart = new Date(sourceItem.date);
-      windowStart.setDate(windowStart.getDate() - 120);
-      const windowEnd = new Date(sourceItem.date);
-      windowEnd.setDate(windowEnd.getDate() + 120);
-      conditions.push(gte(items.date, windowStart));
-      conditions.push(lte(items.date, windowEnd));
+      const sourceDate = new Date(sourceItem.date);
+
+      if (targetReportType === "found") {
+        const windowEnd = new Date(sourceDate);
+        windowEnd.setDate(windowEnd.getDate() + AUTO_MATCH_DATE_WINDOW_DAYS);
+        conditions.push(gte(items.date, sourceDate));
+        conditions.push(lte(items.date, windowEnd));
+      } else {
+        const windowStart = new Date(sourceDate);
+        windowStart.setDate(windowStart.getDate() - AUTO_MATCH_DATE_WINDOW_DAYS);
+        conditions.push(gte(items.date, windowStart));
+        conditions.push(lte(items.date, sourceDate));
+      }
     }
 
     return await db
       .select()
       .from(items)
       .where(and(...conditions))
-      .orderBy(desc(items.date))
+      .orderBy(distanceKm ?? desc(items.date), desc(items.date))
       .limit(limit);
   }
 
@@ -998,7 +1050,7 @@ export class DatabaseStorage implements IStorage {
         recentItems: itemStats[0]?.recentItems ?? 0,
       },
       recentUsers,
-      recentItems,
+      recentItems: recentItems.items,
     };
   }
 
@@ -1080,9 +1132,18 @@ export class DatabaseStorage implements IStorage {
   async getAdminItems(filters?: {
     search?: string;
     type?: "lost" | "found";
+    page?: number;
     limit?: number;
-  }): Promise<AdminItemRecord[]> {
+  }): Promise<{
+    items: AdminItemRecord[];
+    totalCount: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  }> {
     const conditions = [];
+    const page = Math.max(1, filters?.page ?? 1);
+    const limit = Math.min(Math.max(1, filters?.limit ?? 30), 100);
 
     if (filters?.type) {
       conditions.push(eq(items.reportType, filters.type));
@@ -1095,7 +1156,17 @@ export class DatabaseStorage implements IStorage {
       );
     }
 
-    const baseQuery = db
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    const [{ totalCount }] = await db
+      .select({ totalCount: sql<number>`count(*)::int` })
+      .from(items)
+      .leftJoin(users, eq(items.userId, users.id))
+      .where(whereClause);
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    const currentPage = Math.min(page, totalPages);
+    const currentOffset = (currentPage - 1) * limit;
+
+    const rows = await db
       .select({
         item: items,
         ownerName: users.name,
@@ -1103,25 +1174,28 @@ export class DatabaseStorage implements IStorage {
       })
       .from(items)
       .leftJoin(users, eq(items.userId, users.id))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(items.date));
+      .where(whereClause)
+      .orderBy(desc(items.date), desc(items.id))
+      .limit(limit)
+      .offset(currentOffset);
 
-    const rows =
-      typeof filters?.limit === "number"
-        ? await baseQuery.limit(filters.limit)
-        : await baseQuery;
-
-    return rows.map((row) => ({
-      ...row.item,
-      ownerName: row.ownerName ?? null,
-      ownerUsername: row.ownerUsername ?? null,
-      statusLabel:
-        row.item.status === "resolved"
-          ? "해결됨"
-          : row.item.reportType === "lost"
-          ? "분실 접수"
-          : "습득 접수",
-    }));
+    return {
+      items: rows.map((row) => ({
+        ...row.item,
+        ownerName: row.ownerName ?? null,
+        ownerUsername: row.ownerUsername ?? null,
+        statusLabel:
+          row.item.status === "resolved"
+            ? "해결됨"
+            : row.item.reportType === "lost"
+            ? "분실 접수"
+            : "습득 접수",
+      })),
+      totalCount,
+      page: currentPage,
+      limit,
+      totalPages,
+    };
   }
 
   async deleteItemByAdmin(itemId: number): Promise<boolean> {

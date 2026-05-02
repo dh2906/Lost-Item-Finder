@@ -94,6 +94,14 @@ const adminDashboardResponseSchema = z.object({
   recentItems: z.array(adminItemResponseSchema),
 });
 
+const adminItemsResponseSchema = z.object({
+  items: z.array(adminItemResponseSchema),
+  totalCount: z.number(),
+  page: z.number(),
+  limit: z.number(),
+  totalPages: z.number(),
+});
+
 const itemsListResponseSchema = z.object({
   items: z.array(itemResponseSchema),
   totalCount: z.number(),
@@ -587,10 +595,12 @@ export const api = {
         .object({
           search: z.string().optional(),
           type: z.enum(reportTypes).optional(),
+          page: optionalPositiveIntegerQuerySchema,
+          limit: optionalPositiveIntegerQuerySchema,
         })
         .optional(),
       responses: {
-        200: z.array(adminItemResponseSchema),
+        200: adminItemsResponseSchema,
       },
     },
     deleteItem: {
@@ -651,4 +661,4 @@ export type AdminUsersResponse = z.infer<(typeof api.admin.users.responses)[200]
 export type AdminUserResponse = AdminUsersResponse[number];
 export type UpdateAdminUserInput = z.infer<typeof api.admin.updateUser.input>;
 export type AdminItemsResponse = z.infer<(typeof api.admin.items.responses)[200]>;
-export type AdminItemResponse = AdminItemsResponse[number];
+export type AdminItemResponse = AdminItemsResponse["items"][number];
