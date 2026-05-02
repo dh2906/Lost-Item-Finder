@@ -244,6 +244,19 @@ export interface IStorage {
     embedding: number[],
     limit?: number
   ): Promise<Array<{ item: Item; score: number }>>;
+  searchItemsByEmbeddingWithinItemIds(
+    reportType: "lost" | "found",
+    embedding: number[],
+    itemIds: number[],
+    limit?: number
+  ): Promise<Array<{ item: Item; score: number }>>;
+  getItemsWithinRadius(
+    reportType: "lost" | "found",
+    latitude: number,
+    longitude: number,
+    radiusKm: number,
+    limit?: number
+  ): Promise<Array<{ item: Item; distanceKm: number }>>;
   searchFoundItemsByEmbedding(
     embedding: number[],
     limit?: number
@@ -759,6 +772,101 @@ export class DatabaseStorage implements IStorage {
     return rows.map((row) => ({
       item: row.item,
       score: Math.max(0, 1 - Number(row.distance ?? 1)),
+    }));
+  }
+
+  async searchItemsByEmbeddingWithinItemIds(
+    reportType: "lost" | "found",
+    embedding: number[],
+    itemIds: number[],
+    limit = 12
+  ): Promise<Array<{ item: Item; score: number }>> {
+    if (itemIds.length === 0) {
+      return [];
+    }
+
+    const distance = cosineDistance(itemEmbeddings.embedding, embedding);
+    const rows = await db
+      .select({
+        item: items,
+        distance,
+      })
+      .from(itemEmbeddings)
+      .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
+      .where(
+        and(
+          eq(items.reportType, reportType),
+          eq(items.status, "active"),
+          inArray(items.id, itemIds)
+        )
+      )
+      .orderBy(distance)
+      .limit(limit);
+
+    return rows.map((row) => ({
+      item: row.item,
+      score: Math.max(0, 1 - Number(row.distance ?? 1)),
+    }));
+  }
+
+  async getItemsWithinRadius(
+    reportType: "lost" | "found",
+    latitude: number,
+    longitude: number,
+    radiusKm: number,
+    limit = 500
+  ): Promise<Array<{ item: Item; distanceKm: number }>> {
+    const latitudeValue = sql<number | null>`
+      case
+        when ${items.latitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+          then ${items.latitude}::double precision
+        else null
+      end
+    `;
+    const longitudeValue = sql<number | null>`
+      case
+        when ${items.longitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+          then ${items.longitude}::double precision
+        else null
+      end
+    `;
+    const distanceKm = sql<number>`
+      6371 * acos(
+        least(
+          1,
+          greatest(
+            -1,
+            cos(radians(${latitude})) *
+            cos(radians(${latitudeValue})) *
+            cos(radians(${longitudeValue}) - radians(${longitude})) +
+            sin(radians(${latitude})) *
+            sin(radians(${latitudeValue}))
+          )
+        )
+      )
+    `;
+
+    const rows = await db
+      .select({
+        item: items,
+        distanceKm,
+      })
+      .from(items)
+      .where(
+        and(
+          eq(items.reportType, reportType),
+          eq(items.status, "active"),
+          sql<boolean>`${latitudeValue} is not null`,
+          sql<boolean>`${longitudeValue} is not null`,
+          sql<boolean>`${distanceKm} <= ${radiusKm}`
+        )
+      )
+      .orderBy(distanceKm, desc(items.date))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      item: row.item,
+      distanceKm: Number(row.distanceKm),
     }));
   }
 

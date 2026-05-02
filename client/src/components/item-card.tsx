@@ -145,20 +145,20 @@ export function ItemCard({
   const getMatchBadge = (scoreValue?: number) => {
     if (scoreValue === undefined) return null;
     const percentage = Math.round(scoreValue * 100);
-    if (percentage >= 70) {
+    if (percentage >= 75) {
       return {
-        text: `${percentage}%`,
+        text: `강한 후보 ${percentage}%`,
         className: "border-primary bg-primary text-primary-foreground",
       };
     }
-    if (percentage >= 40) {
+    if (percentage >= 50) {
       return {
-        text: `${percentage}%`,
+        text: `확인 필요 ${percentage}%`,
         className: "border-primary/25 bg-primary/10 text-primary",
       };
     }
     return {
-      text: `${percentage}%`,
+      text: `참고 후보 ${percentage}%`,
       className: "border-border bg-white text-muted-foreground",
     };
   };

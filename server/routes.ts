@@ -1995,6 +1995,7 @@ const CATEGORY_SYNONYM_GROUPS = [
   ["키", "열쇠", "차키", "key", "car key"],
   ["노트북", "랩탑", "laptop", "macbook"],
   ["모자", "캡", "cap", "hat"],
+  ["텀블러", "물병", "보틀", "컵", "머그", "tumbler", "bottle", "cup", "mug"],
 ] as const;
 
 const COLOR_SYNONYM_GROUPS = [
@@ -2476,6 +2477,192 @@ function blendAiSearchFallbackScore(
 
   const distanceScore = calculateSearchDistanceScore(distanceKm, radiusKm);
   return Number((vectorScore * 0.7 + distanceScore * 0.3).toFixed(4));
+}
+
+function getMatchedQueryKeywords(queryText: string, item: VectorCandidate["item"]) {
+  const queryKeywords = extractQueryKeywords(queryText);
+  const itemKeywords = extractQueryKeywords(getItemEvidenceText(item)).concat(
+    (item.tags ?? []).map((tag) => normalizeComparableText(tag)).filter(Boolean)
+  );
+  const matchedKeywords = queryKeywords.filter((queryKeyword) =>
+    itemKeywords.some(
+      (itemKeyword) =>
+        calculateTokenSimilarity(queryKeyword, itemKeyword, KEYWORD_SYNONYM_GROUPS) >=
+        0.64
+    )
+  );
+
+  return {
+    queryKeywords,
+    itemKeywords,
+    matchedKeywords,
+    overlapScore: calculateTokenSetSimilarity(
+      queryKeywords,
+      itemKeywords,
+      KEYWORD_SYNONYM_GROUPS
+    ),
+  };
+}
+
+function getRequestedCategoryScore(queryText: string, item: VectorCandidate["item"]) {
+  const queryKeywords = extractQueryKeywords(queryText);
+  const itemCategoryTokens = extractQueryKeywords(
+    [item.title, item.itemCategory, item.description, item.tags?.join(" ")]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const requestedCategoryTokens = queryKeywords.filter((keyword) =>
+    CATEGORY_SYNONYM_GROUPS.some((group) =>
+      group.some(
+        (term) =>
+          calculateTokenSimilarity(
+            keyword,
+            normalizeComparableText(term),
+            CATEGORY_SYNONYM_GROUPS
+          ) >= 0.64
+      )
+    )
+  );
+
+  if (requestedCategoryTokens.length === 0) {
+    return 1;
+  }
+
+  const matchedCategoryCount = requestedCategoryTokens.filter((keyword) =>
+    itemCategoryTokens.some(
+      (itemKeyword) =>
+        calculateTokenSimilarity(keyword, itemKeyword, CATEGORY_SYNONYM_GROUPS) >=
+        0.64
+    )
+  ).length;
+
+  return matchedCategoryCount / requestedCategoryTokens.length;
+}
+
+function getRequestedColorScore(queryText: string, item: VectorCandidate["item"]) {
+  const queryKeywords = extractQueryKeywords(queryText);
+  const itemColorTokens = extractQueryKeywords(
+    [item.title, item.color, item.description, item.tags?.join(" ")]
+      .filter(Boolean)
+      .join(" ")
+  );
+  const requestedColorTokens = queryKeywords.filter((keyword) =>
+    COLOR_SYNONYM_GROUPS.some((group) =>
+      group.some(
+        (term) =>
+          calculateTokenSimilarity(
+            keyword,
+            normalizeComparableText(term),
+            COLOR_SYNONYM_GROUPS
+          ) >= 0.64
+      )
+    )
+  );
+
+  if (requestedColorTokens.length === 0) {
+    return 1;
+  }
+
+  const matchedColorCount = requestedColorTokens.filter((keyword) =>
+    itemColorTokens.some(
+      (itemKeyword) =>
+        calculateTokenSimilarity(keyword, itemKeyword, COLOR_SYNONYM_GROUPS) >= 0.64
+    )
+  ).length;
+
+  return matchedColorCount / requestedColorTokens.length;
+}
+
+function evaluateAiSearchCandidate(params: {
+  queryText: string;
+  candidate: RankedVectorCandidate;
+  hasLocationConstraint: boolean;
+  rerankEnabled: boolean;
+}): { keep: boolean; scoreCap: number } {
+  const { queryText, candidate, hasLocationConstraint, rerankEnabled } = params;
+  const evidence = getMatchedQueryKeywords(queryText, candidate.item);
+  const categoryScore = getRequestedCategoryScore(queryText, candidate.item);
+  const colorScore = getRequestedColorScore(queryText, candidate.item);
+  const hasDirectEvidence =
+    evidence.matchedKeywords.length > 0 || evidence.overlapScore >= 0.18;
+  const weakSemanticMatch = candidate.score < 0.18 && evidence.overlapScore < 0.16;
+
+  if (categoryScore === 0 && candidate.score < 0.55) {
+    return { keep: false, scoreCap: 0 };
+  }
+
+  if (!hasDirectEvidence && weakSemanticMatch) {
+    return { keep: false, scoreCap: 0 };
+  }
+
+  if (hasLocationConstraint && !hasDirectEvidence && candidate.score < 0.28) {
+    return { keep: false, scoreCap: 0 };
+  }
+
+  let scoreCap = rerankEnabled ? 0.96 : 0.82;
+  if (!hasDirectEvidence) {
+    scoreCap = Math.min(scoreCap, hasLocationConstraint ? 0.5 : 0.65);
+  }
+  if (categoryScore < 1) {
+    scoreCap = Math.min(scoreCap, categoryScore === 0 ? 0.55 : 0.7);
+  }
+  if (colorScore < 1) {
+    scoreCap = Math.min(scoreCap, colorScore === 0 ? 0.7 : 0.8);
+  }
+
+  return { keep: true, scoreCap };
+}
+
+function rescaleAiSearchScores<T extends AiSearchResult>(
+  results: T[],
+  queryText: string
+): T[] {
+  if (results.length <= 1) {
+    return results.map((result) => ({
+      ...result,
+      score: Math.max(0, Math.min(1, Number(result.score.toFixed(4)))),
+    }));
+  }
+
+  const scores = results.map((result) => result.score);
+  const topScore = Math.max(...scores);
+  const bottomScore = Math.min(...scores);
+  const rawSpread = topScore - bottomScore;
+  const targetTopScore = Math.max(0.72, Math.min(0.96, topScore));
+  const targetBottomScore =
+    topScore >= 0.75 ? 0.48 : topScore >= 0.55 ? 0.36 : 0.24;
+  let previousScore = 1;
+
+  return results.map((result, index) => {
+    const rankRatio = index / (results.length - 1);
+    const rawRatio =
+      rawSpread >= 0.08 ? (topScore - result.score) / rawSpread : rankRatio;
+    const relativeRatio =
+      rawSpread >= 0.08 ? rawRatio : rankRatio * 0.85 + rawRatio * 0.15;
+    const nextScore = Math.max(
+      targetBottomScore,
+      targetTopScore - relativeRatio * (targetTopScore - targetBottomScore)
+    );
+    const boundedScore = Math.min(
+      previousScore - (index === 0 ? 0 : 0.015),
+      nextScore
+    );
+    previousScore = Math.max(targetBottomScore, boundedScore);
+    const score = Math.max(0, Math.min(1, Number(previousScore.toFixed(4))));
+    const cappedScore = Math.min(score, result.scoreCap ?? 1);
+
+    return {
+      ...result,
+      score: cappedScore,
+      reasoning: buildReasoningFromEvidence({
+        queryText,
+        item: result.item,
+        matchScore: cappedScore,
+        distanceKm: result.distanceKm,
+        llmReasoning: result.llmReasoning,
+      }),
+    };
+  });
 }
 
 function calculateCosineSimilarity(
@@ -3406,6 +3593,14 @@ type VectorCandidate = Awaited<
 >[number];
 type RankedVectorCandidate = VectorCandidate & {
   distanceKm: number | null;
+};
+type AiSearchResult = {
+  item: VectorCandidate["item"];
+  score: number;
+  scoreCap?: number;
+  distanceKm: number | null;
+  reasoning: string;
+  llmReasoning?: string;
 };
 type FoundItemForAutoMatch = {
   id: number;
@@ -4491,11 +4686,32 @@ export async function registerRoutes(
 
       const queryText = queryParts.join("\n\n").trim();
       const queryEmbedding = await createEmbedding(queryText);
-      const vectorMatches = await storage.searchItemsByEmbedding(
-        "found",
-        queryEmbedding,
-        vectorCandidateCount
+      const locationScopedItems =
+        searchCoordinates && effectiveRadiusKm !== undefined
+          ? await storage.getItemsWithinRadius(
+              "found",
+              searchCoordinates.latitude,
+              searchCoordinates.longitude,
+              effectiveRadiusKm,
+              LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT
+            )
+          : [];
+      const locationDistanceByItemId = new Map(
+        locationScopedItems.map((result) => [result.item.id, result.distanceKm])
       );
+      const vectorMatches =
+        locationScopedItems.length > 0
+          ? await storage.searchItemsByEmbeddingWithinItemIds(
+              "found",
+              queryEmbedding,
+              locationScopedItems.map((result) => result.item.id),
+              vectorCandidateCount
+            )
+          : await storage.searchItemsByEmbedding(
+              "found",
+              queryEmbedding,
+              vectorCandidateCount
+            );
 
       const filteredVectorMatches: RankedVectorCandidate[] = vectorMatches
         .filter((result) => result.score >= minVectorMatchScore)
@@ -4503,12 +4719,13 @@ export async function registerRoutes(
           const itemLatitude = parseCoordinate(result.item.latitude);
           const itemLongitude = parseCoordinate(result.item.longitude);
           const distanceKm =
-            searchCoordinates && itemLatitude !== null && itemLongitude !== null
+            locationDistanceByItemId.get(result.item.id) ??
+            (searchCoordinates && itemLatitude !== null && itemLongitude !== null
               ? calculateDistanceKm(searchCoordinates, {
                   latitude: itemLatitude,
                   longitude: itemLongitude,
                 })
-              : null;
+              : null);
 
           return {
             ...result,
@@ -4531,11 +4748,31 @@ export async function registerRoutes(
           }
 
           return true;
-        });
+        })
+        .filter((result) =>
+          evaluateAiSearchCandidate({
+            queryText,
+            candidate: result,
+            hasLocationConstraint,
+            rerankEnabled: AI_RERANK_ENABLED,
+          }).keep
+        );
 
       if (filteredVectorMatches.length === 0) {
         return res.json([]);
       }
+
+      const candidateEvaluationById = new Map(
+        filteredVectorMatches.map((candidate) => [
+          candidate.item.id,
+          evaluateAiSearchCandidate({
+            queryText,
+            candidate,
+            hasLocationConstraint,
+            rerankEnabled: AI_RERANK_ENABLED,
+          }),
+        ])
+      );
 
       const rerankedMatches = AI_RERANK_ENABLED
         ? await rerankCandidates({
@@ -4556,11 +4793,11 @@ export async function registerRoutes(
         filteredVectorMatches.map((candidate) => [candidate.item.id, candidate])
       );
 
-      const searchResults = rerankedMatches
-        .map((result) => {
+      const searchResults: AiSearchResult[] = rerankedMatches
+        .flatMap((result) => {
           const vectorMatch = vectorMatchById.get(result.itemId);
           if (!vectorMatch) {
-            return null;
+            return [];
           }
 
           const llmScore = Math.max(0, Math.min(1, result.score));
@@ -4571,10 +4808,12 @@ export async function registerRoutes(
             radiusKm: effectiveRadiusKm,
           });
 
-          return {
+          return [{
             item: vectorMatch.item,
             score: blendedScore,
+            scoreCap: candidateEvaluationById.get(vectorMatch.item.id)?.scoreCap,
             distanceKm: vectorMatch.distanceKm,
+            llmReasoning: result.reasoning,
             reasoning: buildReasoningFromEvidence({
               queryText,
               item: vectorMatch.item,
@@ -4582,17 +4821,10 @@ export async function registerRoutes(
               distanceKm: vectorMatch.distanceKm,
               llmReasoning: result.reasoning,
             }),
-          };
+          }];
         })
         .filter(
-          (
-            result
-          ): result is {
-            item: VectorCandidate["item"];
-            score: number;
-            distanceKm: number | null;
-            reasoning: string;
-          } => Boolean(result) && (result?.score ?? 0) >= MIN_FINAL_MATCH_SCORE
+          (result) => result.score >= MIN_FINAL_MATCH_SCORE
         )
         .sort((a, b) => {
           if (b.score !== a.score) {
@@ -4605,7 +4837,7 @@ export async function registerRoutes(
         .slice(0, FINAL_RESULT_COUNT);
 
       if (searchResults.length === 0) {
-        const fallbackResults = filteredVectorMatches
+        const fallbackResults: AiSearchResult[] = filteredVectorMatches
           .map((result) => {
             const score = blendAiSearchFallbackScore(
               result.score,
@@ -4616,6 +4848,7 @@ export async function registerRoutes(
             return {
               item: result.item,
               score,
+              scoreCap: candidateEvaluationById.get(result.item.id)?.scoreCap,
               distanceKm: result.distanceKm,
               reasoning: buildReasoningFromEvidence({
                 queryText,
@@ -4634,12 +4867,12 @@ export async function registerRoutes(
             if (b.distanceKm === null) return -1;
             return a.distanceKm - b.distanceKm;
           })
-          .slice(0, FINAL_RESULT_COUNT)
+          .slice(0, FINAL_RESULT_COUNT);
 
-        return res.json(fallbackResults);
+        return res.json(rescaleAiSearchScores(fallbackResults, queryText));
       }
 
-      res.json(searchResults);
+      res.json(rescaleAiSearchScores(searchResults, queryText));
     } catch (err) {
       console.error(err);
       if (err instanceof z.ZodError) {
