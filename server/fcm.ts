@@ -25,7 +25,7 @@ export async function sendFcmNotification(params: {
   title: string;
   body: string;
   data?: Record<string, string>;
-}): Promise<void> {
+}): Promise<{ sent: boolean; error?: unknown }> {
   const { fcmToken, title, body, data } = params;
 
   try {
@@ -43,9 +43,8 @@ export async function sendFcmNotification(params: {
         },
       },
     });
-    console.log("[FCM] 푸시 알림 발송 성공");
+    return { sent: true };
   } catch (err) {
-    // FCM 발송 실패는 로그만 남기고 메인 로직은 계속 진행
-    console.error("[FCM] 푸시 알림 발송 실패:", err);
+    return { sent: false, error: err };
   }
 }

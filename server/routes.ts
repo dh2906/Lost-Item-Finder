@@ -22,6 +22,7 @@ import {
   updateItemMatchStatusSchema,
   users,
   type Item,
+  type ItemMatch,
   type ItemMatchStatus,
 } from "@shared/schema";
 import { sendFcmNotification } from "./fcm";
@@ -3045,6 +3046,122 @@ function mapMatchResponse(match: {
   };
 }
 
+type ItemMatchNotificationCandidate = {
+  match: ItemMatch;
+  recipientItem: Item;
+  counterpartItem: Item;
+  body: string;
+};
+
+type NotificationDispatchSummary = {
+  total: number;
+  attempted: number;
+  sent: number;
+  alreadyNotified: number;
+  missingUser: number;
+  missingToken: number;
+  failed: number;
+};
+
+function createNotificationDispatchSummary(
+  total: number
+): NotificationDispatchSummary {
+  return {
+    total,
+    attempted: 0,
+    sent: 0,
+    alreadyNotified: 0,
+    missingUser: 0,
+    missingToken: 0,
+    failed: 0,
+  };
+}
+
+function shouldLogNotificationDispatchSummary(
+  summary: NotificationDispatchSummary
+): boolean {
+  return (
+    summary.total > 0 &&
+    (summary.attempted > 0 ||
+      summary.sent > 0 ||
+      summary.alreadyNotified > 0 ||
+      summary.missingUser > 0 ||
+      summary.missingToken > 0 ||
+      summary.failed > 0)
+  );
+}
+
+async function dispatchItemMatchPushNotifications(
+  candidates: ItemMatchNotificationCandidate[],
+  context: string
+): Promise<NotificationDispatchSummary> {
+  const summary = createNotificationDispatchSummary(candidates.length);
+
+  if (candidates.length === 0) {
+    return summary;
+  }
+
+  for (const candidate of candidates) {
+    const { match, recipientItem, counterpartItem, body } = candidate;
+
+    if (match.notifiedAt) {
+      summary.alreadyNotified += 1;
+      continue;
+    }
+
+    if (!recipientItem.userId) {
+      summary.missingUser += 1;
+      continue;
+    }
+
+    const user = await storage.getUser(recipientItem.userId);
+    if (!user?.fcmToken) {
+      summary.missingToken += 1;
+      continue;
+    }
+
+    summary.attempted += 1;
+    const result = await sendFcmNotification({
+      fcmToken: user.fcmToken,
+      title: "새로운 매칭 발견!",
+      body,
+      data: {
+        type: "item_match",
+        lostItemId: String(match.lostItemId),
+        foundItemId: String(match.foundItemId),
+      },
+    });
+
+    if (!result.sent) {
+      summary.failed += 1;
+      console.error("[FCM] item match push failed:", {
+        context,
+        lostItemId: match.lostItemId,
+        foundItemId: match.foundItemId,
+        recipientUserId: recipientItem.userId,
+        counterpartItemId: counterpartItem.id,
+        error: result.error,
+      });
+      continue;
+    }
+
+    summary.sent += 1;
+    await db
+      .update(itemMatches)
+      .set({ notifiedAt: new Date() })
+      .where(eq(itemMatches.id, match.id));
+  }
+
+  if (shouldLogNotificationDispatchSummary(summary)) {
+    console.log("[FCM] item match push summary:", {
+      context,
+      ...summary,
+    });
+  }
+
+  return summary;
+}
+
 async function findAutomaticMatchesForFoundItem(
   foundItem: Item
 ): Promise<number> {
@@ -3121,61 +3238,33 @@ async function findAutomaticMatchesForFoundItem(
     .sort((left, right) => right.score - left.score)
     .slice(0, AUTO_MATCH_MAX_RESULTS);
 
-  await Promise.all(
+  const savedMatches = await Promise.all(
     matchesToPersist.map((match) => storage.upsertItemMatch(match))
   );
 
-  console.log(
-    `[FCM] findAutomaticMatchesForFoundItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`
-  );
-  for (const match of matchesToPersist) {
-    const lostItem = await storage.getItem(match.lostItemId);
-    if (!lostItem?.userId) {
-      console.log(`[FCM] 분실물 ${match.lostItemId}의 userId 없음 - 스킵`);
-      continue;
-    }
+  const lostItemsById = new Map(candidateLostItems.map((item) => [item.id, item]));
+  await dispatchItemMatchPushNotifications(
+    savedMatches
+      .map((match) => {
+        const lostItem = lostItemsById.get(match.lostItemId);
+        if (!lostItem) {
+          return null;
+        }
 
-    const existingMatch = await db.query.itemMatches.findFirst({
-      where: and(
-        eq(itemMatches.lostItemId, match.lostItemId),
-        eq(itemMatches.foundItemId, match.foundItemId)
+        return {
+          match,
+          recipientItem: lostItem,
+          counterpartItem: foundItem,
+          body: `"${lostItem.title}"과 유사한 습득물이 등록되었어요.`,
+        };
+      })
+      .filter(
+        (
+          candidate
+        ): candidate is ItemMatchNotificationCandidate => candidate !== null
       ),
-    });
-    if (existingMatch?.notifiedAt) {
-      console.log(
-        `[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`
-      );
-      continue;
-    }
-
-    const user = await storage.getUser(lostItem.userId);
-    if (!user?.fcmToken) {
-      console.log(`[FCM] 사용자 ${lostItem.userId}의 FCM 토큰 없음 - 스킵`);
-      continue;
-    }
-
-    console.log(`[FCM] 사용자 ${lostItem.userId}에게 매칭 알림 발송`);
-    void sendFcmNotification({
-      fcmToken: user.fcmToken,
-      title: "새로운 매칭 발견!",
-      body: `"${lostItem.title}"과 유사한 습득물이 등록되었어요.`,
-      data: {
-        type: "item_match",
-        lostItemId: String(match.lostItemId),
-        foundItemId: String(match.foundItemId),
-      },
-    });
-
-    await db
-      .update(itemMatches)
-      .set({ notifiedAt: new Date() })
-      .where(
-        and(
-          eq(itemMatches.lostItemId, match.lostItemId),
-          eq(itemMatches.foundItemId, match.foundItemId)
-        )
-      );
-  }
+    "auto-match-found-item"
+  );
 
   return matchesToPersist.length;
 }
@@ -3256,61 +3345,35 @@ async function findAutomaticMatchesForLostItem(
     .sort((left, right) => right.score - left.score)
     .slice(0, AUTO_MATCH_MAX_RESULTS);
 
-  await Promise.all(
+  const savedMatches = await Promise.all(
     matchesToPersist.map((match) => storage.upsertItemMatch(match))
   );
 
-  console.log(
-    `[FCM] findAutomaticMatchesForLostItem: ${matchesToPersist.length}개 매칭, FCM 발송 시작`
+  const foundItemsById = new Map(
+    candidateFoundItems.map((item) => [item.id, item])
   );
-  for (const match of matchesToPersist) {
-    const foundItem = await storage.getItem(match.foundItemId);
-    if (!foundItem?.userId) {
-      console.log(`[FCM] 습득물 ${match.foundItemId}의 userId 없음 - 스킵`);
-      continue;
-    }
+  await dispatchItemMatchPushNotifications(
+    savedMatches
+      .map((match) => {
+        const foundItem = foundItemsById.get(match.foundItemId);
+        if (!foundItem) {
+          return null;
+        }
 
-    const existingMatch = await db.query.itemMatches.findFirst({
-      where: and(
-        eq(itemMatches.lostItemId, match.lostItemId),
-        eq(itemMatches.foundItemId, match.foundItemId)
+        return {
+          match,
+          recipientItem: foundItem,
+          counterpartItem: lostItem,
+          body: `"${foundItem.title}"과 유사한 분실물이 등록되었어요.`,
+        };
+      })
+      .filter(
+        (
+          candidate
+        ): candidate is ItemMatchNotificationCandidate => candidate !== null
       ),
-    });
-    if (existingMatch?.notifiedAt) {
-      console.log(
-        `[FCM] 매칭 ${match.lostItemId}-${match.foundItemId} 이미 알림 발송됨 - 스킵`
-      );
-      continue;
-    }
-
-    const user = await storage.getUser(foundItem.userId);
-    if (!user?.fcmToken) {
-      console.log(`[FCM] 사용자 ${foundItem.userId}의 FCM 토큰 없음 - 스킵`);
-      continue;
-    }
-
-    console.log(`[FCM] 사용자 ${foundItem.userId}에게 매칭 알림 발송`);
-    void sendFcmNotification({
-      fcmToken: user.fcmToken,
-      title: "새로운 매칭 발견!",
-      body: `"${foundItem.title}"과 유사한 분실물이 등록되었어요.`,
-      data: {
-        type: "item_match",
-        lostItemId: String(match.lostItemId),
-        foundItemId: String(match.foundItemId),
-      },
-    });
-
-    await db
-      .update(itemMatches)
-      .set({ notifiedAt: new Date() })
-      .where(
-        and(
-          eq(itemMatches.lostItemId, match.lostItemId),
-          eq(itemMatches.foundItemId, match.foundItemId)
-        )
-      );
-  }
+    "auto-match-lost-item"
+  );
 
   return matchesToPersist.length;
 }
@@ -3524,9 +3587,11 @@ async function runAutomaticMatchNotificationsForFoundItem(
     )
   );
 
-  console.log(
-    `[FCM] 매칭 알림 ${matchedNotifications.length}개 생성됨, FCM 발송 시작`
-  );
+  if (matchedNotifications.length === 0) {
+    return;
+  }
+
+  const summary = createNotificationDispatchSummary(matchedNotifications.length);
   for (const notification of matchedNotifications) {
     const existingNotification = await db.query.matchNotifications.findFirst({
       where: and(
@@ -3536,21 +3601,19 @@ async function runAutomaticMatchNotificationsForFoundItem(
       ),
     });
     if (existingNotification?.notifiedAt) {
-      console.log(
-        `[FCM] 매칭 알림 ${notification.lostItemId}-${notification.foundItemId} 이미 발송됨 - 스킵`
-      );
+      summary.alreadyNotified += 1;
       continue;
     }
 
-    console.log(`[FCM] 사용자 ${notification.userId} 조회 중...`);
     const user = await storage.getUser(notification.userId);
     if (!user?.fcmToken) {
-      console.log(`[FCM] 사용자 ${notification.userId} 토큰 없음 - 스킵`);
+      summary.missingToken += 1;
       continue;
     }
-    console.log(`[FCM] 사용자 ${notification.userId} 토큰 확인됨, 발송 시도`);
+
     const foundItemData = await storage.getItem(notification.foundItemId);
-    void sendFcmNotification({
+    summary.attempted += 1;
+    const result = await sendFcmNotification({
       fcmToken: user.fcmToken,
       title: "새로운 매칭 발견!",
       body: `"${
@@ -3563,6 +3626,18 @@ async function runAutomaticMatchNotificationsForFoundItem(
       },
     });
 
+    if (!result.sent) {
+      summary.failed += 1;
+      console.error("[FCM] match notification push failed:", {
+        lostItemId: notification.lostItemId,
+        foundItemId: notification.foundItemId,
+        userId: notification.userId,
+        error: result.error,
+      });
+      continue;
+    }
+
+    summary.sent += 1;
     await db
       .update(matchNotifications)
       .set({ notifiedAt: new Date() })
@@ -3573,6 +3648,10 @@ async function runAutomaticMatchNotificationsForFoundItem(
           eq(matchNotifications.foundItemId, notification.foundItemId)
         )
       );
+  }
+
+  if (shouldLogNotificationDispatchSummary(summary)) {
+    console.log("[FCM] match notification push summary:", summary);
   }
 }
 
