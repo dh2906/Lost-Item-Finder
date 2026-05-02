@@ -89,9 +89,17 @@ function splitLocation(location?: string | null): {
   };
 }
 
-function getMatchEvidenceLabels(reasoning?: string): string[] {
+function getMatchEvidenceLabels(
+  reasoning?: string,
+  options?: { hasDistance?: boolean; hasScore?: boolean }
+): string[] {
   if (!reasoning) {
-    return [];
+    return options?.hasDistance || options?.hasScore
+      ? [
+          ...(options?.hasDistance ? ["지역 일치"] : []),
+          ...(options?.hasScore ? ["신뢰도 반영"] : []),
+        ]
+      : [];
   }
 
   const labels: string[] = [];
@@ -100,7 +108,7 @@ function getMatchEvidenceLabels(reasoning?: string): string[] {
     [/카테고리|분류/, "분류 유사"],
     [/색상|색깔/, "색상 유사"],
     [/크기|사이즈/, "크기 참고"],
-    [/거리|위치|지역|장소/, "위치 반영"],
+    [/거리|위치|지역|장소/, "지역 일치"],
     [/날짜|기간|일 차이|일로/, "날짜 반영"],
     [/점수|강한 후보|중간 수준/, "신뢰도 반영"],
   ];
@@ -111,7 +119,14 @@ function getMatchEvidenceLabels(reasoning?: string): string[] {
     }
   }
 
-  return labels.slice(0, 4);
+  if (options?.hasDistance && !labels.includes("지역 일치")) {
+    labels.push("지역 일치");
+  }
+  if (options?.hasScore && !labels.includes("신뢰도 반영")) {
+    labels.push("신뢰도 반영");
+  }
+
+  return labels.slice(0, 5);
 }
 
 export function ItemCard({
@@ -126,7 +141,6 @@ export function ItemCard({
 }: ItemCardProps) {
   const [isReasonExpanded, setIsExpanded] = useState(false);
   const reportLabel = item.reportType === "found" ? "습득" : "분실";
-  const statusLabel = item.status === "resolved" ? "해결 완료" : "진행 중";
   const isCompact = variant === "compact" || variant === "list";
   const displayTitle = getDisplayTitle(item);
   const isLost112Item = item.externalSource === "lost112";
@@ -140,7 +154,10 @@ export function ItemCard({
     primaryImageUrl && !(isLost112Item && isPlaceholderImageUrl(primaryImageUrl));
   const displayLocation = splitLocation(item.location);
   const visibleTags = (item.tags ?? []).filter((tag) => !INTERNAL_TAGS.has(tag));
-  const matchEvidenceLabels = getMatchEvidenceLabels(reasoning);
+  const matchEvidenceLabels = getMatchEvidenceLabels(reasoning, {
+    hasDistance: Boolean(distanceText),
+    hasScore: score !== undefined,
+  });
 
   const getMatchBadge = (scoreValue?: number) => {
     if (scoreValue === undefined) return null;
@@ -148,18 +165,18 @@ export function ItemCard({
     if (percentage >= 75) {
       return {
         text: `강한 후보 ${percentage}%`,
-        className: "border-primary bg-primary text-primary-foreground",
+        className: "border-primary/25 bg-white text-primary shadow-sm",
       };
     }
     if (percentage >= 50) {
       return {
         text: `확인 필요 ${percentage}%`,
-        className: "border-primary/25 bg-primary/10 text-primary",
+        className: "border-primary/25 bg-white text-primary shadow-sm",
       };
     }
     return {
       text: `참고 후보 ${percentage}%`,
-      className: "border-border bg-white text-muted-foreground",
+      className: "border-border bg-white text-muted-foreground shadow-sm",
     };
   };
 
@@ -224,17 +241,12 @@ export function ItemCard({
                 {reportLabel}
               </Badge>
 
-              {item.status === "resolved" || !isLost112Item ? (
+              {item.status === "resolved" ? (
                 <Badge
                   variant="outline"
-                  className={cn(
-                    "rounded-lg border font-medium",
-                    item.status === "resolved"
-                      ? "border-border bg-white/95 text-muted-foreground"
-                      : "border-warning/35 bg-warning/14 text-foreground"
-                  )}
+                  className="rounded-lg border border-border bg-white/95 font-medium text-muted-foreground"
                 >
-                  {statusLabel}
+                  해결 완료
                 </Badge>
               ) : null}
 
