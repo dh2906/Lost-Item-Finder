@@ -93,6 +93,18 @@ export function Layout({ children }: { children: ReactNode }) {
     void setLocation(href);
   };
 
+  const getNavigationTarget = (href: string) => {
+    const reportStepMatch = location
+      .split("?")[0]
+      .match(/^\/report\/(?:found|lost)\/(photo|info|location|confirm)$/);
+
+    if (reportStepMatch && /^\/report\/(?:found|lost)$/.test(href)) {
+      return `${href}/${reportStepMatch[1]}`;
+    }
+
+    return href;
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-50 border-b border-border bg-white/96 text-foreground backdrop-blur supports-[backdrop-filter]:bg-white/90">
@@ -227,13 +239,10 @@ export function Layout({ children }: { children: ReactNode }) {
                             location.startsWith(`${childPath}/`);
 
                           return (
-                            <a
+                            <button
                               key={child.href}
-                              href={child.href}
-                              onClick={() => {
-                                setOpenNavMenu(null);
-                                setMobileMenuOpen(false);
-                              }}
+                              type="button"
+                              onClick={() => handleMenuNavigate(getNavigationTarget(child.href))}
                               className={cn(
                                 "block w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground",
                                 isChildActive
@@ -249,7 +258,7 @@ export function Layout({ children }: { children: ReactNode }) {
                                   </span>
                                 ) : null}
                               </span>
-                            </a>
+                            </button>
                           );
                         })}
                       </div>
