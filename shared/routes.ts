@@ -530,6 +530,7 @@ export const api = {
       input: z.object({
         prompt: z.string().optional(),
         imageUrl: z.string().optional(),
+        lostDateText: z.string().trim().max(40).optional(),
         location: z.string().optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),

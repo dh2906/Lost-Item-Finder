@@ -6,6 +6,7 @@ import { z } from "zod";
 import { Sparkles, Image as ImageIcon, Search as SearchIcon, X, Loader2, PlusCircle, MapPin } from "lucide-react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ItemCard } from "@/components/item-card";
@@ -34,6 +35,7 @@ const searchSchema = z
   .object({
     prompt: z.string().optional(),
     imageUrl: z.string().optional(),
+    lostDateText: z.string().optional(),
     location: z.string().optional(),
     latitude: z.string().optional(),
     longitude: z.string().optional(),
@@ -69,6 +71,7 @@ export default function SearchPage() {
     defaultValues: {
       prompt: "",
       imageUrl: "",
+      lostDateText: "",
       location: "",
       latitude: "",
       longitude: "",
@@ -266,6 +269,14 @@ export default function SearchPage() {
                   className="min-h-[88px] resize-none rounded-[24px] border border-border/70 bg-white px-4 py-3.5 text-base shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 sm:min-h-[104px]"
                   onKeyDown={handlePromptKeyDown}
                   {...form.register("prompt")}
+                />
+              </div>
+
+              <div className="px-2">
+                <Input
+                  placeholder="언제 잃어버렸나요? 예: 5월 1일, 어제, 이번주, 저번주"
+                  className="h-12 rounded-[20px] border border-border/70 bg-white px-4 text-sm shadow-none focus-visible:ring-1 focus-visible:ring-primary/20"
+                  {...form.register("lostDateText")}
                 />
               </div>
 
