@@ -39,7 +39,7 @@ function getMatchEvidenceLabels(reasoning: string): string[] {
     [/색상|색깔/, "색상 유사"],
     [/크기|사이즈/, "크기 참고"],
     [/거리|위치|지역|장소/, "위치 반영"],
-    [/날짜|기간|일 차이|일로/, "날짜 반영"],
+    [/날짜|기간|일 차이|일로/, "날짜 유사"],
   ];
 
   for (const [pattern, label] of checks) {

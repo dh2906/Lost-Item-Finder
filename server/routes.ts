@@ -2606,15 +2606,15 @@ function buildAiSearchDateSummary(
   );
 
   if (dateScore >= 1) {
-    return `분실 시점 조건 '${lostDateRange.label}' 이후 며칠 내 등록된 후보라 날짜도 가깝습니다.`;
+    return `입력한 분실 시점 '${lostDateRange.label}'과 후보 등록 날짜가 매우 가깝습니다.`;
   }
   if (dateScore >= 0.72) {
-    return `분실 시점 조건 '${lostDateRange.label}' 이후 약 ${diffDays}일 안쪽이라 날짜를 함께 반영했습니다.`;
+    return `입력한 분실 시점 '${lostDateRange.label}' 기준으로 약 ${diffDays}일 차이라 날짜도 유사합니다.`;
   }
   if (dateScore >= 0.42) {
-    return `분실 시점 조건 '${lostDateRange.label}'보다 늦게 등록됐지만 날짜 차이가 있어 참고 후보로 보는 편이 좋습니다.`;
+    return `입력한 분실 시점 '${lostDateRange.label}'보다 늦게 등록됐지만 날짜 차이는 있는 편입니다.`;
   }
-  return `분실 시점 조건 '${lostDateRange.label}' 이후 등록된 기록이지만 날짜 차이는 큰 편입니다.`;
+  return `입력한 분실 시점 '${lostDateRange.label}'과 후보 등록 날짜 차이가 큰 편입니다.`;
 }
 
 function getMatchedQueryKeywords(queryText: string, item: VectorCandidate["item"]) {
@@ -2849,6 +2849,14 @@ function hasRequestedLocation(queryText: string): boolean {
   return extractRequestedLocationTokens(queryText).length > 0;
 }
 
+function getRequestedLocationQuery(promptText?: string | null): string | null {
+  const requestedLocationTokens = extractRequestedLocationTokens(promptText ?? "");
+  if (requestedLocationTokens.length === 0) {
+    return null;
+  }
+  return requestedLocationTokens.join(" ");
+}
+
 type AiCandidateEvaluation = {
   keep: boolean;
   scoreCap: number;
@@ -2859,6 +2867,14 @@ type SearchDateRange = {
   label: string;
   start: Date;
   end: Date;
+};
+
+type SearchLocationGeocodingResult = {
+  query: string;
+  latitude: number;
+  longitude: number;
+  placeName?: string | null;
+  address?: string | null;
 };
 
 function startOfDay(date: Date): Date {
@@ -2957,6 +2973,74 @@ function parseSearchDateRange(input?: string | null): SearchDateRange | null {
   return null;
 }
 
+async function geocodeSearchLocationQuery(
+  query: string
+): Promise<SearchLocationGeocodingResult | null> {
+  if (!KAKAO_REST_API_KEY) {
+    return null;
+  }
+
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return null;
+  }
+
+  try {
+    const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
+    url.searchParams.set("query", trimmedQuery);
+    url.searchParams.set("size", "1");
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `KakaoAK ${KAKAO_REST_API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.error(
+        `[AI Search] failed to geocode query location: ${response.status} ${response.statusText}`
+      );
+      return null;
+    }
+
+    const body = z
+      .object({
+        documents: z.array(
+          z.object({
+            place_name: z.string().optional(),
+            address_name: z.string().optional(),
+            road_address_name: z.string().optional(),
+            x: z.string(),
+            y: z.string(),
+          })
+        ),
+      })
+      .parse(await response.json());
+
+    const first = body.documents[0];
+    if (!first) {
+      return null;
+    }
+
+    const latitude = Number(first.y);
+    const longitude = Number(first.x);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+
+    return {
+      query: trimmedQuery,
+      latitude,
+      longitude,
+      placeName: first.place_name ?? null,
+      address: first.road_address_name || first.address_name || null,
+    };
+  } catch (error) {
+    console.error("[AI Search] failed to geocode query location:", error);
+    return null;
+  }
+}
+
 function calculateAiSearchDateScore(
   candidateDate: string | Date | null | undefined,
   range?: SearchDateRange | null
@@ -3052,8 +3136,8 @@ function evaluateAiSearchCandidate(params: {
   ) {
     evidenceLabels.push("지역 일치");
   }
-  if (lostDateRange && dateScore !== null) {
-    evidenceLabels.push("날짜 반영");
+  if (lostDateRange && dateScore !== null && dateScore >= 0.72) {
+    evidenceLabels.push("날짜 유사");
   }
 
   let scoreCap = rerankEnabled ? 0.96 : 0.82;
@@ -5112,8 +5196,20 @@ export async function registerRoutes(
           .json({ message: "Either prompt or imageUrl must be provided" });
       }
 
-      const searchCoordinates = getSearchCoordinates(input);
-      const searchLocation = input.location?.trim();
+      const explicitSearchCoordinates = getSearchCoordinates(input);
+      const inferredLocationQuery = getRequestedLocationQuery(input.prompt);
+      const inferredLocation = !explicitSearchCoordinates && !input.location
+        ? await geocodeSearchLocationQuery(inferredLocationQuery ?? "")
+        : null;
+      const searchCoordinates = explicitSearchCoordinates
+        ? explicitSearchCoordinates
+        : inferredLocation
+        ? {
+            latitude: inferredLocation.latitude,
+            longitude: inferredLocation.longitude,
+          }
+        : null;
+      const searchLocation = input.location?.trim() || undefined;
       const lostDateRange = parseSearchDateRange(input.lostDateText);
       const radiusKm =
         typeof input.radiusKm === "number" && Number.isFinite(input.radiusKm)
