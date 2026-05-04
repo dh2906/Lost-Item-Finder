@@ -2,6 +2,7 @@ import { getMessaging, getToken, onMessage, type MessagePayload } from 'firebase
 import { getFirebaseApp } from './firebase';
 
 const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+let initFcmPromise: Promise<void> | null = null;
 
 function getFirebaseMessaging() {
   try {
@@ -14,6 +15,19 @@ function getFirebaseMessaging() {
 
 /** FCM 토큰 요청 및 서버 등록 */
 export async function initFcm(): Promise<void> {
+  if (initFcmPromise) {
+    return initFcmPromise;
+  }
+
+  initFcmPromise = initFcmOnce().catch((err) => {
+    initFcmPromise = null;
+    throw err;
+  });
+
+  return initFcmPromise;
+}
+
+async function initFcmOnce(): Promise<void> {
   if (!('Notification' in window)) {
     console.warn('[FCM] 이 브라우저는 알림을 지원하지 않습니다.');
     return;
@@ -29,7 +43,9 @@ export async function initFcm(): Promise<void> {
   }
 
   // SW 등록 (이미 등록된 경우 기존 등록 반환)
-  const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+  const registration =
+    (await navigator.serviceWorker.getRegistration('/')) ??
+    (await navigator.serviceWorker.register('/firebase-messaging-sw.js'));
   await navigator.serviceWorker.ready;
 
   const messaging = getFirebaseMessaging();

@@ -10,7 +10,20 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  app.use(express.static(distPath, {
+    setHeaders(res, filePath) {
+      const normalizedPath = filePath.replaceAll(path.sep, "/");
+
+      if (normalizedPath.includes("/icons/")) {
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        return;
+      }
+
+      if (normalizedPath.endsWith("/firebase-messaging-sw.js")) {
+        res.setHeader("Cache-Control", "no-cache");
+      }
+    },
+  }));
 
   // fall through to index.html if the file doesn't exist
   app.use("/{*path}", (_req, res) => {
