@@ -17,3 +17,29 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  embedding:
+    build:
+      context: ./docker/embedding
+    container_name: lost-found-finder-embedding
+    restart: unless-stopped
+    environment:
+      EMBEDDING_MODEL: intfloat/multilingual-e5-base
+      EMBEDDING_DIMENSIONS: "768"
+      HF_HOME: /models
+    ports:
+      - "8090:8090"
+    volumes:
+      - embedding-model-cache:/models
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python - <<'PY'\nimport json, urllib.request\nreq = urllib.request.Request('http://127.0.0.1:8090/embed', data=json.dumps({'input':'query: health check'}).encode(), headers={'Content-Type':'application/json'})\nwith urllib.request.urlopen(req, timeout=10) as res:\n    raise SystemExit(0 if res.status == 200 else 1)\nPY",
+        ]
+      interval: 10s
+      timeout: 15s
+      retries: 12
+
+volumes:
+  embedding-model-cache:
