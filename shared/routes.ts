@@ -528,6 +528,7 @@ export const api = {
           maskedImage: z.string().optional(),
         }),
         400: errorSchemas.validation,
+        401: errorSchemas.validation,
         500: errorSchemas.internal,
       },
     },
@@ -554,6 +555,7 @@ export const api = {
           })
         ),
         400: errorSchemas.validation,
+        401: errorSchemas.validation,
         500: errorSchemas.internal,
       },
     },

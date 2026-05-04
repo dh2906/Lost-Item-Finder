@@ -5182,7 +5182,7 @@ export async function registerRoutes(
   );
 
   // --- AI API ---
-  app.post(api.ai.analyzeImage.path, async (req, res) => {
+  app.post(api.ai.analyzeImage.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.ai.analyzeImage.input.parse(req.body);
 
@@ -5265,6 +5265,12 @@ export async function registerRoutes(
         return res
           .status(400)
           .json({ message: "Either prompt or imageUrl must be provided" });
+      }
+
+      if (input.imageUrl && !req.user) {
+        return res.status(401).json({
+          message: "이미지 기반 AI 검색은 로그인이 필요합니다.",
+        });
       }
 
       const explicitSearchCoordinates = getSearchCoordinates(input);
