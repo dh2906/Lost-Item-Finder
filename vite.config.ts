@@ -87,7 +87,7 @@ export default defineConfig({
             return "vendor-date";
           }
 
-          return "vendor";
+          return undefined;
         },
       },
     },
