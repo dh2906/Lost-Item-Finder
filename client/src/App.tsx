@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Switch, Route } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
 import { queryClient } from "@/lib/queryClient";
@@ -10,22 +10,29 @@ import { initFcm, onForegroundMessage } from "@/lib/fcm";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { ProtectedRoute } from "@/components/protected-route";
 import { useAuth } from "@/hooks/use-auth";
-import NotFound from "@/pages/not-found";
-import Home from "@/pages/home";
-import ReportPage from "@/pages/report";
-import SearchPage from "@/pages/search";
-import ItemsPage from "@/pages/items";
-import ItemDetail from "@/pages/item-detail";
-import ChatsPage from "@/pages/chats";
-import ChatRoomPage from "@/pages/chat-room";
-import MatchesPage from "@/pages/matches";
-import EditItemPage from "@/pages/edit-item";
-import { LoginPage } from "@/pages/login";
-import MyPage from "@/pages/mypage";
-import AdminDashboardPage from "@/pages/admin-dashboard";
-import { RegisterPage } from "@/pages/register";
-import InstallPage from "@/pages/install";
 import { useLocation } from "wouter";
+
+const NotFound = lazy(() => import("@/pages/not-found"));
+const Home = lazy(() => import("@/pages/home"));
+const ReportPage = lazy(() => import("@/pages/report"));
+const SearchPage = lazy(() => import("@/pages/search"));
+const ItemsPage = lazy(() => import("@/pages/items"));
+const ItemDetail = lazy(() => import("@/pages/item-detail"));
+const ChatsPage = lazy(() => import("@/pages/chats"));
+const ChatRoomPage = lazy(() => import("@/pages/chat-room"));
+const MatchesPage = lazy(() => import("@/pages/matches"));
+const EditItemPage = lazy(() => import("@/pages/edit-item"));
+const LoginPage = lazy(() =>
+  import("@/pages/login").then((module) => ({ default: module.LoginPage }))
+);
+const MyPage = lazy(() => import("@/pages/mypage"));
+const AdminDashboardPage = lazy(() => import("@/pages/admin-dashboard"));
+const RegisterPage = lazy(() =>
+  import("@/pages/register").then((module) => ({
+    default: module.RegisterPage,
+  }))
+);
+const InstallPage = lazy(() => import("@/pages/install"));
 
 function FoundReportPage() {
   return <ReportPage forcedType="found" />;
@@ -37,6 +44,16 @@ function LostReportPage() {
 
 function DefaultReportPage() {
   return <ReportPage />;
+}
+
+function PageLoadingFallback() {
+  return (
+    <div className="flex min-h-[55vh] items-center justify-center bg-background px-5">
+      <div className="rounded-xl border border-border bg-white px-5 py-4 text-sm font-semibold text-muted-foreground shadow-sm">
+        페이지를 불러오는 중입니다
+      </div>
+    </div>
+  );
 }
 
 const reportStepPattern = /\/(photo|info|location|confirm)$/;
@@ -95,81 +112,83 @@ function Router() {
         exit={{ opacity: 0, y: -6 }}
         transition={{ duration: 0.18, ease: "easeOut" }}
       >
-        <Switch location={location}>
-          <Route path="/" component={Home} />
-          <Route path="/install" component={InstallPage} />
-          <Route path="/report/found/:step">
-            <ProtectedRoute>
-              <FoundReportPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/report/found">
-            <ProtectedRoute>
-              <FoundReportPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/report/lost/:step">
-            <ProtectedRoute>
-              <LostReportPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/report/lost">
-            <ProtectedRoute>
-              <LostReportPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/report/:step">
-            <ProtectedRoute>
-              <DefaultReportPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/report">
-            <ProtectedRoute>
-              <DefaultReportPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/search" component={SearchPage} />
-          <Route path="/items" component={ItemsPage} />
-          <Route path="/item/:id/edit/:step">
-            <ProtectedRoute>
-              <EditItemPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/item/:id/edit">
-            <ProtectedRoute>
-              <EditItemPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/item/:id" component={ItemDetail} />
-          <Route path="/mypage">
-            <ProtectedRoute>
-              <MyPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/admin">
-            <ProtectedRoute requireAdmin>
-              <AdminDashboardPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/matches">
-            <ProtectedRoute>
-              <MatchesPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/chats">
-            <ProtectedRoute>
-              <ChatsPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/chat/:id">
-            <ProtectedRoute>
-              <ChatRoomPage />
-            </ProtectedRoute>
-          </Route>
-          <Route path="/login" component={LoginPage} />
-          <Route path="/register" component={RegisterPage} />
-          <Route component={NotFound} />
-        </Switch>
+        <Suspense fallback={<PageLoadingFallback />}>
+          <Switch location={location}>
+            <Route path="/" component={Home} />
+            <Route path="/install" component={InstallPage} />
+            <Route path="/report/found/:step">
+              <ProtectedRoute>
+                <FoundReportPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/report/found">
+              <ProtectedRoute>
+                <FoundReportPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/report/lost/:step">
+              <ProtectedRoute>
+                <LostReportPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/report/lost">
+              <ProtectedRoute>
+                <LostReportPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/report/:step">
+              <ProtectedRoute>
+                <DefaultReportPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/report">
+              <ProtectedRoute>
+                <DefaultReportPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/search" component={SearchPage} />
+            <Route path="/items" component={ItemsPage} />
+            <Route path="/item/:id/edit/:step">
+              <ProtectedRoute>
+                <EditItemPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/item/:id/edit">
+              <ProtectedRoute>
+                <EditItemPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/item/:id" component={ItemDetail} />
+            <Route path="/mypage">
+              <ProtectedRoute>
+                <MyPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/admin">
+              <ProtectedRoute requireAdmin>
+                <AdminDashboardPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/matches">
+              <ProtectedRoute>
+                <MatchesPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/chats">
+              <ProtectedRoute>
+                <ChatsPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/chat/:id">
+              <ProtectedRoute>
+                <ChatRoomPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/login" component={LoginPage} />
+            <Route path="/register" component={RegisterPage} />
+            <Route component={NotFound} />
+          </Switch>
+        </Suspense>
       </motion.div>
     </AnimatePresence>
   );
