@@ -50,6 +50,45 @@ const allowedOriginPatterns = [
   /^https:\/\/[a-z0-9-]+\.ngrok\.io$/i,
 ];
 
+type HealthCheckStatus = "ok" | "error" | "skipped";
+
+async function checkLocalEmbeddingHealth(): Promise<{
+  status: HealthCheckStatus;
+  latencyMs: number | null;
+}> {
+  if (process.env.EMBEDDING_PROVIDER !== "local") {
+    return { status: "skipped", latencyMs: null };
+  }
+
+  const localEmbeddingUrl = process.env.LOCAL_EMBEDDING_URL;
+  if (!localEmbeddingUrl) {
+    return { status: "error", latencyMs: null };
+  }
+
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+
+  try {
+    const response = await fetch(localEmbeddingUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ input: "query: health check" }),
+      signal: controller.signal,
+    });
+
+    return {
+      status: response.ok ? "ok" : "error",
+      latencyMs: Date.now() - startedAt,
+    };
+  } catch (error) {
+    console.error("[Health] local embedding check failed:", error);
+    return { status: "error", latencyMs: Date.now() - startedAt };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 app.use(cors({
   origin: (origin, callback) => {
     const isPatternAllowed = origin
@@ -92,17 +131,28 @@ app.get("/api/health", async (_req, res) => {
     console.error("[Health] database check failed:", error);
   }
 
-  const status = database === "ok" ? "ok" : "degraded";
+  const embeddingHealth = await checkLocalEmbeddingHealth();
+  const embeddingConfigured =
+    process.env.EMBEDDING_PROVIDER === "local"
+      ? Boolean(process.env.LOCAL_EMBEDDING_URL)
+      : Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY);
+  const embeddingAvailable =
+    process.env.EMBEDDING_PROVIDER === "local"
+      ? embeddingHealth.status === "ok"
+      : embeddingConfigured;
+  const status =
+    database === "ok" && embeddingAvailable ? "ok" : "degraded";
+
   res.status(status === "ok" ? 200 : 503).json({
     status,
     database,
     databaseLatencyMs,
     ai: {
       text: Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
-      embedding:
-        process.env.EMBEDDING_PROVIDER === "local"
-          ? Boolean(process.env.LOCAL_EMBEDDING_URL)
-          : Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
+      embedding: embeddingConfigured,
+      embeddingProvider: process.env.EMBEDDING_PROVIDER ?? "local",
+      embeddingStatus: embeddingHealth.status,
+      embeddingLatencyMs: embeddingHealth.latencyMs,
       vision: Boolean(process.env.QWEN_API_KEY),
     },
     lost112: {

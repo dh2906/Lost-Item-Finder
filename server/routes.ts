@@ -214,6 +214,23 @@ function getErrorMessage(error: unknown): string {
   return "Internal server error";
 }
 
+class EmbeddingServiceUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "EmbeddingServiceUnavailableError";
+    Object.setPrototypeOf(this, EmbeddingServiceUnavailableError.prototype);
+  }
+}
+
+function isEmbeddingServiceUnavailableError(
+  error: unknown
+): error is EmbeddingServiceUnavailableError {
+  return (
+    error instanceof EmbeddingServiceUnavailableError ||
+    (error instanceof Error && error.name === "EmbeddingServiceUnavailableError")
+  );
+}
+
 type Lost112NormalizedItem = {
   atcId?: string;
   fdSn?: string;
@@ -3694,15 +3711,24 @@ async function createEmbedding(
   const input = formatEmbeddingInput(text, kind);
   abortIfNeeded(signal);
   if (EMBEDDING_PROVIDER === "local") {
-    const response = await fetch(LOCAL_EMBEDDING_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ input }),
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(LOCAL_EMBEDDING_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ input }),
+        signal,
+      });
+    } catch (error) {
+      throw new EmbeddingServiceUnavailableError(
+        "로컬 임베딩 서버에 연결할 수 없습니다.",
+        { cause: error }
+      );
+    }
+
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
-      throw new Error(
+      throw new EmbeddingServiceUnavailableError(
         `로컬 임베딩 생성에 실패했습니다 (${response.status}): ${errorText}`
       );
     }
@@ -5551,6 +5577,9 @@ export async function registerRoutes(
           message: err.errors[0].message,
           field: err.errors[0].path.join("."),
         });
+      }
+      if (isEmbeddingServiceUnavailableError(err)) {
+        return res.status(503).json({ message: getErrorMessage(err) });
       }
       res.status(500).json({ message: getErrorMessage(err) });
     }
