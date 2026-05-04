@@ -13,6 +13,7 @@
     "db:prepare": "docker compose exec -T db psql -U postgres -d lost_found_finder -c \"CREATE EXTENSION IF NOT EXISTS vector;\"",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs db",
+    "eval:ai-search": "tsx script/ai-search-eval.ts",
     "pwa:icons": "tsx script/generate-pwa-icons.ts"
   },
   "dependencies": {

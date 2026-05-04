@@ -1,0 +1,28 @@
+[
+  {
+    "name": "충남대 민트색 텀블러",
+    "input": {
+      "prompt": "충남대 민트색 텀블러",
+      "lostDateText": "5월 2일",
+      "location": "충남대",
+      "latitude": "36.3683",
+      "longitude": "127.3445",
+      "radiusKm": 3
+    },
+    "expected": {
+      "titleIncludes": ["텀블러"],
+      "locationIncludes": ["대학로"],
+      "evidenceLabels": ["색상 유사", "지역 일치", "날짜 유사"]
+    }
+  },
+  {
+    "name": "검정 무선 이어폰",
+    "input": {
+      "prompt": "검정 무선 이어폰"
+    },
+    "expected": {
+      "titleIncludes": ["이어폰"],
+      "evidenceLabels": ["특징 일치"]
+    }
+  }
+]
