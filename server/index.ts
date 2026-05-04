@@ -7,6 +7,7 @@ import {
   ensureItemMatchSchema,
   ensureLost112SyncRunSchema,
   ensureVectorExtension,
+  pool,
 } from "./db";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -76,6 +77,40 @@ app.use((_req, res, next) => {
 app.use("/api", (_req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
   next();
+});
+
+app.get("/api/health", async (_req, res) => {
+  const startedAt = Date.now();
+  let database: "ok" | "error" = "ok";
+  let databaseLatencyMs: number | null = null;
+
+  try {
+    await pool.query("SELECT 1");
+    databaseLatencyMs = Date.now() - startedAt;
+  } catch (error) {
+    database = "error";
+    console.error("[Health] database check failed:", error);
+  }
+
+  const status = database === "ok" ? "ok" : "degraded";
+  res.status(status === "ok" ? 200 : 503).json({
+    status,
+    database,
+    databaseLatencyMs,
+    ai: {
+      text: Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
+      embedding:
+        process.env.EMBEDDING_PROVIDER === "local"
+          ? Boolean(process.env.LOCAL_EMBEDDING_URL)
+          : Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
+      vision: Boolean(process.env.QWEN_API_KEY),
+    },
+    lost112: {
+      api: Boolean(process.env.LOST112_API_KEY),
+      syncEnabled: process.env.LOST112_SYNC_ENABLED === "true",
+    },
+    uptimeSec: Math.round(process.uptime()),
+  });
 });
 
 // SW의 importScripts()가 동기적으로 로드하는 Firebase config 엔드포인트.
