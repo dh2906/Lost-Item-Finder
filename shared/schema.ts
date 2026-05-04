@@ -82,6 +82,8 @@ export const lost112SyncRuns = pgTable("lost112_sync_runs", {
   id: serial("id").primaryKey(),
   trigger: text("trigger").notNull(),
   status: text("status").notNull(),
+  startDate: text("start_date"),
+  endDate: text("end_date"),
   page: integer("page").notNull(),
   numOfRows: integer("num_of_rows").notNull(),
   maxPages: integer("max_pages").notNull(),

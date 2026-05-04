@@ -418,6 +418,8 @@ type Lost112SyncOptions = {
 };
 
 type Lost112SyncResult = {
+  startDate: string | null;
+  endDate: string | null;
   fetchedCount: number;
   createdCount: number;
   updatedCount: number;
@@ -432,6 +434,8 @@ type Lost112ActiveSyncRun = {
   id: number;
   trigger: string;
   phase: "fetching" | "processing";
+  startDate: string | null;
+  endDate: string | null;
   page: number;
   numOfRows: number;
   maxPages: number;
@@ -1188,11 +1192,17 @@ async function runLost112Sync({
   maxPages = LOST112_SYNC_MAX_PAGES,
   trigger = "manual",
 }: Lost112SyncOptions): Promise<Lost112SyncResult> {
+  const normalizedStartDate = startDate
+    ? normalizeLost112DateParam(startDate)
+    : null;
+  const normalizedEndDate = endDate ? normalizeLost112DateParam(endDate) : null;
   const [syncRun] = await db
     .insert(lost112SyncRuns)
     .values({
       trigger,
       status: "running",
+      startDate: normalizedStartDate,
+      endDate: normalizedEndDate,
       page,
       numOfRows,
       maxPages,
@@ -1202,6 +1212,8 @@ async function runLost112Sync({
     id: syncRun.id,
     trigger,
     phase: "fetching",
+    startDate: normalizedStartDate,
+    endDate: normalizedEndDate,
     page,
     numOfRows,
     maxPages,
@@ -1238,8 +1250,8 @@ async function runLost112Sync({
         apiKey,
         category,
         region,
-        startDate,
-        endDate,
+        startDate: normalizedStartDate ?? undefined,
+        endDate: normalizedEndDate ?? undefined,
         page: page + pageOffset,
         numOfRows,
       });
@@ -1383,6 +1395,8 @@ async function runLost112Sync({
 
     console.log("[Lost112 Sync] job completed:", {
       trigger,
+      startDate: normalizedStartDate,
+      endDate: normalizedEndDate,
       fetchedCount: fetchedItems.length,
       createdCount,
       updatedCount,
@@ -1393,6 +1407,8 @@ async function runLost112Sync({
     });
 
     return {
+      startDate: normalizedStartDate,
+      endDate: normalizedEndDate,
       fetchedCount: fetchedItems.length,
       createdCount,
       updatedCount,

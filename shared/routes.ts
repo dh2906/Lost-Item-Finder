@@ -175,6 +175,8 @@ const lost112ItemsResponseSchema = z.object({
 });
 
 const lost112SyncResponseSchema = z.object({
+  startDate: z.string().nullable(),
+  endDate: z.string().nullable(),
   fetchedCount: z.number(),
   createdCount: z.number(),
   updatedCount: z.number(),
@@ -200,6 +202,8 @@ const lost112SyncRunResponseSchema = z.object({
   id: z.number(),
   trigger: z.string(),
   status: z.string(),
+  startDate: z.string().nullable(),
+  endDate: z.string().nullable(),
   page: z.number(),
   numOfRows: z.number(),
   maxPages: z.number(),
@@ -219,6 +223,8 @@ const lost112ActiveSyncRunResponseSchema = z.object({
   id: z.number(),
   trigger: z.string(),
   phase: z.enum(["fetching", "processing"]),
+  startDate: z.string().nullable(),
+  endDate: z.string().nullable(),
   page: z.number(),
   numOfRows: z.number(),
   maxPages: z.number(),

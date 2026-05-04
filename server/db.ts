@@ -209,6 +209,8 @@ export async function ensureLost112SyncRunSchema(): Promise<void> {
       id serial PRIMARY KEY,
       trigger text NOT NULL,
       status text NOT NULL,
+      start_date text,
+      end_date text,
       page integer NOT NULL,
       num_of_rows integer NOT NULL,
       max_pages integer NOT NULL,
@@ -223,5 +225,11 @@ export async function ensureLost112SyncRunSchema(): Promise<void> {
       started_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
       finished_at timestamp
     );
+  `);
+
+  await pool.query(`
+    ALTER TABLE lost112_sync_runs
+      ADD COLUMN IF NOT EXISTS start_date text,
+      ADD COLUMN IF NOT EXISTS end_date text;
   `);
 }
