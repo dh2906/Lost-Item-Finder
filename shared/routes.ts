@@ -382,6 +382,7 @@ export const api = {
       responses: {
         201: itemResponseSchema,
         400: errorSchemas.validation,
+        401: errorSchemas.validation,
       },
     },
     update: {

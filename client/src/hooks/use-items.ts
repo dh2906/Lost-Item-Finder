@@ -110,6 +110,10 @@ export function useCreateItem() {
           const error = parseWithLogging(api.items.create.responses[400], resData, "items.create.error");
           throw new Error(error.message);
         }
+        if (res.status === 401) {
+          const error = parseWithLogging(api.items.create.responses[401], resData, "items.create.unauthorized");
+          throw new Error(error.message);
+        }
         throw new Error("Failed to create item");
       }
       return parseWithLogging(api.items.create.responses[201], resData, "items.create");

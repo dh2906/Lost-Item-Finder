@@ -4872,7 +4872,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.items.create.path, async (req, res) => {
+  app.post(api.items.create.path, isAuthenticated, async (req, res) => {
     console.log("[API] POST /api/items - 물건 등록 시작", req.body?.reportType);
     try {
       const input = api.items.create.input.parse(req.body);
@@ -4885,7 +4885,7 @@ export async function registerRoutes(
       const duplicateItem = await storage.findRecentDuplicateUserItem(
         {
           ...normalizedInput,
-          userId: req.user?.id ?? null,
+          userId: req.user!.id,
         },
         buildDuplicateItemWindowStart()
       );
@@ -4899,7 +4899,7 @@ export async function registerRoutes(
 
       const item = await storage.createItem({
         ...normalizedInput,
-        userId: req.user?.id ?? null,
+        userId: req.user!.id,
       });
       console.log(
         `[API] 물건 저장 완료 - ID: ${item.id}, type: ${item.reportType}`
