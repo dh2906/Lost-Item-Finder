@@ -1,6 +1,6 @@
 type CheckResult = {
   name: string;
-  status: "pass" | "fail";
+  status: "pass" | "fail" | "skip";
   detail: string;
   latencyMs: number;
 };
@@ -23,7 +23,8 @@ function printUsage(): void {
 
 Optional:
   FINDY_BASE_URL=http://localhost:8080 npm run smoke
-  FINDY_SESSION_COOKIE="connect.sid=..." npm run smoke -- --base-url=http://localhost:8080`);
+  FINDY_SESSION_COOKIE="connect.sid=..." npm run smoke -- --base-url=http://localhost:8080
+  FINDY_SMOKE_USERNAME=user FINDY_SMOKE_PASSWORD=pass npm run smoke -- --require-auth`);
 }
 
 async function request(baseUrl: string, path: string, options: RequestOptions = {}) {
@@ -47,6 +48,19 @@ async function request(baseUrl: string, path: string, options: RequestOptions = 
     body,
     latencyMs: Date.now() - startedAt,
   };
+}
+
+function getCookieHeader(response: Response): string | undefined {
+  const maybeGetSetCookie = response.headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+  const setCookies = maybeGetSetCookie.getSetCookie?.() ?? [];
+  const rawCookie = setCookies.length > 0 ? setCookies : [response.headers.get("set-cookie")].filter(Boolean);
+  const cookiePairs = rawCookie
+    .map((cookie) => cookie?.split(";", 1)[0])
+    .filter((cookie): cookie is string => Boolean(cookie));
+
+  return cookiePairs.length > 0 ? cookiePairs.join("; ") : undefined;
 }
 
 function assertObject(value: unknown): Record<string, unknown> {
@@ -91,7 +105,12 @@ async function main(): Promise<void> {
   }
 
   const baseUrl = getArgValue("base-url") ?? process.env.FINDY_BASE_URL ?? "http://localhost:8080";
-  const cookie = process.env.FINDY_SESSION_COOKIE;
+  const configuredCookie = process.env.FINDY_SESSION_COOKIE;
+  const smokeUsername = process.env.FINDY_SMOKE_USERNAME;
+  const smokePassword = process.env.FINDY_SMOKE_PASSWORD;
+  const requireAuthSmoke =
+    process.argv.includes("--require-auth") || process.env.FINDY_SMOKE_REQUIRE_AUTH === "true";
+  let authenticatedCookie = configuredCookie;
 
   const checks: CheckResult[] = [];
 
@@ -121,9 +140,11 @@ async function main(): Promise<void> {
 
   checks.push(
     await runCheck("auth session endpoint", async () => {
-      const { response, latencyMs } = await request(baseUrl, "/api/auth/me", { cookie });
+      const { response, latencyMs } = await request(baseUrl, "/api/auth/me", {
+        cookie: authenticatedCookie,
+      });
       assertStatus(response.status, 200);
-      return { detail: cookie ? "session cookie supplied" : "anonymous session", latencyMs };
+      return { detail: authenticatedCookie ? "session cookie supplied" : "anonymous session", latencyMs };
     })
   );
 
@@ -170,6 +191,84 @@ async function main(): Promise<void> {
       return { detail: "400", latencyMs };
     })
   );
+
+  if (!authenticatedCookie && smokeUsername && smokePassword) {
+    checks.push(
+      await runCheck("smoke user login", async () => {
+        const { response, latencyMs } = await request(baseUrl, "/api/auth/login", {
+          method: "POST",
+          body: {
+            username: smokeUsername,
+            password: smokePassword,
+          },
+        });
+        assertStatus(response.status, 200);
+        authenticatedCookie = getCookieHeader(response);
+        if (!authenticatedCookie) {
+          throw new Error("로그인 응답에서 세션 쿠키를 찾지 못했습니다.");
+        }
+        return { detail: "session cookie captured", latencyMs };
+      })
+    );
+  }
+
+  if (authenticatedCookie) {
+    let createdItemId: number | null = null;
+
+    checks.push(
+      await runCheck("authenticated item create", async () => {
+        const { response, body, latencyMs } = await request(baseUrl, "/api/items", {
+          method: "POST",
+          cookie: authenticatedCookie,
+          body: {
+            reportType: "found",
+            title: `Findy smoke check ${Date.now()}`,
+            description: "서비스 스모크 검증용 게시글입니다.",
+            itemCategory: "기타물품",
+            color: "검정",
+            size: "보통",
+            tags: ["smoke-test"],
+            location: "대전광역시 유성구 대학로 99",
+            address: "대전광역시 유성구 대학로 99",
+            placeName: "스모크 검증 위치",
+            latitude: "36.3721",
+            longitude: "127.3604",
+            contactInfo: "01000000000",
+          },
+        });
+        assertStatus(response.status, 201);
+        const payload = assertObject(body);
+        if (typeof payload.id !== "number") {
+          throw new Error("등록 응답에 id가 없습니다.");
+        }
+        createdItemId = payload.id;
+        return { detail: `itemId=${createdItemId}`, latencyMs };
+      })
+    );
+
+    checks.push(
+      await runCheck("authenticated item delete", async () => {
+        if (createdItemId === null) {
+          throw new Error("삭제할 스모크 게시글이 생성되지 않았습니다.");
+        }
+        const { response, latencyMs } = await request(baseUrl, `/api/items/${createdItemId}`, {
+          method: "DELETE",
+          cookie: authenticatedCookie,
+        });
+        assertStatus(response.status, 200);
+        return { detail: `itemId=${createdItemId}`, latencyMs };
+      })
+    );
+  } else {
+    checks.push({
+      name: "authenticated item create/delete",
+      status: requireAuthSmoke ? "fail" : "skip",
+      detail: requireAuthSmoke
+        ? "FINDY_SESSION_COOKIE 또는 FINDY_SMOKE_USERNAME/FINDY_SMOKE_PASSWORD가 필요합니다."
+        : "세션 쿠키나 스모크 로그인 계정이 없어 건너뜁니다.",
+      latencyMs: 0,
+    });
+  }
 
   console.table(
     checks.map((check) => ({
