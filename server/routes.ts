@@ -83,6 +83,9 @@ const AUTO_MATCH_RESULT_COUNT = Number(
 const AUTO_MATCH_BACKFILL_LIMIT = Number(
   process.env.AUTO_MATCH_BACKFILL_LIMIT ?? 3
 );
+const AI_SEARCH_BACKFILL_LIMIT = Number(
+  process.env.AI_SEARCH_BACKFILL_LIMIT ?? 10
+);
 const AUTO_MATCH_JOB_TIMEOUT_MS = Number(
   process.env.AUTO_MATCH_JOB_TIMEOUT_MS ?? 15000
 );
@@ -5293,7 +5296,9 @@ export async function registerRoutes(
       const minVectorMatchScore = hasLocationConstraint
         ? MIN_LOCATION_VECTOR_MATCH_SCORE
         : MIN_VECTOR_MATCH_SCORE;
-      await backfillItemEmbeddings("found");
+      if (AI_SEARCH_BACKFILL_LIMIT > 0) {
+        await backfillItemEmbeddings("found", AI_SEARCH_BACKFILL_LIMIT);
+      }
 
       const queryParts: string[] = [];
       const trimmedPrompt = input.prompt?.trim();
