@@ -2877,6 +2877,19 @@ type SearchLocationGeocodingResult = {
   address?: string | null;
 };
 
+const AMBIGUOUS_STANDALONE_LOCATION_SUFFIXES = [
+  "백화점",
+  "마트",
+  "카페",
+  "식당",
+  "병원",
+  "공원",
+  "아파트",
+  "빌딩",
+  "센터",
+  "도서관",
+] as const;
+
 function startOfDay(date: Date): Date {
   const next = new Date(date);
   next.setHours(0, 0, 0, 0);
@@ -2973,6 +2986,25 @@ function parseSearchDateRange(input?: string | null): SearchDateRange | null {
   return null;
 }
 
+function isAmbiguousStandaloneLocationQuery(
+  query: string,
+  totalCount: number
+): boolean {
+  if (totalCount <= 1) {
+    return false;
+  }
+
+  const tokens = extractQueryKeywords(query);
+  if (tokens.length !== 1) {
+    return false;
+  }
+
+  const [token] = tokens;
+  return AMBIGUOUS_STANDALONE_LOCATION_SUFFIXES.some((suffix) =>
+    token.endsWith(normalizeComparableText(suffix))
+  );
+}
+
 async function geocodeSearchLocationQuery(
   query: string
 ): Promise<SearchLocationGeocodingResult | null> {
@@ -2988,7 +3020,7 @@ async function geocodeSearchLocationQuery(
   try {
     const url = new URL("https://dapi.kakao.com/v2/local/search/keyword.json");
     url.searchParams.set("query", trimmedQuery);
-    url.searchParams.set("size", "1");
+    url.searchParams.set("size", "3");
 
     const response = await fetch(url, {
       headers: {
@@ -3005,6 +3037,11 @@ async function geocodeSearchLocationQuery(
 
     const body = z
       .object({
+        meta: z
+          .object({
+            total_count: z.number().optional(),
+          })
+          .optional(),
         documents: z.array(
           z.object({
             place_name: z.string().optional(),
@@ -3016,6 +3053,19 @@ async function geocodeSearchLocationQuery(
         ),
       })
       .parse(await response.json());
+
+    if (
+      isAmbiguousStandaloneLocationQuery(
+        trimmedQuery,
+        body.meta?.total_count ?? body.documents.length
+      )
+    ) {
+      console.info("[AI Search] skipped ambiguous query geocoding:", {
+        query: trimmedQuery,
+        totalCount: body.meta?.total_count ?? body.documents.length,
+      });
+      return null;
+    }
 
     const first = body.documents[0];
     if (!first) {
@@ -3210,6 +3260,7 @@ function rescaleAiSearchScores<T extends AiSearchResult>(
         item: result.item,
         matchScore: cappedScore,
         distanceKm: result.distanceKm,
+        dateSummary: result.dateSummary,
         llmReasoning: result.llmReasoning,
       }),
     };
@@ -4151,6 +4202,7 @@ type AiSearchResult = {
   scoreCap?: number;
   evidenceLabels?: string[];
   distanceKm: number | null;
+  dateSummary?: string | null;
   reasoning: string;
   llmReasoning?: string;
 };
@@ -5378,6 +5430,10 @@ export async function registerRoutes(
             vectorMatch.item.date,
             lostDateRange
           );
+          const dateSummary = buildAiSearchDateSummary(
+            vectorMatch.item.date,
+            lostDateRange
+          );
 
           return [{
             item: vectorMatch.item,
@@ -5386,16 +5442,14 @@ export async function registerRoutes(
             evidenceLabels: candidateEvaluationById.get(vectorMatch.item.id)
               ?.evidenceLabels,
             distanceKm: vectorMatch.distanceKm,
+            dateSummary,
             llmReasoning: result.reasoning,
             reasoning: buildReasoningFromEvidence({
               queryText,
               item: vectorMatch.item,
               matchScore: blendedScore,
               distanceKm: vectorMatch.distanceKm,
-              dateSummary: buildAiSearchDateSummary(
-                vectorMatch.item.date,
-                lostDateRange
-              ),
+              dateSummary,
               llmReasoning: result.reasoning,
             }),
           }];
@@ -5426,6 +5480,10 @@ export async function registerRoutes(
               result.item.date,
               lostDateRange
             );
+            const dateSummary = buildAiSearchDateSummary(
+              result.item.date,
+              lostDateRange
+            );
 
             return {
               item: result.item,
@@ -5434,15 +5492,13 @@ export async function registerRoutes(
               evidenceLabels: candidateEvaluationById.get(result.item.id)
                 ?.evidenceLabels,
               distanceKm: result.distanceKm,
+              dateSummary,
               reasoning: buildReasoningFromEvidence({
                 queryText,
                 item: result.item,
                 matchScore: adjustedScore,
                 distanceKm: result.distanceKm,
-                dateSummary: buildAiSearchDateSummary(
-                  result.item.date,
-                  lostDateRange
-                ),
+                dateSummary,
               }),
             };
           })
