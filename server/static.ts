@@ -15,7 +15,7 @@ export function serveStatic(app: Express) {
       const normalizedPath = filePath.replaceAll(path.sep, "/");
 
       if (normalizedPath.includes("/icons/")) {
-        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        res.setHeader("Cache-Control", "public, max-age=604800");
         return;
       }
 

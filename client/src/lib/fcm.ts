@@ -19,9 +19,8 @@ export async function initFcm(): Promise<void> {
     return initFcmPromise;
   }
 
-  initFcmPromise = initFcmOnce().catch((err) => {
+  initFcmPromise = initFcmOnce().finally(() => {
     initFcmPromise = null;
-    throw err;
   });
 
   return initFcmPromise;
