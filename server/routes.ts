@@ -116,6 +116,15 @@ const REVERSE_GEOCODE_CACHE_TTL_MS = Number(
 const REVERSE_GEOCODE_CACHE_LIMIT = Number(
   process.env.REVERSE_GEOCODE_CACHE_LIMIT ?? 10_000
 );
+const REVERSE_GEOCODE_RATE_LIMIT_WINDOW_MS = Number(
+  process.env.REVERSE_GEOCODE_RATE_LIMIT_WINDOW_MS ?? 60_000
+);
+const REVERSE_GEOCODE_GUEST_RATE_LIMIT = Number(
+  process.env.REVERSE_GEOCODE_GUEST_RATE_LIMIT ?? 60
+);
+const REVERSE_GEOCODE_USER_RATE_LIMIT = Number(
+  process.env.REVERSE_GEOCODE_USER_RATE_LIMIT ?? 180
+);
 const positiveIdSchema = z.coerce.number().int().positive();
 const embeddingRelevantFields = new Set([
   "title",
@@ -191,6 +200,7 @@ interface ReverseGeocodeCacheEntry {
 }
 
 const reverseGeocodeCache = new Map<string, ReverseGeocodeCacheEntry>();
+const pendingReverseGeocodes = new Map<string, Promise<string | null>>();
 
 function getReverseGeocodeCacheKey(latitude: number, longitude: number): string {
   return `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
@@ -281,6 +291,35 @@ async function reverseGeocodeWithKakao(
     body.documents[0]?.address?.address_name ||
     null
   );
+}
+
+async function reverseGeocodeWithCache(
+  latitude: number,
+  longitude: number
+): Promise<{ address: string | null; cached: boolean }> {
+  const cacheKey = getReverseGeocodeCacheKey(latitude, longitude);
+  const cachedAddress = getCachedReverseGeocode(cacheKey);
+
+  if (cachedAddress !== undefined) {
+    return { address: cachedAddress, cached: true };
+  }
+
+  const pending = pendingReverseGeocodes.get(cacheKey);
+  if (pending) {
+    return { address: await pending, cached: true };
+  }
+
+  const request = reverseGeocodeWithKakao(latitude, longitude)
+    .then((address) => {
+      setCachedReverseGeocode(cacheKey, address);
+      return address;
+    })
+    .finally(() => {
+      pendingReverseGeocodes.delete(cacheKey);
+    });
+
+  pendingReverseGeocodes.set(cacheKey, request);
+  return { address: await request, cached: false };
 }
 const MAX_FCM_TOKEN_LENGTH = 4096;
 
@@ -376,6 +415,15 @@ const chatMessageRateLimit = createMemoryRateLimit({
   name: "chat-message",
   windowMs: CHAT_RATE_LIMIT_WINDOW_MS,
   getLimit: () => CHAT_MESSAGE_RATE_LIMIT,
+});
+
+const reverseGeocodeRateLimit = createMemoryRateLimit({
+  name: "reverse-geocode",
+  windowMs: REVERSE_GEOCODE_RATE_LIMIT_WINDOW_MS,
+  getLimit: (req) =>
+    req.user?.id
+      ? REVERSE_GEOCODE_USER_RATE_LIMIT
+      : REVERSE_GEOCODE_GUEST_RATE_LIMIT,
 });
 
 function getQwenClient(): OpenAI {
@@ -5257,26 +5305,15 @@ export async function registerRoutes(
     res.json(userWithoutPassword);
   });
 
-  app.get(api.geocode.reverse.path, async (req, res) => {
+  app.get(api.geocode.reverse.path, reverseGeocodeRateLimit, async (req, res) => {
     try {
       const input = api.geocode.reverse.input.parse(req.query);
-      const cacheKey = getReverseGeocodeCacheKey(
+      const result = await reverseGeocodeWithCache(
         input.latitude,
         input.longitude
       );
-      const cachedAddress = getCachedReverseGeocode(cacheKey);
 
-      if (cachedAddress !== undefined) {
-        return res.json({ address: cachedAddress, cached: true });
-      }
-
-      const address = await reverseGeocodeWithKakao(
-        input.latitude,
-        input.longitude
-      );
-      setCachedReverseGeocode(cacheKey, address);
-
-      res.json({ address, cached: false });
+      res.json(result);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
