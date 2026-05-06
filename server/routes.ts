@@ -164,6 +164,13 @@ const AI_SEARCH_USER_RATE_LIMIT = Number(
 const AI_IMAGE_ANALYSIS_RATE_LIMIT = Number(
   process.env.AI_IMAGE_ANALYSIS_RATE_LIMIT ?? 20
 );
+const AUTH_RATE_LIMIT_WINDOW_MS = Number(
+  process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000
+);
+const AUTH_LOGIN_RATE_LIMIT = Number(process.env.AUTH_LOGIN_RATE_LIMIT ?? 10);
+const AUTH_REGISTER_RATE_LIMIT = Number(
+  process.env.AUTH_REGISTER_RATE_LIMIT ?? 5
+);
 
 type RateLimitBucket = {
   count: number;
@@ -239,6 +246,18 @@ const aiImageAnalysisRateLimit = createMemoryRateLimit({
   name: "ai-image-analysis",
   windowMs: AI_RATE_LIMIT_WINDOW_MS,
   getLimit: () => AI_IMAGE_ANALYSIS_RATE_LIMIT,
+});
+
+const authLoginRateLimit = createMemoryRateLimit({
+  name: "auth-login",
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  getLimit: () => AUTH_LOGIN_RATE_LIMIT,
+});
+
+const authRegisterRateLimit = createMemoryRateLimit({
+  name: "auth-register",
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  getLimit: () => AUTH_REGISTER_RATE_LIMIT,
 });
 
 function getQwenClient(): OpenAI {
@@ -5039,7 +5058,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // --- Auth API ---
-  app.post(api.auth.register.path, async (req, res) => {
+  app.post(api.auth.register.path, authRegisterRateLimit, async (req, res) => {
     try {
       const input = api.auth.register.input.parse(req.body);
 
@@ -5072,7 +5091,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post(api.auth.login.path, (req, res, next) => {
+  app.post(api.auth.login.path, authLoginRateLimit, (req, res, next) => {
     passport.authenticate(
       "local",
       (
