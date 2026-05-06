@@ -23,6 +23,7 @@ import {
   parseChatDate,
 } from "@/lib/chat-time";
 import { cn } from "@/lib/utils";
+import { MAX_CHAT_MESSAGE_LENGTH } from "@shared/chat";
 
 export default function ChatRoomPage() {
   const [, params] = useRoute("/chat/:id");
@@ -82,7 +83,12 @@ export default function ChatRoomPage() {
 
   const submitMessage = () => {
     const nextValue = content.trim();
-    if (!nextValue || sendMessage.isPending || isSubmittingRef.current) {
+    if (
+      !nextValue ||
+      nextValue.length > MAX_CHAT_MESSAGE_LENGTH ||
+      sendMessage.isPending ||
+      isSubmittingRef.current
+    ) {
       return;
     }
 
@@ -258,13 +264,21 @@ export default function ChatRoomPage() {
                 value={content}
                 onChange={(event) => setContent(event.target.value)}
                 onKeyDown={handleKeyDown}
+                maxLength={MAX_CHAT_MESSAGE_LENGTH}
                 placeholder="메시지를 입력해 주세요"
                 className="min-h-[84px] max-h-[140px] resize-none rounded-[22px]"
               />
-              <div className="flex justify-end">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground">
+                  {content.trim().length}/{MAX_CHAT_MESSAGE_LENGTH}자
+                </p>
                 <Button
                   type="submit"
-                  disabled={sendMessage.isPending || !content.trim()}
+                  disabled={
+                    sendMessage.isPending ||
+                    !content.trim() ||
+                    content.trim().length > MAX_CHAT_MESSAGE_LENGTH
+                  }
                   className="rounded-full"
                 >
                   <Send className="mr-2 h-4 w-4" />

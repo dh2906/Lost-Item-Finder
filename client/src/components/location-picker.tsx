@@ -3,6 +3,10 @@ import { Map, MapMarker, useKakaoLoader } from "react-kakao-maps-sdk";
 import { Locate, MapPin, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  getReverseGeocodeCacheKey,
+  reverseGeocodeKakao,
+} from "@/lib/kakao-reverse-geocode";
 
 interface LocationPickerProps {
   value?: { latitude: string; longitude: string };
@@ -55,6 +59,7 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
   const mapRef = useRef<kakao.maps.Map | null>(null);
   const initializedRef = useRef(false);
   const manualSelectionRef = useRef(false);
+  const lastReverseGeocodeKeyRef = useRef<string | null>(null);
 
   const syncCoordinates = useCallback(
     (nextPosition: MarkerPosition, nextAddress?: string, nextPlaceName?: string) => {
@@ -75,17 +80,22 @@ export function LocationPicker({ value, onChange, height = "300px" }: LocationPi
       return;
     }
 
-    const geocoder = new window.kakao.maps.services.Geocoder();
-    geocoder.coord2Address(lng, lat, (result: any, status: any) => {
-      if (status === window.kakao.maps.services.Status.OK && result[0]) {
-        const addr = result[0].road_address?.address_name || result[0].address?.address_name;
-        setAddress(addr || "");
-        syncCoordinates(nextPosition, addr || undefined);
+    const key = getReverseGeocodeCacheKey(lat, lng);
+    if (lastReverseGeocodeKeyRef.current === key) {
+      syncCoordinates(nextPosition, address || undefined);
+      return;
+    }
+
+    lastReverseGeocodeKeyRef.current = key;
+    reverseGeocodeKakao(lat, lng).then((nextAddress) => {
+      if (lastReverseGeocodeKeyRef.current !== key) {
         return;
       }
-      syncCoordinates(nextPosition);
+
+      setAddress(nextAddress || "");
+      syncCoordinates(nextPosition, nextAddress);
     });
-  }, [syncCoordinates]);
+  }, [address, syncCoordinates]);
 
   // 초기 위치 설정 (GPS 또는 기본값). 이후 사용자가 클릭한 좌표는 다시 GPS로 덮지 않는다.
   useEffect(() => {

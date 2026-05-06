@@ -20,6 +20,16 @@ export const itemSortOrders = ["latest", "oldest"] as const;
 export const itemSourceFilters = ["all", "user", "lost112"] as const;
 export const MAX_SEARCH_LOCATION_RAW_LENGTH = 1000;
 export const MAX_SEARCH_LOCATION_LENGTH = 120;
+export const MAX_AI_IMAGE_DATA_URL_LENGTH = 4 * 1024 * 1024;
+
+const aiImageDataUrlSchema = z
+  .string()
+  .trim()
+  .min(1, "이미지를 선택해 주세요.")
+  .max(
+    MAX_AI_IMAGE_DATA_URL_LENGTH,
+    "이미지 용량이 너무 큽니다. 더 작은 사진을 선택해 주세요."
+  );
 
 const itemResponseSchema = z.custom<typeof items.$inferSelect>();
 
@@ -300,7 +310,9 @@ export const api = {
         redirect: z.string().optional(),
       }),
       responses: {
+        302: z.void(),
         400: errorSchemas.validation,
+        503: errorSchemas.internal,
       },
     },
     oauthCallback: {
@@ -313,7 +325,6 @@ export const api = {
       }),
       responses: {
         302: z.void(),
-        400: errorSchemas.validation,
       },
     },
     logout: {
@@ -553,7 +564,7 @@ export const api = {
       method: "POST" as const,
       path: "/api/ai/analyze-image" as const,
       input: z.object({
-        imageUrl: z.string(),
+        imageUrl: aiImageDataUrlSchema,
       }),
       responses: {
         200: z.object({
@@ -574,7 +585,7 @@ export const api = {
       path: "/api/ai/search" as const,
       input: z.object({
         prompt: z.string().optional(),
-        imageUrl: z.string().optional(),
+        imageUrl: aiImageDataUrlSchema.optional(),
         lostDateText: z.string().trim().max(40).optional(),
         location: z
           .string()

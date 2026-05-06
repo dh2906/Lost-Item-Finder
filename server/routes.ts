@@ -1,4 +1,9 @@
-import type { Express, Request } from "express";
+import type {
+  Express,
+  NextFunction,
+  Request,
+  Response as ExpressResponse,
+} from "express";
 import { createServer, type Server } from "http";
 import { createHash, randomBytes } from "crypto";
 import { isAdmin, isAuthenticated } from "./auth";
@@ -10,6 +15,7 @@ import {
   MAX_SEARCH_LOCATION_RAW_LENGTH,
 } from "@shared/routes";
 import { normalizeItemImageUrls } from "@shared/item-images";
+import { MAX_CHAT_MESSAGE_LENGTH } from "@shared/chat";
 import { z } from "zod";
 import OpenAI from "openai";
 import { db } from "./db";
@@ -149,6 +155,117 @@ const LOST112_SYNC_LOOKBACK_DAYS = Number(
   process.env.LOST112_SYNC_LOOKBACK_DAYS ?? 1
 );
 const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY;
+const AI_RATE_LIMIT_WINDOW_MS = Number(
+  process.env.AI_RATE_LIMIT_WINDOW_MS ?? 60_000
+);
+const AI_SEARCH_GUEST_RATE_LIMIT = Number(
+  process.env.AI_SEARCH_GUEST_RATE_LIMIT ?? 20
+);
+const AI_SEARCH_USER_RATE_LIMIT = Number(
+  process.env.AI_SEARCH_USER_RATE_LIMIT ?? 60
+);
+const AI_IMAGE_ANALYSIS_RATE_LIMIT = Number(
+  process.env.AI_IMAGE_ANALYSIS_RATE_LIMIT ?? 20
+);
+const AUTH_RATE_LIMIT_WINDOW_MS = Number(
+  process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000
+);
+const AUTH_LOGIN_RATE_LIMIT = Number(process.env.AUTH_LOGIN_RATE_LIMIT ?? 10);
+const CHAT_RATE_LIMIT_WINDOW_MS = Number(
+  process.env.CHAT_RATE_LIMIT_WINDOW_MS ?? 60_000
+);
+const CHAT_MESSAGE_RATE_LIMIT = Number(
+  process.env.CHAT_MESSAGE_RATE_LIMIT ?? 30
+);
+const MAX_FCM_TOKEN_LENGTH = 4096;
+
+type RateLimitBucket = {
+  count: number;
+  resetAt: number;
+};
+
+function createMemoryRateLimit(options: {
+  name: string;
+  windowMs: number;
+  getLimit: (req: Request) => number;
+}) {
+  const buckets = new Map<string, RateLimitBucket>();
+
+  return (req: Request, res: ExpressResponse, next: NextFunction) => {
+    const now = Date.now();
+    const limit = options.getLimit(req);
+    if (!Number.isFinite(limit) || limit <= 0) {
+      return next();
+    }
+
+    if (buckets.size > 5000) {
+      for (const [key, bucket] of Array.from(buckets.entries())) {
+        if (bucket.resetAt <= now) {
+          buckets.delete(key);
+        }
+      }
+    }
+
+    const userKey = req.user?.id ? `user:${req.user.id}` : `ip:${req.ip}`;
+    const key = `${options.name}:${userKey}`;
+    const currentBucket = buckets.get(key);
+    const bucket =
+      currentBucket && currentBucket.resetAt > now
+        ? currentBucket
+        : { count: 0, resetAt: now + options.windowMs };
+
+    bucket.count += 1;
+    buckets.set(key, bucket);
+
+    const remaining = Math.max(0, limit - bucket.count);
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((bucket.resetAt - now) / 1000)
+    );
+    res.setHeader("RateLimit-Limit", String(limit));
+    res.setHeader("RateLimit-Remaining", String(remaining));
+    res.setHeader("RateLimit-Reset", String(Math.ceil(bucket.resetAt / 1000)));
+
+    if (bucket.count > limit) {
+      res.setHeader("Retry-After", String(retryAfterSeconds));
+      console.warn(
+        `[RateLimit] ${options.name} blocked ${userKey} for ${retryAfterSeconds}s`
+      );
+      return res.status(429).json({
+        message:
+          "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+        retryAfterSeconds,
+      });
+    }
+
+    return next();
+  };
+}
+
+const aiSearchRateLimit = createMemoryRateLimit({
+  name: "ai-search",
+  windowMs: AI_RATE_LIMIT_WINDOW_MS,
+  getLimit: (req) =>
+    req.user?.id ? AI_SEARCH_USER_RATE_LIMIT : AI_SEARCH_GUEST_RATE_LIMIT,
+});
+
+const aiImageAnalysisRateLimit = createMemoryRateLimit({
+  name: "ai-image-analysis",
+  windowMs: AI_RATE_LIMIT_WINDOW_MS,
+  getLimit: () => AI_IMAGE_ANALYSIS_RATE_LIMIT,
+});
+
+const authLoginRateLimit = createMemoryRateLimit({
+  name: "auth-login",
+  windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
+  getLimit: () => AUTH_LOGIN_RATE_LIMIT,
+});
+
+const chatMessageRateLimit = createMemoryRateLimit({
+  name: "chat-message",
+  windowMs: CHAT_RATE_LIMIT_WINDOW_MS,
+  getLimit: () => CHAT_MESSAGE_RATE_LIMIT,
+});
 
 function getQwenClient(): OpenAI {
   if (!qwen) {
@@ -3382,7 +3499,10 @@ async function searchLexicalAiCandidates(params: {
 }): Promise<RankedVectorCandidate[]> {
   const { queryText, searchCoordinates, radiusKm, limit } = params;
   const queryTokens = extractQueryKeywords(queryText).filter(
-    (token) => token.length >= 2 && !findKnownPlaceAlias(token)
+    (token) =>
+      token.length >= 2 &&
+      !findKnownPlaceAlias(token) &&
+      !isLikelyLocationToken(token)
   );
   const uniqueTokens = Array.from(new Set(queryTokens)).slice(0, 8);
   if (uniqueTokens.length === 0) {
@@ -5138,17 +5258,19 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // --- Auth API ---
-  app.get("/api/auth/oauth/:provider", (req, res) => {
+  app.get("/api/auth/oauth/:provider", authLoginRateLimit, (req, res) => {
     const provider = getOAuthProvider(req.params.provider);
     if (!provider) {
-      return res.status(400).json({ message: "지원하지 않는 OAuth 제공자입니다." });
+      return res
+        .status(400)
+        .json({ message: "지원하지 않는 OAuth 제공자입니다." });
     }
 
-    const { clientId } = getOAuthCredentials(provider);
-    if (!clientId) {
-      return res
-        .status(503)
-        .json({ message: `${provider} OAuth client id가 설정되지 않았습니다.` });
+    const { clientId, clientSecret } = getOAuthCredentials(provider);
+    if (!clientId || !clientSecret) {
+      return res.status(503).json({
+        message: `${provider} OAuth client id/secret이 설정되지 않았습니다.`,
+      });
     }
 
     const state = randomBytes(24).toString("hex");
@@ -5204,7 +5326,6 @@ export async function registerRoutes(
       res.redirect("/login?error=oauth");
     }
   });
-
   app.post(api.auth.logout.path, (req, res) => {
     req.logout((err) => {
       if (err) {
@@ -5794,82 +5915,87 @@ export async function registerRoutes(
   );
 
   // --- AI API ---
-  app.post(api.ai.analyzeImage.path, isAuthenticated, async (req, res) => {
-    try {
-      const input = api.ai.analyzeImage.input.parse(req.body);
+  app.post(
+    api.ai.analyzeImage.path,
+    isAuthenticated,
+    aiImageAnalysisRateLimit,
+    async (req, res) => {
+      try {
+        const input = api.ai.analyzeImage.input.parse(req.body);
 
-      const response = await getQwenClient().chat.completions.create({
-        model: QWEN_VISION_MODEL,
-        messages: [
-          {
-            role: "system",
-            content:
-              "너는 분실물 보관 시스템에서 습득물을 분류하는 AI 도우미다. 이미지를 분석해서 다음 메타데이터를 한국어로 추출해라: itemCategory, color, size, tags, description, requiresMasking(개인정보, 얼굴, 신분증, 카드 등이 포함되어 있는지 여부 boolean). description은 자연스러운 한국어 1~2문장으로 작성해라. 사진 속에 사람의 이름, 주민등록번호, 카드 번호, 상세 주소, 발급일자는 절대 출력하지 마라. 반드시 JSON 객체만 반환해라.",
-          },
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: "이 이미지를 분석하고 메타데이터를 JSON 형식의 한국어로 반환해줘.",
-              },
-              { type: "image_url", image_url: { url: input.imageUrl } },
-            ],
-          },
-        ],
-        response_format: { type: "json_object" },
-      });
-
-      const content = getCompletionText(
-        response,
-        "Failed to get response from AI"
-      );
-
-      const rawResult = rawAnalyzeImageSchema.parse(JSON.parse(content));
-      const normalizedResult = OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED
-        ? await normalizeAnalyzeImageMetadata(rawResult).catch(
-            (normalizationError) => {
-              console.error(
-                "Failed to normalize image metadata:",
-                normalizationError
-              );
-              return buildLocalAnalyzeImageResult(rawResult);
-            }
-          )
-        : buildLocalAnalyzeImageResult(rawResult);
-
-      let finalImageBase64 = input.imageUrl;
-
-      if (rawResult.requiresMasking === true) {
-        console.log("🔒 [보안] 개인정보 감지! 마스킹 처리를 시작합니다.");
-        const base64Data = input.imageUrl.replace(
-          /^data:image\/\w+;base64,/,
-          ""
-        );
-        const imageBuffer = Buffer.from(base64Data, "base64");
-
-        finalImageBase64 = await maskSensitiveInfo(imageBuffer);
-      } else {
-        console.log("✅ [안전] 일반 사물입니다. 마스킹을 건너뜁니다.");
-      }
-
-      res.json({
-        ...normalizedResult,
-        maskedImage: finalImageBase64,
-      });
-    } catch (err) {
-      console.error(err);
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join("."),
+        const response = await getQwenClient().chat.completions.create({
+          model: QWEN_VISION_MODEL,
+          messages: [
+            {
+              role: "system",
+              content:
+                "너는 분실물 보관 시스템에서 습득물을 분류하는 AI 도우미다. 이미지를 분석해서 다음 메타데이터를 한국어로 추출해라: itemCategory, color, size, tags, description, requiresMasking(개인정보, 얼굴, 신분증, 카드 등이 포함되어 있는지 여부 boolean). description은 자연스러운 한국어 1~2문장으로 작성해라. 사진 속에 사람의 이름, 주민등록번호, 카드 번호, 상세 주소, 발급일자는 절대 출력하지 마라. 반드시 JSON 객체만 반환해라.",
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: "이 이미지를 분석하고 메타데이터를 JSON 형식의 한국어로 반환해줘.",
+                },
+                { type: "image_url", image_url: { url: input.imageUrl } },
+              ],
+            },
+          ],
+          response_format: { type: "json_object" },
         });
-      }
-      res.status(500).json({ message: getErrorMessage(err) });
-    }
-  });
 
-  app.post(api.ai.searchSimilar.path, async (req, res) => {
+        const content = getCompletionText(
+          response,
+          "Failed to get response from AI"
+        );
+
+        const rawResult = rawAnalyzeImageSchema.parse(JSON.parse(content));
+        const normalizedResult = OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED
+          ? await normalizeAnalyzeImageMetadata(rawResult).catch(
+              (normalizationError) => {
+                console.error(
+                  "Failed to normalize image metadata:",
+                  normalizationError
+                );
+                return buildLocalAnalyzeImageResult(rawResult);
+              }
+            )
+          : buildLocalAnalyzeImageResult(rawResult);
+
+        let finalImageBase64 = input.imageUrl;
+
+        if (rawResult.requiresMasking === true) {
+          console.log("🔒 [보안] 개인정보 감지! 마스킹 처리를 시작합니다.");
+          const base64Data = input.imageUrl.replace(
+            /^data:image\/\w+;base64,/,
+            ""
+          );
+          const imageBuffer = Buffer.from(base64Data, "base64");
+
+          finalImageBase64 = await maskSensitiveInfo(imageBuffer);
+        } else {
+          console.log("✅ [안전] 일반 사물입니다. 마스킹을 건너뜁니다.");
+        }
+
+        res.json({
+          ...normalizedResult,
+          maskedImage: finalImageBase64,
+        });
+      } catch (err) {
+        console.error(err);
+        if (err instanceof z.ZodError) {
+          return res.status(400).json({
+            message: err.errors[0].message,
+            field: err.errors[0].path.join("."),
+          });
+        }
+        res.status(500).json({ message: getErrorMessage(err) });
+      }
+    }
+  );
+
+  app.post(api.ai.searchSimilar.path, aiSearchRateLimit, async (req, res) => {
     try {
       const input = api.ai.searchSimilar.input.parse(req.body);
 
@@ -5917,10 +6043,10 @@ export async function registerRoutes(
         ? radiusKm ?? DEFAULT_AI_SEARCH_RADIUS_KM
         : undefined;
       const hasLocationConstraint = Boolean(searchLocation || searchCoordinates);
-      const vectorCandidateCount = hasLocationConstraint
+      const vectorCandidateCount = searchCoordinates
         ? Math.max(VECTOR_CANDIDATE_COUNT, LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT)
         : VECTOR_CANDIDATE_COUNT;
-      const minVectorMatchScore = hasLocationConstraint
+      const minVectorMatchScore = searchCoordinates
         ? MIN_LOCATION_VECTOR_MATCH_SCORE
         : MIN_VECTOR_MATCH_SCORE;
       if (AI_SEARCH_BACKFILL_LIMIT > 0) {
@@ -6219,9 +6345,15 @@ export async function registerRoutes(
   // --- FCM 토큰 등록 API ---
   app.post("/api/fcm/token", isAuthenticated, async (req, res) => {
     try {
-      const { token } = req.body;
-      if (!token || typeof token !== "string") {
+      const token = typeof req.body.token === "string" ? req.body.token.trim() : "";
+      if (!token) {
         return res.status(400).json({ message: "FCM 토큰이 필요합니다" });
+      }
+      if (token.length > MAX_FCM_TOKEN_LENGTH) {
+        return res.status(400).json({
+          message: `FCM 토큰은 ${MAX_FCM_TOKEN_LENGTH}자 이내여야 합니다`,
+          field: "token",
+        });
       }
       await db
         .update(users)
@@ -6237,13 +6369,25 @@ export async function registerRoutes(
   // --- Chat API ---
   app.post("/api/chat/rooms", isAuthenticated, async (req, res) => {
     try {
-      const { itemId, receiverId } = req.body;
+      const itemId = positiveIdSchema.parse(req.body.itemId);
+      const receiverId = positiveIdSchema.parse(req.body.receiverId);
       const senderId = req.user!.id;
 
-      if (!itemId || !receiverId) {
+      if (senderId === receiverId) {
         return res
           .status(400)
-          .json({ message: "itemId와 receiverId가 필요합니다" });
+          .json({ message: "자기 자신과는 채팅을 시작할 수 없습니다" });
+      }
+
+      const item = await storage.getItem(itemId);
+      if (!item || item.status !== "active" || !item.userId) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+
+      if (item.userId !== receiverId) {
+        return res
+          .status(403)
+          .json({ message: "게시글 등록자와만 채팅을 시작할 수 있습니다" });
       }
 
       const existingRoom = await db.query.chatRooms.findFirst({
@@ -6276,6 +6420,12 @@ export async function registerRoutes(
 
       res.status(201).json(room);
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
       console.error(err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
@@ -6409,18 +6559,26 @@ export async function registerRoutes(
   app.post(
     "/api/chat/rooms/:id/messages",
     isAuthenticated,
+    chatMessageRateLimit,
     async (req, res) => {
       try {
         const roomId = Number(
           Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
         );
-        const { content } = req.body;
+        const content =
+          typeof req.body.content === "string" ? req.body.content : "";
         const senderId = req.user!.id;
 
-        if (!content || content.trim() === "") {
+        if (content.trim() === "") {
           return res.status(400).json({ message: "메시지 내용이 필요합니다" });
         }
         const normalizedContent = content.trim();
+        if (normalizedContent.length > MAX_CHAT_MESSAGE_LENGTH) {
+          return res.status(400).json({
+            message: `메시지는 ${MAX_CHAT_MESSAGE_LENGTH}자 이내로 입력해 주세요`,
+            field: "content",
+          });
+        }
 
         const room = await db.query.chatRooms.findFirst({
           where: eq(chatRooms.id, roomId),

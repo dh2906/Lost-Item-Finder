@@ -37,7 +37,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { randomBytes, scrypt, timingSafeEqual } from "crypto";
+import { createHash, randomBytes, scrypt, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 
 const scryptAsync = promisify(scrypt);
@@ -178,6 +178,14 @@ function isConfiguredAdminIdentity(
 
   const configuredAdmins = getConfiguredAdminUsernames();
   return identities.some((identity) => configuredAdmins.includes(identity!));
+}
+
+function createOAuthUsername(provider: OAuthProvider, providerId: string): string {
+  const digest = createHash("sha256")
+    .update(`${provider}:${providerId}`)
+    .digest("hex")
+    .slice(0, 16);
+  return `oauth_${provider}_${digest}`;
 }
 
 function applyConfiguredAdminRole<T extends User>(user: T): T {
@@ -1219,7 +1227,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertOAuthUser(input: OAuthUserInput): Promise<User> {
-    const username = `${input.provider}_${input.providerId}`;
+    const baseUsername = createOAuthUsername(input.provider, input.providerId);
+    let username = baseUsername;
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const existingUsernameUser = await this.getUserByUsername(username);
+      if (
+        !existingUsernameUser ||
+        (existingUsernameUser.authProvider === input.provider &&
+          existingUsernameUser.authProviderId === input.providerId)
+      ) {
+        break;
+      }
+
+      username = `${baseUsername}_${randomBytes(4).toString("hex")}`;
+    }
+
+    const conflictingUsernameUser = await this.getUserByUsername(username);
+    if (
+      conflictingUsernameUser &&
+      (conflictingUsernameUser.authProvider !== input.provider ||
+        conflictingUsernameUser.authProviderId !== input.providerId)
+    ) {
+      throw new Error("Unable to allocate a unique OAuth username.");
+    }
+
     const role: UserRole = isConfiguredAdminIdentity(username, input.email)
       ? "admin"
       : "member";

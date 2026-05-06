@@ -2,34 +2,32 @@ import { FcGoogle } from "react-icons/fc";
 import { SiKakao, SiNaver } from "react-icons/si";
 import type { ComponentType } from "react";
 import { Button } from "@/components/ui/button";
+import { oauthProviders, type OAuthProvider } from "@shared/schema";
 
-type OAuthProvider = "google" | "kakao" | "naver";
-
-const providers: Array<{
-  id: OAuthProvider;
-  label: string;
-  className: string;
-  icon: ComponentType<{ className?: string }>;
-}> = [
-  {
-    id: "google",
+const providerMeta = {
+  google: {
     label: "Google로 계속하기",
     className: "bg-white text-foreground hover:bg-secondary border border-border",
     icon: FcGoogle,
   },
-  {
-    id: "kakao",
+  kakao: {
     label: "Kakao로 계속하기",
     className: "bg-[#FEE500] text-[#191919] hover:bg-[#F6DC00]",
     icon: SiKakao,
   },
-  {
-    id: "naver",
+  naver: {
     label: "Naver로 계속하기",
     className: "bg-[#03C75A] text-white hover:bg-[#02B350]",
     icon: SiNaver,
   },
-];
+} satisfies Record<
+  OAuthProvider,
+  {
+    label: string;
+    className: string;
+    icon: ComponentType<{ className?: string }>;
+  }
+>;
 
 function getOAuthUrl(provider: OAuthProvider, redirectTo: string) {
   const params = new URLSearchParams();
@@ -48,17 +46,18 @@ export function OAuthLoginButtons({ redirectTo = "/" }: { redirectTo?: string })
 
   return (
     <div className="space-y-3">
-      {providers.map((provider) => {
-        const Icon = provider.icon;
+      {oauthProviders.map((provider) => {
+        const meta = providerMeta[provider];
+        const Icon = meta.icon;
         return (
           <Button
-            key={provider.id}
+            key={provider}
             type="button"
-            className={`h-12 w-full rounded-full text-base font-semibold shadow-none ${provider.className}`}
-            onClick={() => startOAuth(provider.id)}
+            className={`h-12 w-full rounded-full text-base font-semibold shadow-none ${meta.className}`}
+            onClick={() => startOAuth(provider)}
           >
             <Icon className="mr-2 h-5 w-5" />
-            {provider.label}
+            {meta.label}
           </Button>
         );
       })}

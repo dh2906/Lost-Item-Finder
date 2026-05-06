@@ -27,6 +27,17 @@ declare module "http" {
   }
 }
 
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), payment=(), usb=()",
+  );
+  next();
+});
+
 app.use(
   express.json({
     limit: requestBodyLimit,
@@ -157,7 +168,7 @@ app.get("/api/health", async (_req, res) => {
     },
     lost112: {
       api: Boolean(process.env.LOST112_API_KEY),
-      syncEnabled: process.env.LOST112_SYNC_ENABLED === "true",
+      syncEnabled: process.env.LOST112_SYNC_ENABLED !== "false",
     },
     uptimeSec: Math.round(process.uptime()),
   });
@@ -191,6 +202,16 @@ export function log(message: string, source = "express") {
 }
 
 const LOG_RESPONSE_MAX_LENGTH = 200;
+const RESPONSE_LOG_REDACTED_PATHS = [
+  /^\/api\/auth(?:\/|$)/,
+  /^\/api\/chat(?:\/|$)/,
+  /^\/api\/fcm(?:\/|$)/,
+  /^\/api\/ai\/analyze-image$/,
+];
+
+function shouldRedactResponseLog(path: string): boolean {
+  return RESPONSE_LOG_REDACTED_PATHS.some((pattern) => pattern.test(path));
+}
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -208,11 +229,15 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        const serialized = JSON.stringify(capturedJsonResponse);
-        const truncated = serialized.length > LOG_RESPONSE_MAX_LENGTH
-          ? serialized.slice(0, LOG_RESPONSE_MAX_LENGTH) + "..."
-          : serialized;
-        logLine += ` :: ${truncated}`;
+        if (shouldRedactResponseLog(path)) {
+          logLine += " :: [redacted]";
+        } else {
+          const serialized = JSON.stringify(capturedJsonResponse);
+          const truncated = serialized.length > LOG_RESPONSE_MAX_LENGTH
+            ? serialized.slice(0, LOG_RESPONSE_MAX_LENGTH) + "..."
+            : serialized;
+          logLine += ` :: ${truncated}`;
+        }
       }
 
       log(logLine);

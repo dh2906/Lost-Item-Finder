@@ -24,6 +24,7 @@ function printUsage(): void {
 Optional:
   FINDY_BASE_URL=http://localhost:8080 npm run smoke
   FINDY_SESSION_COOKIE="connect.sid=..." npm run smoke -- --base-url=http://localhost:8080
+  FINDY_SMOKE_EXPECT_AI_RATE_LIMIT=true AI_SEARCH_GUEST_RATE_LIMIT=1 npm run smoke
   FINDY_SMOKE_USERNAME=user FINDY_SMOKE_PASSWORD=pass npm run smoke -- --require-auth`);
 }
 
@@ -110,6 +111,7 @@ async function main(): Promise<void> {
   const smokePassword = process.env.FINDY_SMOKE_PASSWORD;
   const requireAuthSmoke =
     process.argv.includes("--require-auth") || process.env.FINDY_SMOKE_REQUIRE_AUTH === "true";
+  const expectAiRateLimit = process.env.FINDY_SMOKE_EXPECT_AI_RATE_LIMIT === "true";
   let authenticatedCookie = configuredCookie;
 
   const checks: CheckResult[] = [];
@@ -191,6 +193,32 @@ async function main(): Promise<void> {
       return { detail: "400", latencyMs };
     })
   );
+
+  if (expectAiRateLimit) {
+    checks.push(
+      await runCheck("AI search rate limit blocks repeated requests", async () => {
+        const first = await request(baseUrl, "/api/ai/search", {
+          method: "POST",
+          body: {},
+        });
+        const second = await request(baseUrl, "/api/ai/search", {
+          method: "POST",
+          body: {},
+        });
+
+        if (first.response.status !== 400 && first.response.status !== 429) {
+          throw new Error(`첫 요청 HTTP ${first.response.status}, expected 400 or 429`);
+        }
+        assertStatus(second.response.status, 429);
+
+        const retryAfter = second.response.headers.get("retry-after");
+        return {
+          detail: `first=${first.response.status}, second=429, retryAfter=${retryAfter ?? "-"}`,
+          latencyMs: first.latencyMs + second.latencyMs,
+        };
+      })
+    );
+  }
 
   if (!authenticatedCookie && smokeUsername && smokePassword) {
     checks.push(
