@@ -1,5 +1,15 @@
 const reverseGeocodeCache = new Map<string, string | undefined>();
 const pendingReverseGeocodes = new Map<string, Promise<string | undefined>>();
+const persistentCacheKey = "findy:kakao-reverse-geocode:v1";
+const persistentCacheTtlMs = 24 * 60 * 60 * 1000;
+const persistentCacheLimit = 500;
+
+interface PersistentReverseGeocodeEntry {
+  address?: string;
+  savedAt: number;
+}
+
+type PersistentReverseGeocodeCache = Record<string, PersistentReverseGeocodeEntry>;
 
 function getCoordinateKey(lat: number, lng: number): string {
   return `${lat.toFixed(5)},${lng.toFixed(5)}`;
@@ -7,6 +17,61 @@ function getCoordinateKey(lat: number, lng: number): string {
 
 export function getReverseGeocodeCacheKey(lat: number, lng: number): string {
   return getCoordinateKey(lat, lng);
+}
+
+function readPersistentCache(): PersistentReverseGeocodeCache {
+  try {
+    const rawCache = window.localStorage.getItem(persistentCacheKey);
+    if (!rawCache) {
+      return {};
+    }
+
+    const parsedCache = JSON.parse(rawCache);
+    if (!parsedCache || typeof parsedCache !== "object") {
+      return {};
+    }
+
+    return parsedCache as PersistentReverseGeocodeCache;
+  } catch {
+    return {};
+  }
+}
+
+function writePersistentCache(cache: PersistentReverseGeocodeCache): void {
+  try {
+    const entries = Object.entries(cache)
+      .sort(([, left], [, right]) => right.savedAt - left.savedAt)
+      .slice(0, persistentCacheLimit);
+    window.localStorage.setItem(persistentCacheKey, JSON.stringify(Object.fromEntries(entries)));
+  } catch {
+    // Cache failures should never block the user's location selection flow.
+  }
+}
+
+function getPersistentAddress(key: string): string | undefined {
+  const cache = readPersistentCache();
+  const entry = cache[key];
+  if (!entry) {
+    return undefined;
+  }
+
+  if (Date.now() - entry.savedAt > persistentCacheTtlMs) {
+    delete cache[key];
+    writePersistentCache(cache);
+    return undefined;
+  }
+
+  reverseGeocodeCache.set(key, entry.address);
+  return entry.address;
+}
+
+function setPersistentAddress(key: string, address: string | undefined): void {
+  const cache = readPersistentCache();
+  cache[key] = {
+    address,
+    savedAt: Date.now(),
+  };
+  writePersistentCache(cache);
 }
 
 export function reverseGeocodeKakao(
@@ -20,6 +85,11 @@ export function reverseGeocodeKakao(
   const key = getCoordinateKey(lat, lng);
   if (reverseGeocodeCache.has(key)) {
     return Promise.resolve(reverseGeocodeCache.get(key));
+  }
+
+  const persistentAddress = getPersistentAddress(key);
+  if (persistentAddress !== undefined) {
+    return Promise.resolve(persistentAddress);
   }
 
   const pending = pendingReverseGeocodes.get(key);
@@ -36,6 +106,7 @@ export function reverseGeocodeKakao(
           : undefined;
 
       reverseGeocodeCache.set(key, address);
+      setPersistentAddress(key, address);
       pendingReverseGeocodes.delete(key);
       resolve(address);
     });
