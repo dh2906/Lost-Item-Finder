@@ -5,7 +5,7 @@ import passport from "passport";
 import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
 import { storage, type ExternalFoundItemInput } from "./storage";
-import { api } from "@shared/routes";
+import { api, MAX_SEARCH_LOCATION_LENGTH } from "@shared/routes";
 import { normalizeItemImageUrls } from "@shared/item-images";
 import { z } from "zod";
 import OpenAI from "openai";
@@ -1647,6 +1647,11 @@ function normalizePlainSearchText(value?: string | null): string {
     .replace(/[^0-9a-zA-Z가-힣\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeSearchLocationText(value?: string | null): string | undefined {
+  const normalized = (value ?? "").replace(/\s+/g, " ").trim();
+  return normalized ? normalized.slice(0, MAX_SEARCH_LOCATION_LENGTH) : undefined;
 }
 
 function itemMatchesLocationText(item: Item, locationText?: string): boolean {
@@ -5312,7 +5317,7 @@ export async function registerRoutes(
             longitude: inferredLocation.longitude,
           }
         : null;
-      const searchLocation = input.location?.trim() || undefined;
+      const searchLocation = normalizeSearchLocationText(input.location);
       const lostDateRange = parseSearchDateRange(input.lostDateText);
       const radiusKm =
         typeof input.radiusKm === "number" && Number.isFinite(input.radiusKm)
