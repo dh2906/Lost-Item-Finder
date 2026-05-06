@@ -17,6 +17,9 @@ import cors from "cors";
 const app = express();
 const httpServer = createServer(app);
 const requestBodyLimit = process.env.REQUEST_BODY_LIMIT || "50mb";
+const embeddingProvider = (process.env.EMBEDDING_PROVIDER ?? "local").toLowerCase();
+const localEmbeddingUrl =
+  process.env.LOCAL_EMBEDDING_URL ?? "http://127.0.0.1:8090/embed";
 
 app.set("trust proxy", 1);
 app.set("etag", false);
@@ -67,11 +70,10 @@ async function checkLocalEmbeddingHealth(): Promise<{
   status: HealthCheckStatus;
   latencyMs: number | null;
 }> {
-  if (process.env.EMBEDDING_PROVIDER !== "local") {
+  if (embeddingProvider !== "local") {
     return { status: "skipped", latencyMs: null };
   }
 
-  const localEmbeddingUrl = process.env.LOCAL_EMBEDDING_URL;
   if (!localEmbeddingUrl) {
     return { status: "error", latencyMs: null };
   }
@@ -144,11 +146,11 @@ app.get("/api/health", async (_req, res) => {
 
   const embeddingHealth = await checkLocalEmbeddingHealth();
   const embeddingConfigured =
-    process.env.EMBEDDING_PROVIDER === "local"
-      ? Boolean(process.env.LOCAL_EMBEDDING_URL)
+    embeddingProvider === "local"
+      ? Boolean(localEmbeddingUrl)
       : Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY);
   const embeddingAvailable =
-    process.env.EMBEDDING_PROVIDER === "local"
+    embeddingProvider === "local"
       ? embeddingHealth.status === "ok"
       : embeddingConfigured;
   const status =
@@ -161,7 +163,7 @@ app.get("/api/health", async (_req, res) => {
     ai: {
       text: Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY),
       embedding: embeddingConfigured,
-      embeddingProvider: process.env.EMBEDDING_PROVIDER ?? "local",
+      embeddingProvider,
       embeddingStatus: embeddingHealth.status,
       embeddingLatencyMs: embeddingHealth.latencyMs,
       vision: Boolean(process.env.QWEN_API_KEY),
