@@ -3380,7 +3380,10 @@ async function searchLexicalAiCandidates(params: {
 }): Promise<RankedVectorCandidate[]> {
   const { queryText, searchCoordinates, radiusKm, limit } = params;
   const queryTokens = extractQueryKeywords(queryText).filter(
-    (token) => token.length >= 2 && !findKnownPlaceAlias(token)
+    (token) =>
+      token.length >= 2 &&
+      !findKnownPlaceAlias(token) &&
+      !isLikelyLocationToken(token)
   );
   const uniqueTokens = Array.from(new Set(queryTokens)).slice(0, 8);
   if (uniqueTokens.length === 0) {
@@ -5650,10 +5653,10 @@ export async function registerRoutes(
         ? radiusKm ?? DEFAULT_AI_SEARCH_RADIUS_KM
         : undefined;
       const hasLocationConstraint = Boolean(searchLocation || searchCoordinates);
-      const vectorCandidateCount = hasLocationConstraint
+      const vectorCandidateCount = searchCoordinates
         ? Math.max(VECTOR_CANDIDATE_COUNT, LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT)
         : VECTOR_CANDIDATE_COUNT;
-      const minVectorMatchScore = hasLocationConstraint
+      const minVectorMatchScore = searchCoordinates
         ? MIN_LOCATION_VECTOR_MATCH_SCORE
         : MIN_VECTOR_MATCH_SCORE;
       if (AI_SEARCH_BACKFILL_LIMIT > 0) {
