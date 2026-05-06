@@ -188,6 +188,16 @@ function createOAuthUsername(provider: OAuthProvider, providerId: string): strin
   return `oauth_${provider}_${digest}`;
 }
 
+function isUsernameUniqueViolation(error: unknown): boolean {
+  const dbError = error as { code?: string; constraint?: string };
+  return (
+    dbError.code === "23505" &&
+    (dbError.constraint === "users_username_unique" ||
+      dbError.constraint === "users_username_key" ||
+      dbError.constraint?.includes("username") === true)
+  );
+}
+
 function applyConfiguredAdminRole<T extends User>(user: T): T {
   if (isConfiguredAdminIdentity(user.username, user.email)) {
     return {
@@ -1228,60 +1238,59 @@ export class DatabaseStorage implements IStorage {
 
   async upsertOAuthUser(input: OAuthUserInput): Promise<User> {
     const baseUsername = createOAuthUsername(input.provider, input.providerId);
-    let username = baseUsername;
 
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const username =
+        attempt === 0 ? baseUsername : `${baseUsername}_${randomBytes(4).toString("hex")}`;
       const existingUsernameUser = await this.getUserByUsername(username);
       if (
-        !existingUsernameUser ||
-        (existingUsernameUser.authProvider === input.provider &&
-          existingUsernameUser.authProviderId === input.providerId)
+        existingUsernameUser &&
+        (existingUsernameUser.authProvider !== input.provider ||
+          existingUsernameUser.authProviderId !== input.providerId)
       ) {
-        break;
+        continue;
       }
 
-      username = `${baseUsername}_${randomBytes(4).toString("hex")}`;
+      const role: UserRole = isConfiguredAdminIdentity(username, input.email)
+        ? "admin"
+        : "member";
+      const values = {
+        username,
+        password: null,
+        name: input.name ?? input.email ?? `${input.provider} user`,
+        email: input.email ?? null,
+        profileImageUrl: input.profileImageUrl ?? null,
+        authProvider: input.provider,
+        authProviderId: input.providerId,
+        role,
+        status: "active",
+      } satisfies typeof users.$inferInsert;
+
+      try {
+        const [user] = await db
+          .insert(users)
+          .values(values)
+          .onConflictDoUpdate({
+            target: [users.authProvider, users.authProviderId],
+            set: {
+              name: values.name,
+              email: values.email,
+              profileImageUrl: values.profileImageUrl,
+              role,
+            },
+          })
+          .returning();
+
+        return applyConfiguredAdminRole(user);
+      } catch (error) {
+        if (isUsernameUniqueViolation(error)) {
+          continue;
+        }
+        throw error;
+      }
     }
 
-    const conflictingUsernameUser = await this.getUserByUsername(username);
-    if (
-      conflictingUsernameUser &&
-      (conflictingUsernameUser.authProvider !== input.provider ||
-        conflictingUsernameUser.authProviderId !== input.providerId)
-    ) {
-      throw new Error("Unable to allocate a unique OAuth username.");
-    }
-
-    const role: UserRole = isConfiguredAdminIdentity(username, input.email)
-      ? "admin"
-      : "member";
-    const values = {
-      username,
-      password: null,
-      name: input.name ?? input.email ?? `${input.provider} user`,
-      email: input.email ?? null,
-      profileImageUrl: input.profileImageUrl ?? null,
-      authProvider: input.provider,
-      authProviderId: input.providerId,
-      role,
-      status: "active",
-    } satisfies typeof users.$inferInsert;
-
-    const [user] = await db
-      .insert(users)
-      .values(values)
-      .onConflictDoUpdate({
-        target: [users.authProvider, users.authProviderId],
-        set: {
-          name: values.name,
-          email: values.email,
-          profileImageUrl: values.profileImageUrl,
-          role,
-        },
-      })
-      .returning();
-
-    return applyConfiguredAdminRole(user);
+    throw new Error("Unable to allocate a unique OAuth username.");
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
