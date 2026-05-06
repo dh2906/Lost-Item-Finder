@@ -415,7 +415,7 @@ export default function MyPage() {
                             {notification.isRead ? "확인 완료" : "새 알림"}
                           </Badge>
                         </div>
-                        <h3 className="text-lg font-semibold text-foreground w-25 text-ellipsis">
+                        <h3 className="text-lg font-semibold text-foreground flex-1 min-w-0 truncate">
                           {notification.foundItem.title}
                         </h3>
                         <p className="text-sm text-muted-foreground">
