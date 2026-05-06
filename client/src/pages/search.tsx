@@ -140,11 +140,20 @@ export default function SearchPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const handleLocationChange = useCallback((location: { latitude: string; longitude: string }) => {
-    form.setValue("latitude", location.latitude);
-    form.setValue("longitude", location.longitude);
-    form.setValue("radiusKm", form.getValues("radiusKm") ?? 1);
-  }, [form]);
+  const handleLocationChange = useCallback(
+    (location: {
+      latitude: string;
+      longitude: string;
+      address?: string;
+      placeName?: string;
+    }) => {
+      form.setValue("latitude", location.latitude);
+      form.setValue("longitude", location.longitude);
+      form.setValue("location", location.placeName ?? location.address ?? "");
+      form.setValue("radiusKm", form.getValues("radiusKm") ?? 1);
+    },
+    [form]
+  );
 
   const toggleLocation = () => {
     setShowLocation((current) => {
@@ -185,7 +194,7 @@ export default function SearchPage() {
     try {
       const payload = {
         ...data,
-        location: undefined,
+        location: locationMode === "map" ? data.location : undefined,
         latitude: locationMode === "map" ? data.latitude : undefined,
         longitude: locationMode === "map" ? data.longitude : undefined,
         radiusKm: locationMode === "map" ? data.radiusKm : undefined,

@@ -14,6 +14,8 @@ import {
 export const itemDateRanges = ["all", "7d", "30d", "90d"] as const;
 export const itemSortOrders = ["latest", "oldest"] as const;
 export const itemSourceFilters = ["all", "user", "lost112"] as const;
+export const MAX_SEARCH_LOCATION_RAW_LENGTH = 1000;
+export const MAX_SEARCH_LOCATION_LENGTH = 120;
 
 const itemResponseSchema = z.custom<typeof items.$inferSelect>();
 
@@ -539,7 +541,16 @@ export const api = {
         prompt: z.string().optional(),
         imageUrl: z.string().optional(),
         lostDateText: z.string().trim().max(40).optional(),
-        location: z.string().optional(),
+        location: z
+          .string()
+          .max(MAX_SEARCH_LOCATION_RAW_LENGTH)
+          .transform((value) => {
+            const normalized = value.replace(/\s+/g, " ").trim();
+            return normalized
+              ? normalized.slice(0, MAX_SEARCH_LOCATION_LENGTH)
+              : undefined;
+          })
+          .optional(),
         latitude: z.string().optional(),
         longitude: z.string().optional(),
         radiusKm: z.number().positive().optional(),
