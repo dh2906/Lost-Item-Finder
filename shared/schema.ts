@@ -311,7 +311,7 @@ export const updateItemClaimReportStatusSchema = z
     adminNote: z.string().trim().max(2000).optional(),
   })
   .refine((value) => value.status !== undefined || value.adminNote !== undefined, {
-    message: "At least one field is required.",
+    message: "최소 한 개 이상의 필드를 입력해야 합니다.",
   });
 
 export const chatRooms = pgTable("chat_rooms", {

@@ -312,7 +312,7 @@ export const api = {
         state: z.string(),
       }),
       responses: {
-        200: safeUserResponseSchema,
+        302: z.void(),
         400: errorSchemas.validation,
       },
     },

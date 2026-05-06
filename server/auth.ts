@@ -42,7 +42,7 @@ export function setupAuth(app: Express) {
         secure: sessionSecure,
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000,
-        sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
+        sameSite: "lax",
       },
     })
   );

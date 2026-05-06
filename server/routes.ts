@@ -5075,7 +5075,8 @@ function normalizeOAuthProfile(
 async function fetchOAuthProfile(
   req: Request,
   provider: OAuthProvider,
-  code: string
+  code: string,
+  state: string
 ): Promise<OAuthProfile> {
   const config = oauthProviderConfigs[provider];
   const { clientId, clientSecret } = getOAuthCredentials(provider);
@@ -5091,6 +5092,9 @@ async function fetchOAuthProfile(
     code,
     redirect_uri: getOAuthRedirectUri(req, provider),
   });
+  if (provider === "naver") {
+    tokenParams.set("state", state);
+  }
   const tokenResponse = await fetch(config.tokenUrl, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -5182,7 +5186,7 @@ export async function registerRoutes(
       const redirectTo = session.oauth.redirect;
       delete session.oauth;
 
-      const profile = await fetchOAuthProfile(req, provider, code);
+      const profile = await fetchOAuthProfile(req, provider, code, state);
       const user = await storage.upsertOAuthUser(profile);
       if (user.status !== "active") {
         return res.redirect("/login?error=suspended");
@@ -5222,6 +5226,15 @@ export async function registerRoutes(
   app.post(api.claimReports.create.path, isAuthenticated, async (req, res) => {
     try {
       const input = api.claimReports.create.input.parse(req.body);
+      if (input.itemId) {
+        const item = await storage.getItem(input.itemId);
+        if (!item) {
+          return res.status(400).json({
+            message: "관련 게시글을 찾을 수 없습니다.",
+            field: "itemId",
+          });
+        }
+      }
       const report = await storage.createClaimReport(req.user!.id, input);
       res.status(201).json(report);
     } catch (err) {
