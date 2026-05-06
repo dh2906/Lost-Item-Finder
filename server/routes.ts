@@ -16,6 +16,7 @@ import {
   MAX_SEARCH_LOCATION_RAW_LENGTH,
 } from "@shared/routes";
 import { normalizeItemImageUrls } from "@shared/item-images";
+import { MAX_CHAT_MESSAGE_LENGTH } from "@shared/chat";
 import { z } from "zod";
 import OpenAI from "openai";
 import { db } from "./db";
@@ -6285,13 +6286,20 @@ export async function registerRoutes(
         const roomId = Number(
           Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
         );
-        const { content } = req.body;
+        const content =
+          typeof req.body.content === "string" ? req.body.content : "";
         const senderId = req.user!.id;
 
-        if (!content || content.trim() === "") {
+        if (content.trim() === "") {
           return res.status(400).json({ message: "메시지 내용이 필요합니다" });
         }
         const normalizedContent = content.trim();
+        if (normalizedContent.length > MAX_CHAT_MESSAGE_LENGTH) {
+          return res.status(400).json({
+            message: `메시지는 ${MAX_CHAT_MESSAGE_LENGTH}자 이내로 입력해 주세요`,
+            field: "content",
+          });
+        }
 
         const room = await db.query.chatRooms.findFirst({
           where: eq(chatRooms.id, roomId),
