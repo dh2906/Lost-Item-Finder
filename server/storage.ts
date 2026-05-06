@@ -40,6 +40,20 @@ const DEFAULT_LOCATION_RADIUS_KM = 5;
 const AUTO_MATCH_DATE_WINDOW_DAYS = Number(
   process.env.AUTO_MATCH_DATE_WINDOW_DAYS ?? 90
 );
+const placeholderAdminUsername = "change-me-admin-username";
+
+function assertNoProductionAdminPlaceholders(
+  configuredAdminUsernames: string[]
+): void {
+  if (
+    process.env.NODE_ENV === "production" &&
+    configuredAdminUsernames.includes(placeholderAdminUsername)
+  ) {
+    throw new Error(
+      `ADMIN_USERNAMES must not include ${placeholderAdminUsername} in production.`
+    );
+  }
+}
 
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
@@ -128,11 +142,16 @@ export interface ExternalFoundItemInput {
 }
 
 function getConfiguredAdminUsernames(): string[] {
-  return (process.env.ADMIN_USERNAMES ?? "")
+  const configuredAdminUsernames = (process.env.ADMIN_USERNAMES ?? "")
     .split(",")
     .map((value) => value.trim().toLowerCase())
     .filter(Boolean);
+
+  assertNoProductionAdminPlaceholders(configuredAdminUsernames);
+  return configuredAdminUsernames;
 }
+
+getConfiguredAdminUsernames();
 
 function isConfiguredAdminUsername(username?: string | null): boolean {
   if (!username) {

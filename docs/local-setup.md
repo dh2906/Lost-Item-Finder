@@ -21,7 +21,7 @@ AI image payloads are additionally capped by the shared API schema before Vision
 
 - Set `SESSION_SECRET` to at least 32 random characters. Production startup fails without it.
 - Set `SESSION_SECURE=true` when serving over HTTPS.
-- Replace `ADMIN_USERNAMES=change-me-admin-username` before creating admin accounts.
+- Replace `ADMIN_USERNAMES=change-me-admin-username` before creating admin accounts. Production rejects this placeholder value.
 - Set `CORS_ORIGIN` to the deployed web origin if the API is served from a different host.
 - Keep `ALLOW_NGROK_ORIGINS=false` in production. Enable it only for temporary tunnel testing.
 - Keep `AI_RERANK_ENABLED`, `AUTOMATIC_MATCH_QUEUE_ENABLED`, and `OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED` disabled unless you intentionally accept the extra LLM cost.
