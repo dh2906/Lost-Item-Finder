@@ -213,6 +213,10 @@ export const users = pgTable(
       "users_oauth_provider_id_required",
       sql`${table.authProvider} = 'local' or ${table.authProviderId} is not null`
     ),
+    localPasswordRequired: check(
+      "users_local_password_required",
+      sql`${table.authProvider} <> 'local' or ${table.password} is not null`
+    ),
   })
 );
 

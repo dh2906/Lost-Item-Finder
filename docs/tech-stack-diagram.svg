@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Lost Item Finder Technology Stack Diagram</title>
+  <desc id="desc">White background architecture diagram showing frontend, backend, AI, database, and infrastructure technology stacks.</desc>
+  <defs>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#111827" flood-opacity="0.12"/>
+    </filter>
+    <marker id="arrowGray" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 L10 6 L2 10 Z" fill="#6b7280"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2 2 L10 6 L2 10 Z" fill="#2563eb"/>
+    </marker>
+    <style>
+      .title { font: 800 42px Arial, Helvetica, sans-serif; fill: #111827; letter-spacing: 0; }
+      .subtitle { font: 500 19px Arial, Helvetica, sans-serif; fill: #64748b; letter-spacing: 0; }
+      .section-title { font: 800 28px Arial, Helvetica, sans-serif; fill: #111827; letter-spacing: 0; }
+      .section-subtitle { font: 600 15px Arial, Helvetica, sans-serif; fill: #64748b; letter-spacing: 0; }
+      .label { font: 700 16px Arial, Helvetica, sans-serif; fill: #111827; letter-spacing: 0; }
+      .small { font: 700 12px Arial, Helvetica, sans-serif; fill: #334155; letter-spacing: 0; }
+      .micro { font: 700 10px Arial, Helvetica, sans-serif; fill: #475569; letter-spacing: 0; }
+      .line { stroke: #6b7280; stroke-width: 3; fill: none; marker-end: url(#arrowGray); }
+      .blue-line { stroke: #2563eb; stroke-width: 3; fill: none; marker-end: url(#arrowBlue); }
+      .dash { stroke-dasharray: 9 9; }
+      .card { fill: #ffffff; stroke-width: 2.5; filter: url(#softShadow); }
+      .tile { fill: #ffffff; stroke: #e5e7eb; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="#ffffff"/>
+  <text x="80" y="82" class="title">Lost Item Finder 기술 스택</text>
+  <text x="80" y="118" class="subtitle">Frontend, Backend, AI, Database, Infra 구성</text>
+
+  <g transform="translate(78 347)">
+    <circle cx="62" cy="62" r="53" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="4"/>
+    <circle cx="62" cy="43" r="18" fill="#94a3b8"/>
+    <path d="M23 101 C31 76 92 76 101 101" fill="#94a3b8"/>
+    <text x="62" y="143" text-anchor="middle" class="label">사용자</text>
+  </g>
+
+  <line x1="220" y1="410" x2="300" y2="410" class="line"/>
+
+  <g transform="translate(300 180)">
+    <rect class="card" x="0" y="0" width="305" height="460" rx="18" stroke="#f97316"/>
+    <text x="28" y="52" class="section-title">Frontend</text>
+    <text x="28" y="78" class="section-subtitle">브라우저 / 모바일 PWA</text>
+
+    <g transform="translate(35 118)">
+      <rect class="tile" x="0" y="0" width="104" height="96" rx="14"/>
+      <ellipse cx="52" cy="38" rx="34" ry="12" fill="none" stroke="#61dafb" stroke-width="4"/>
+      <ellipse cx="52" cy="38" rx="34" ry="12" fill="none" stroke="#61dafb" stroke-width="4" transform="rotate(60 52 38)"/>
+      <ellipse cx="52" cy="38" rx="34" ry="12" fill="none" stroke="#61dafb" stroke-width="4" transform="rotate(120 52 38)"/>
+      <circle cx="52" cy="38" r="6" fill="#61dafb"/>
+      <text x="52" y="78" text-anchor="middle" class="small">React 18</text>
+    </g>
+
+    <g transform="translate(166 118)">
+      <rect class="tile" x="0" y="0" width="104" height="96" rx="14"/>
+      <rect x="27" y="17" width="50" height="50" rx="4" fill="#3178c6"/>
+      <text x="52" y="51" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" fill="#ffffff">TS</text>
+      <text x="52" y="78" text-anchor="middle" class="small">TypeScript</text>
+    </g>
+
+    <g transform="translate(35 244)">
+      <rect class="tile" x="0" y="0" width="104" height="96" rx="14"/>
+      <path d="M30 17 L76 25 L52 69 Z" fill="#a855f7"/>
+      <path d="M47 17 L73 24 L41 52 Z" fill="#fbbf24"/>
+      <path d="M43 44 L58 44 L48 69 Z" fill="#ffffff" opacity="0.9"/>
+      <text x="52" y="78" text-anchor="middle" class="small">Vite</text>
+    </g>
+
+    <g transform="translate(166 244)">
+      <rect class="tile" x="0" y="0" width="104" height="96" rx="14"/>
+      <path d="M21 39 C31 22 45 21 63 34 C72 40 78 40 86 30 C77 48 62 50 45 37 C36 31 29 31 21 39 Z" fill="#38bdf8"/>
+      <path d="M18 58 C29 42 44 41 62 53 C71 59 78 59 86 50 C77 68 62 70 44 57 C35 51 27 51 18 58 Z" fill="#06b6d4"/>
+      <text x="52" y="78" text-anchor="middle" class="small">Tailwind</text>
+    </g>
+
+    <g transform="translate(101 355)">
+      <rect class="tile" x="0" y="0" width="104" height="72" rx="14"/>
+      <rect x="24" y="17" width="56" height="31" rx="5" fill="#111827"/>
+      <text x="52" y="39" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="17" font-weight="800" fill="#ffffff">PWA</text>
+      <text x="52" y="62" text-anchor="middle" class="micro">Installable App</text>
+    </g>
+  </g>
+
+  <line x1="630" y1="410" x2="710" y2="410" class="line"/>
+
+  <g transform="translate(710 180)">
+    <rect class="card" x="0" y="0" width="330" height="460" rx="18" stroke="#2563eb"/>
+    <text x="28" y="52" class="section-title">Backend</text>
+    <text x="28" y="78" class="section-subtitle">API 서버 / 인증 / 알림</text>
+
+    <g transform="translate(34 118)">
+      <rect class="tile" x="0" y="0" width="112" height="96" rx="14"/>
+      <path d="M56 13 L92 34 L92 62 L56 83 L20 62 L20 34 Z" fill="#3c873a"/>
+      <text x="56" y="55" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="23" font-weight="900" fill="#ffffff">JS</text>
+      <text x="56" y="78" text-anchor="middle" class="small">Node.js</text>
+    </g>
+
+    <g transform="translate(184 118)">
+      <rect class="tile" x="0" y="0" width="112" height="96" rx="14"/>
+      <text x="56" y="50" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="300" fill="#111827">ex</text>
+      <path d="M33 56 C45 42 64 42 79 56" fill="none" stroke="#111827" stroke-width="3"/>
+      <text x="56" y="78" text-anchor="middle" class="small">Express</text>
+    </g>
+
+    <g transform="translate(34 244)">
+      <rect class="tile" x="0" y="0" width="112" height="96" rx="14"/>
+      <circle cx="56" cy="41" r="29" fill="#34d399"/>
+      <circle cx="56" cy="41" r="18" fill="#ffffff"/>
+      <circle cx="56" cy="41" r="8" fill="#34d399"/>
+      <text x="56" y="78" text-anchor="middle" class="small">Passport</text>
+    </g>
+
+    <g transform="translate(184 244)">
+      <rect class="tile" x="0" y="0" width="112" height="96" rx="14"/>
+      <path d="M52 17 C70 30 74 45 62 67 C83 53 87 29 65 14 C61 27 56 34 48 39 C48 31 49 24 52 17 Z" fill="#f97316"/>
+      <path d="M46 38 C31 47 31 65 52 72 C45 61 48 52 59 42 C56 57 61 63 69 69 C79 50 66 36 46 38 Z" fill="#f59e0b"/>
+      <text x="56" y="78" text-anchor="middle" class="small">FCM</text>
+    </g>
+
+    <g transform="translate(109 355)">
+      <rect class="tile" x="0" y="0" width="112" height="72" rx="14"/>
+      <rect x="31" y="12" width="50" height="36" rx="4" fill="#3178c6"/>
+      <text x="56" y="37" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="800" fill="#ffffff">TS</text>
+      <text x="56" y="62" text-anchor="middle" class="micro">TypeScript</text>
+    </g>
+  </g>
+
+  <line x1="1065" y1="315" x2="1145" y2="315" class="blue-line"/>
+  <line x1="1065" y1="505" x2="1145" y2="505" class="blue-line"/>
+
+  <g transform="translate(1145 95)">
+    <rect class="card" x="0" y="0" width="365" height="285" rx="18" stroke="#10b981"/>
+    <text x="28" y="52" class="section-title">AI</text>
+    <text x="28" y="78" class="section-subtitle">검색 보조 / 이미지 인식</text>
+
+    <g transform="translate(30 116)">
+      <rect class="tile" x="0" y="0" width="92" height="96" rx="14"/>
+      <circle cx="46" cy="34" r="22" fill="none" stroke="#111827" stroke-width="5"/>
+      <path d="M46 12 C58 17 64 27 61 39 C57 54 42 58 31 48" fill="none" stroke="#111827" stroke-width="5" stroke-linecap="round"/>
+      <text x="46" y="78" text-anchor="middle" class="small">OpenAI</text>
+    </g>
+
+    <g transform="translate(136 116)">
+      <rect class="tile" x="0" y="0" width="92" height="96" rx="14"/>
+      <rect x="18" y="20" width="56" height="40" rx="20" fill="#111827"/>
+      <circle cx="36" cy="40" r="6" fill="#22c55e"/>
+      <circle cx="56" cy="40" r="6" fill="#22c55e"/>
+      <text x="46" y="78" text-anchor="middle" class="small">GPT-4o</text>
+    </g>
+
+    <g transform="translate(242 116)">
+      <rect class="tile" x="0" y="0" width="92" height="96" rx="14"/>
+      <path d="M13 42 C29 20 64 20 80 42 C64 64 29 64 13 42 Z" fill="#dbeafe" stroke="#2563eb" stroke-width="3"/>
+      <circle cx="46" cy="42" r="14" fill="#2563eb"/>
+      <circle cx="46" cy="42" r="6" fill="#ffffff"/>
+      <text x="46" y="78" text-anchor="middle" class="small">Qwen Vision</text>
+    </g>
+  </g>
+
+  <g transform="translate(1145 445)">
+    <rect class="card" x="0" y="0" width="365" height="300" rx="18" stroke="#7c3aed"/>
+    <text x="28" y="52" class="section-title">Database</text>
+    <text x="28" y="78" class="section-subtitle">관계형 데이터 / 벡터 검색</text>
+
+    <g transform="translate(30 122)">
+      <rect class="tile" x="0" y="0" width="92" height="96" rx="14"/>
+      <ellipse cx="46" cy="30" rx="27" ry="13" fill="#336791"/>
+      <path d="M19 30 V55 C19 63 31 69 46 69 C61 69 73 63 73 55 V30" fill="#336791"/>
+      <ellipse cx="46" cy="55" rx="27" ry="13" fill="#2b587a"/>
+      <text x="46" y="82" text-anchor="middle" class="small">PostgreSQL</text>
+    </g>
+
+    <g transform="translate(136 122)">
+      <rect class="tile" x="0" y="0" width="92" height="96" rx="14"/>
+      <circle cx="46" cy="42" r="28" fill="#ede9fe"/>
+      <text x="46" y="52" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="900" fill="#7c3aed">v</text>
+      <text x="46" y="82" text-anchor="middle" class="small">pgvector</text>
+    </g>
+
+    <g transform="translate(242 122)">
+      <rect class="tile" x="0" y="0" width="92" height="96" rx="14"/>
+      <path d="M26 31 C36 20 56 20 66 31" fill="none" stroke="#22c55e" stroke-width="6" stroke-linecap="round"/>
+      <path d="M26 50 C36 39 56 39 66 50" fill="none" stroke="#84cc16" stroke-width="6" stroke-linecap="round"/>
+      <path d="M32 64 L28 75 M50 64 L46 75 M68 64 L64 75" stroke="#0f766e" stroke-width="4" stroke-linecap="round"/>
+      <text x="46" y="86" text-anchor="middle" class="small">Drizzle</text>
+    </g>
+  </g>
+
+  <g transform="translate(430 708)">
+    <rect x="0" y="0" width="760" height="108" rx="18" fill="#ffffff" stroke="#0ea5e9" stroke-width="2.5" filter="url(#softShadow)"/>
+    <g transform="translate(40 22)">
+      <path d="M53 48 C79 49 94 42 101 27 C92 33 85 33 77 29 C70 18 59 13 44 13 H35 V24 H18 V36 H35 V48 Z" fill="#2496ed"/>
+      <rect x="21" y="24" width="11" height="10" fill="#ffffff" opacity="0.9"/>
+      <rect x="35" y="24" width="11" height="10" fill="#ffffff" opacity="0.9"/>
+      <rect x="49" y="24" width="11" height="10" fill="#ffffff" opacity="0.9"/>
+      <rect x="35" y="12" width="11" height="10" fill="#ffffff" opacity="0.9"/>
+      <text x="132" y="40" class="section-title">Docker Compose</text>
+      <text x="132" y="68" class="section-subtitle">Frontend, Backend, Database 실행 환경</text>
+    </g>
+  </g>
+
+  <path d="M810 708 C810 675 810 665 810 642" class="line dash"/>
+  <path d="M1188 708 C1188 675 1188 620 1148 555" class="line dash"/>
+  <path d="M626 708 C626 672 518 668 452 642" class="line dash"/>
+
+  <text x="800" y="868" text-anchor="middle" class="subtitle">React/Vite PWA → Express API → AI services &amp; PostgreSQL vector database</text>
+</svg>

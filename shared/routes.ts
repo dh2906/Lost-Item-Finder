@@ -67,7 +67,7 @@ const safeUserResponseSchema = z.object({
   name: z.string().nullable(),
   email: z.string().nullable().optional(),
   profileImageUrl: z.string().nullable().optional(),
-  authProvider: z.string().optional(),
+  authProvider: z.enum(["local", ...oauthProviders]).optional(),
   role: z.enum(userRoles),
   status: z.enum(userStatuses),
   createdAt: z.union([z.string(), z.date()]).nullable(),

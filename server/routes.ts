@@ -5272,7 +5272,7 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   // --- Auth API ---
-  app.get("/api/auth/oauth/:provider", authLoginRateLimit, (req, res) => {
+  app.get(api.auth.oauthStart.path, authLoginRateLimit, (req, res) => {
     const provider = getOAuthProvider(req.params.provider);
     if (!provider) {
       return res
@@ -5307,7 +5307,7 @@ export async function registerRoutes(
     res.redirect(authorizationUrl.toString());
   });
 
-  app.get("/api/auth/oauth/:provider/callback", async (req, res) => {
+  app.get(api.auth.oauthCallback.path, async (req, res) => {
     try {
       const provider = getOAuthProvider(req.params.provider);
       const code = typeof req.query.code === "string" ? req.query.code : "";
