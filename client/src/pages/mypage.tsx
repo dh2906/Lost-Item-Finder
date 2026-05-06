@@ -394,7 +394,7 @@ export default function MyPage() {
                   className={cn(
                     "border-border/70 bg-white/92 shadow-sm",
                     !notification.isRead &&
-                      "border-primary/30 shadow-[0_18px_30px_-24px_hsl(var(--primary)/0.32)]"
+                    "border-primary/30 shadow-[0_18px_30px_-24px_hsl(var(--primary)/0.32)]"
                   )}
                 >
                   <CardContent className="space-y-4 p-5">
@@ -415,7 +415,7 @@ export default function MyPage() {
                             {notification.isRead ? "확인 완료" : "새 알림"}
                           </Badge>
                         </div>
-                        <h3 className="text-lg font-semibold text-foreground">
+                        <h3 className="text-lg font-semibold text-foreground w-25 text-ellipsis">
                           {notification.foundItem.title}
                         </h3>
                         <p className="text-sm text-muted-foreground">
