@@ -292,6 +292,10 @@ export const itemClaimReports = pgTable(
     reporterIndex: index("item_claim_reports_reporter_idx").on(table.reporterId),
     itemIndex: index("item_claim_reports_item_idx").on(table.itemId),
     statusIndex: index("item_claim_reports_status_idx").on(table.status),
+    statusAllowed: check(
+      "item_claim_reports_status_check",
+      sql`${table.status} in ('open', 'reviewing', 'resolved', 'dismissed')`
+    ),
   })
 );
 

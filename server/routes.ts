@@ -5307,7 +5307,7 @@ export async function registerRoutes(
     res.redirect(authorizationUrl.toString());
   });
 
-  app.get(api.auth.oauthCallback.path, async (req, res) => {
+  app.get(api.auth.oauthCallback.path, authLoginRateLimit, async (req, res) => {
     try {
       const provider = getOAuthProvider(req.params.provider);
       const code = typeof req.query.code === "string" ? req.query.code : "";
@@ -5335,12 +5335,19 @@ export async function registerRoutes(
         return res.redirect("/login?error=suspended");
       }
 
-      req.login(user, (err) => {
+      req.session.regenerate((err) => {
         if (err) {
-          console.error("OAuth login error:", err);
+          console.error("OAuth session regeneration error:", err);
           return res.redirect("/login?error=oauth");
         }
-        res.redirect(redirectTo);
+
+        req.login(user, (err) => {
+          if (err) {
+            console.error("OAuth login error:", err);
+            return res.redirect("/login?error=oauth");
+          }
+          res.redirect(redirectTo);
+        });
       });
     } catch (err) {
       console.error("OAuth callback error:", err);

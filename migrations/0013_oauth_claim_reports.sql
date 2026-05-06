@@ -44,6 +44,13 @@ CREATE TABLE IF NOT EXISTS item_claim_reports (
   updated_at timestamp DEFAULT now() NOT NULL
 );
 
+ALTER TABLE item_claim_reports
+DROP CONSTRAINT IF EXISTS item_claim_reports_status_check;
+
+ALTER TABLE item_claim_reports
+ADD CONSTRAINT item_claim_reports_status_check
+CHECK (status IN ('open', 'reviewing', 'resolved', 'dismissed'));
+
 CREATE INDEX IF NOT EXISTS item_claim_reports_reporter_idx
 ON item_claim_reports (reporter_id);
 
