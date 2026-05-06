@@ -13,6 +13,8 @@ import { pool } from "./db";
 import { User as UserType } from "@shared/schema";
 
 const PostgresSessionStore = connectPg(session);
+const fallbackSessionSecret = "dev-secret-change-in-production";
+const productionSessionSecretMinLength = 32;
 
 declare global {
   namespace Express {
@@ -26,6 +28,19 @@ export function setupAuth(app: Express) {
     tableName: "sessions",
     createTableIfMissing: true,
   });
+  const sessionSecret = process.env.SESSION_SECRET?.trim();
+  if (process.env.NODE_ENV === "production") {
+    if (!sessionSecret) {
+      throw new Error("SESSION_SECRET must be set in production.");
+    }
+
+    if (sessionSecret.length < productionSessionSecretMinLength) {
+      throw new Error(
+        `SESSION_SECRET must be at least ${productionSessionSecretMinLength} characters in production.`
+      );
+    }
+  }
+
   const sessionSecure =
     process.env.SESSION_SECURE === "true"
       ? true
@@ -36,7 +51,7 @@ export function setupAuth(app: Express) {
   app.use(
     session({
       store: sessionStore,
-      secret: process.env.SESSION_SECRET || "dev-secret-change-in-production",
+      secret: sessionSecret || fallbackSessionSecret,
       resave: false,
       saveUninitialized: false,
       cookie: {
