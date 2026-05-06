@@ -202,6 +202,16 @@ export function log(message: string, source = "express") {
 }
 
 const LOG_RESPONSE_MAX_LENGTH = 200;
+const RESPONSE_LOG_REDACTED_PATHS = [
+  /^\/api\/auth(?:\/|$)/,
+  /^\/api\/chat(?:\/|$)/,
+  /^\/api\/fcm(?:\/|$)/,
+  /^\/api\/ai\/analyze-image$/,
+];
+
+function shouldRedactResponseLog(path: string): boolean {
+  return RESPONSE_LOG_REDACTED_PATHS.some((pattern) => pattern.test(path));
+}
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -219,11 +229,15 @@ app.use((req, res, next) => {
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       if (capturedJsonResponse) {
-        const serialized = JSON.stringify(capturedJsonResponse);
-        const truncated = serialized.length > LOG_RESPONSE_MAX_LENGTH
-          ? serialized.slice(0, LOG_RESPONSE_MAX_LENGTH) + "..."
-          : serialized;
-        logLine += ` :: ${truncated}`;
+        if (shouldRedactResponseLog(path)) {
+          logLine += " :: [redacted]";
+        } else {
+          const serialized = JSON.stringify(capturedJsonResponse);
+          const truncated = serialized.length > LOG_RESPONSE_MAX_LENGTH
+            ? serialized.slice(0, LOG_RESPONSE_MAX_LENGTH) + "..."
+            : serialized;
+          logLine += ` :: ${truncated}`;
+        }
       }
 
       log(logLine);
