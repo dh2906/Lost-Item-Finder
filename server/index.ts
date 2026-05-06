@@ -59,10 +59,15 @@ const allowedOrigins = (process.env.CORS_ORIGIN
       "http://127.0.0.1:8080",
     ]);
 
-const allowedOriginPatterns = [
+const allowNgrokOrigins =
+  process.env.ALLOW_NGROK_ORIGINS === "true" ||
+  (process.env.NODE_ENV !== "production" &&
+    process.env.ALLOW_NGROK_ORIGINS !== "false");
+
+const allowedOriginPatterns = allowNgrokOrigins ? [
   /^https:\/\/[a-z0-9-]+\.ngrok-free\.dev$/i,
   /^https:\/\/[a-z0-9-]+\.ngrok\.io$/i,
-];
+] : [];
 
 type HealthCheckStatus = "ok" | "error" | "skipped";
 
