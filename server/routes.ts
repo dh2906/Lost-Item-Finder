@@ -178,6 +178,7 @@ const CHAT_RATE_LIMIT_WINDOW_MS = Number(
 const CHAT_MESSAGE_RATE_LIMIT = Number(
   process.env.CHAT_MESSAGE_RATE_LIMIT ?? 30
 );
+const MAX_FCM_TOKEN_LENGTH = 4096;
 
 type RateLimitBucket = {
   count: number;
@@ -6085,9 +6086,15 @@ export async function registerRoutes(
   // --- FCM 토큰 등록 API ---
   app.post("/api/fcm/token", isAuthenticated, async (req, res) => {
     try {
-      const { token } = req.body;
-      if (!token || typeof token !== "string") {
+      const token = typeof req.body.token === "string" ? req.body.token.trim() : "";
+      if (!token) {
         return res.status(400).json({ message: "FCM 토큰이 필요합니다" });
+      }
+      if (token.length > MAX_FCM_TOKEN_LENGTH) {
+        return res.status(400).json({
+          message: `FCM 토큰은 ${MAX_FCM_TOKEN_LENGTH}자 이내여야 합니다`,
+          field: "token",
+        });
       }
       await db
         .update(users)
