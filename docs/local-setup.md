@@ -15,6 +15,16 @@ npm run dev
 The app runs at `http://127.0.0.1:8080`.
 
 If you upload large base64 images, the request parser limit is controlled by `REQUEST_BODY_LIMIT` in `.env`. The default is `50mb`.
+AI image payloads are additionally capped by the shared API schema before Vision calls are made.
+
+## Production essentials
+
+- Set `SESSION_SECRET` to at least 32 random characters. Production startup fails without it.
+- Set `SESSION_SECURE=true` when serving over HTTPS.
+- Replace `ADMIN_USERNAMES=change-me-admin-username` before creating admin accounts.
+- Set `CORS_ORIGIN` to the deployed web origin if the API is served from a different host.
+- Keep `AI_RERANK_ENABLED`, `AUTOMATIC_MATCH_QUEUE_ENABLED`, and `OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED` disabled unless you intentionally accept the extra LLM cost.
+- Tune `AI_SEARCH_GUEST_RATE_LIMIT`, `AI_SEARCH_USER_RATE_LIMIT`, and `AI_IMAGE_ANALYSIS_RATE_LIMIT` before opening the service publicly.
 
 ## Database
 
