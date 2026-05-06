@@ -399,7 +399,7 @@ export default function MyPage() {
                 >
                   <CardContent className="space-y-4 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-2 flex-1 min-w-0 truncate">
+                      <div className="space-y-2 flex-1 min-w-0">
                         <div className="flex flex-wrap gap-2">
                           <Badge className="bg-primary text-primary-foreground hover:bg-primary">
                             자동 매칭
@@ -415,10 +415,10 @@ export default function MyPage() {
                             {notification.isRead ? "확인 완료" : "새 알림"}
                           </Badge>
                         </div>
-                        <h3 className="text-lg font-semibold text-foreground">
+                        <h3 className="text-lg font-semibold text-foreground truncate">
                           {notification.foundItem.title}
                         </h3>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-sm text-muted-foreground line-clamp-2">
                           내 분실물 "
                           <span className="font-medium text-foreground">
                             {notification.lostItem.title}
