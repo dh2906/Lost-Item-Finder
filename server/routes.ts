@@ -6090,13 +6090,25 @@ export async function registerRoutes(
   // --- Chat API ---
   app.post("/api/chat/rooms", isAuthenticated, async (req, res) => {
     try {
-      const { itemId, receiverId } = req.body;
+      const itemId = positiveIdSchema.parse(req.body.itemId);
+      const receiverId = positiveIdSchema.parse(req.body.receiverId);
       const senderId = req.user!.id;
 
-      if (!itemId || !receiverId) {
+      if (senderId === receiverId) {
         return res
           .status(400)
-          .json({ message: "itemId와 receiverId가 필요합니다" });
+          .json({ message: "자기 자신과는 채팅을 시작할 수 없습니다" });
+      }
+
+      const item = await storage.getItem(itemId);
+      if (!item || item.status !== "active" || !item.userId) {
+        return res.status(404).json({ message: "Item not found" });
+      }
+
+      if (item.userId !== receiverId) {
+        return res
+          .status(403)
+          .json({ message: "게시글 등록자와만 채팅을 시작할 수 있습니다" });
       }
 
       const existingRoom = await db.query.chatRooms.findFirst({
@@ -6129,6 +6141,12 @@ export async function registerRoutes(
 
       res.status(201).json(room);
     } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
       console.error(err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
