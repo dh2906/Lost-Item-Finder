@@ -1,0 +1,93 @@
+[
+  {
+    "name": "충남대 민트색 텀블러 - 자연어 장소/날짜",
+    "input": {
+      "prompt": "충남대에서 5월 2일에 잃어버린 민트색 텀블러"
+    },
+    "expected": {
+      "titleIncludes": ["민트", "텀블러"],
+      "locationIncludes": ["대학로"],
+      "evidenceLabels": ["색상 유사", "지역 일치", "날짜 유사"]
+    }
+  },
+  {
+    "name": "충남대 텀블러 - 날짜 별도 입력",
+    "input": {
+      "prompt": "충남대 텀블러",
+      "lostDateText": "5월 2일"
+    },
+    "expected": {
+      "titleIncludes": ["텀블러"],
+      "locationIncludes": ["대학로"],
+      "evidenceLabels": ["지역 일치", "날짜 유사"]
+    }
+  },
+  {
+    "name": "대전 대학로 민트 텀블러 - 좌표 반경",
+    "input": {
+      "prompt": "대전 대학로 민트 텀블러",
+      "latitude": "36.3683",
+      "longitude": "127.3445",
+      "radiusKm": 3
+    },
+    "expected": {
+      "titleIncludes": ["민트", "텀블러"],
+      "locationIncludes": ["대학로"],
+      "evidenceLabels": ["색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "검정 무선 이어폰",
+    "input": {
+      "prompt": "검정 무선 이어폰"
+    },
+    "expected": {
+      "titleIncludes": ["이어폰"],
+      "evidenceLabels": ["특징 일치", "분류 유사", "색상 유사"]
+    }
+  },
+  {
+    "name": "부산 5월 2일 검정 지갑",
+    "input": {
+      "prompt": "부산에서 5월 2일 잃어버린 검정 지갑"
+    },
+    "expected": {
+      "titleIncludes": ["지갑"],
+      "locationIncludes": ["부산"],
+      "evidenceLabels": ["색상 유사", "지역 일치", "날짜 유사"]
+    }
+  },
+  {
+    "name": "부산 파란 우산",
+    "input": {
+      "prompt": "부산 파란 우산"
+    },
+    "expected": {
+      "titleIncludes": ["우산"],
+      "locationIncludes": ["부산"],
+      "evidenceLabels": ["분류 유사", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "대구 하늘색 지갑",
+    "input": {
+      "prompt": "대구 하늘색 지갑"
+    },
+    "expected": {
+      "titleIncludes": ["지갑"],
+      "locationIncludes": ["대구"],
+      "evidenceLabels": ["색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "동대구역 초록색 텀블러",
+    "input": {
+      "prompt": "동대구역 초록색 텀블러"
+    },
+    "expected": {
+      "titleIncludes": ["초록색", "텀블러"],
+      "locationIncludes": ["동대구"],
+      "evidenceLabels": ["특징 일치", "색상 유사", "지역 일치"]
+    }
+  }
+]
