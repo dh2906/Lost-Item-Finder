@@ -168,7 +168,7 @@ app.get("/api/health", async (_req, res) => {
     },
     lost112: {
       api: Boolean(process.env.LOST112_API_KEY),
-      syncEnabled: process.env.LOST112_SYNC_ENABLED === "true",
+      syncEnabled: process.env.LOST112_SYNC_ENABLED !== "false",
     },
     uptimeSec: Math.round(process.uptime()),
   });
