@@ -172,6 +172,12 @@ const AUTH_LOGIN_RATE_LIMIT = Number(process.env.AUTH_LOGIN_RATE_LIMIT ?? 10);
 const AUTH_REGISTER_RATE_LIMIT = Number(
   process.env.AUTH_REGISTER_RATE_LIMIT ?? 5
 );
+const CHAT_RATE_LIMIT_WINDOW_MS = Number(
+  process.env.CHAT_RATE_LIMIT_WINDOW_MS ?? 60_000
+);
+const CHAT_MESSAGE_RATE_LIMIT = Number(
+  process.env.CHAT_MESSAGE_RATE_LIMIT ?? 30
+);
 
 type RateLimitBucket = {
   count: number;
@@ -259,6 +265,12 @@ const authRegisterRateLimit = createMemoryRateLimit({
   name: "auth-register",
   windowMs: AUTH_RATE_LIMIT_WINDOW_MS,
   getLimit: () => AUTH_REGISTER_RATE_LIMIT,
+});
+
+const chatMessageRateLimit = createMemoryRateLimit({
+  name: "chat-message",
+  windowMs: CHAT_RATE_LIMIT_WINDOW_MS,
+  getLimit: () => CHAT_MESSAGE_RATE_LIMIT,
 });
 
 function getQwenClient(): OpenAI {
@@ -6281,6 +6293,7 @@ export async function registerRoutes(
   app.post(
     "/api/chat/rooms/:id/messages",
     isAuthenticated,
+    chatMessageRateLimit,
     async (req, res) => {
       try {
         const roomId = Number(

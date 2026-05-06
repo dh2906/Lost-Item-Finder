@@ -26,6 +26,7 @@ AI image payloads are additionally capped by the shared API schema before Vision
 - Keep `AI_RERANK_ENABLED`, `AUTOMATIC_MATCH_QUEUE_ENABLED`, and `OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED` disabled unless you intentionally accept the extra LLM cost.
 - Tune `AI_SEARCH_GUEST_RATE_LIMIT`, `AI_SEARCH_USER_RATE_LIMIT`, and `AI_IMAGE_ANALYSIS_RATE_LIMIT` before opening the service publicly.
 - Tune `AUTH_LOGIN_RATE_LIMIT` and `AUTH_REGISTER_RATE_LIMIT` if your deployment sits behind a shared proxy or classroom network.
+- Tune `CHAT_MESSAGE_RATE_LIMIT` if real users need faster back-and-forth messaging.
 
 ## Database
 
