@@ -33,19 +33,35 @@ import { optimizeImageForUpload, cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { LocationPicker } from "@/components/location-picker";
 import {
+  MAX_ITEM_CONTACT_INFO_LENGTH,
+  MAX_ITEM_COORDINATE_TEXT_LENGTH,
+  MAX_ITEM_DESCRIPTION_LENGTH,
+  MAX_ITEM_LOCATION_TEXT_LENGTH,
+  MAX_ITEM_SHORT_TEXT_LENGTH,
+  MAX_ITEM_TAG_COUNT,
+  MAX_ITEM_TAG_LENGTH,
+  MAX_ITEM_TITLE_LENGTH,
+  MIN_ITEM_TITLE_LENGTH,
+} from "@shared/item-limits";
+import {
   MAX_ITEM_IMAGE_COUNT,
+  MAX_ITEM_IMAGE_URL_LENGTH,
   normalizeItemImageUrls,
 } from "@shared/item-images";
 
 const formSchema = z.object({
-  title: z.string().min(3, "제목은 3자 이상이어야 합니다."),
-  description: z.string().optional(),
-  itemCategory: z.string().optional(),
-  color: z.string().optional(),
-  size: z.string().optional(),
-  location: z.string().optional(),
+  title: z
+    .string()
+    .min(MIN_ITEM_TITLE_LENGTH, `제목은 ${MIN_ITEM_TITLE_LENGTH}자 이상이어야 합니다.`)
+    .max(MAX_ITEM_TITLE_LENGTH, `제목은 ${MAX_ITEM_TITLE_LENGTH}자 이내로 입력해 주세요.`),
+  description: z.string().max(MAX_ITEM_DESCRIPTION_LENGTH).optional(),
+  itemCategory: z.string().max(MAX_ITEM_SHORT_TEXT_LENGTH).optional(),
+  color: z.string().max(MAX_ITEM_SHORT_TEXT_LENGTH).optional(),
+  size: z.string().max(MAX_ITEM_SHORT_TEXT_LENGTH).optional(),
+  location: z.string().max(MAX_ITEM_LOCATION_TEXT_LENGTH).optional(),
   contactInfo: z
     .string()
+    .max(MAX_ITEM_CONTACT_INFO_LENGTH)
     .optional()
     .refine(
       (value) => !value || /^01[0-9]{8,9}$/.test(value.replace(/-/g, "")),
@@ -53,13 +69,26 @@ const formSchema = z.object({
         message: "올바른 전화번호 형식이 아닙니다. 예: 01012345678",
       }
     ),
-  tags: z.array(z.string()).optional(),
-  imageUrls: z.array(z.string()).max(MAX_ITEM_IMAGE_COUNT).optional(),
+  tags: z
+    .array(z.string().max(MAX_ITEM_TAG_LENGTH))
+    .max(MAX_ITEM_TAG_COUNT)
+    .optional(),
+  imageUrls: z
+    .array(
+      z
+        .string()
+        .max(
+          MAX_ITEM_IMAGE_URL_LENGTH,
+          "이미지 용량이 너무 큽니다. 더 작은 사진을 선택해 주세요."
+        )
+    )
+    .max(MAX_ITEM_IMAGE_COUNT)
+    .optional(),
   reportType: z.enum(["found", "lost"]).default("found"),
-  address: z.string().optional(),
-  placeName: z.string().optional(),
-  latitude: z.string().optional(),
-  longitude: z.string().optional(),
+  address: z.string().max(MAX_ITEM_LOCATION_TEXT_LENGTH).optional(),
+  placeName: z.string().max(MAX_ITEM_LOCATION_TEXT_LENGTH).optional(),
+  latitude: z.string().max(MAX_ITEM_COORDINATE_TEXT_LENGTH).optional(),
+  longitude: z.string().max(MAX_ITEM_COORDINATE_TEXT_LENGTH).optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
