@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 
 type SearchInput = {
@@ -13,8 +13,14 @@ type SearchInput = {
 
 type ExpectedResult = {
   itemId?: number;
+  reportType?: string;
   titleIncludes?: string[];
+  itemCategoryIncludes?: string[];
+  colorIncludes?: string[];
   locationIncludes?: string[];
+  addressIncludes?: string[];
+  placeNameIncludes?: string[];
+  dateIncludes?: string[];
   tagsInclude?: string[];
   evidenceLabels?: string[];
 };
@@ -28,8 +34,14 @@ type EvalCase = {
 type SearchResult = {
   item: {
     id: number;
+    reportType?: string | null;
     title?: string | null;
+    itemCategory?: string | null;
+    color?: string | null;
     location?: string | null;
+    address?: string | null;
+    placeName?: string | null;
+    date?: string | Date | null;
     tags?: string[] | null;
   };
   score: number;
@@ -49,6 +61,7 @@ type CaseResult = {
   bestTitle: string | null;
   bestScore: number | null;
   labels: string[];
+  matchedExpectation: boolean;
 };
 
 function getArgValue(name: string): string | undefined {
@@ -90,14 +103,33 @@ function labelsInclude(labels: string[] | undefined, expected?: string[]): boole
   return expected.every((label) => normalizedLabels.has(normalizeText(label)));
 }
 
+function dateIncludes(value: string | Date | null | undefined, expected?: string[]): boolean {
+  if (!expected || expected.length === 0) {
+    return true;
+  }
+
+  const normalizedDate =
+    value instanceof Date ? value.toISOString() : typeof value === "string" ? value : "";
+  return expected.every((needle) => normalizedDate.includes(needle));
+}
+
 function matchesExpected(result: SearchResult, expected: ExpectedResult): boolean {
   if (expected.itemId !== undefined && result.item.id !== expected.itemId) {
     return false;
   }
 
+  if (expected.reportType !== undefined && result.item.reportType !== expected.reportType) {
+    return false;
+  }
+
   return (
     includesAll(result.item.title, expected.titleIncludes) &&
+    includesAll(result.item.itemCategory, expected.itemCategoryIncludes) &&
+    includesAll(result.item.color, expected.colorIncludes) &&
     includesAll(result.item.location, expected.locationIncludes) &&
+    includesAll(result.item.address, expected.addressIncludes) &&
+    includesAll(result.item.placeName, expected.placeNameIncludes) &&
+    dateIncludes(result.item.date, expected.dateIncludes) &&
     tagsInclude(result.item.tags, expected.tagsInclude) &&
     labelsInclude(result.evidenceLabels, expected.evidenceLabels)
   );
@@ -137,6 +169,7 @@ async function runCase(baseUrl: string, cookie: string | undefined, testCase: Ev
     bestTitle: first?.item.title ?? null,
     bestScore: first?.score ?? null,
     labels: first?.evidenceLabels ?? [],
+    matchedExpectation: rank !== null,
   };
 }
 
@@ -146,7 +179,8 @@ function printUsage(): void {
 
 Optional:
   FINDY_SESSION_COOKIE="connect.sid=..." npm run eval:ai-search -- --cases=cases.json
-  npm run eval:ai-search -- --cases=cases.json --min-top3=0.8 --min-mrr=0.6`);
+  npm run eval:ai-search -- --cases=cases.json --min-top3=0.8 --min-mrr=0.6
+  npm run eval:ai-search -- --cases=cases.json --output=tmp/ai-search-eval.json`);
 }
 
 async function main(): Promise<void> {
@@ -158,7 +192,15 @@ async function main(): Promise<void> {
 
   const baseUrl = getArgValue("base-url") ?? process.env.FINDY_BASE_URL ?? "http://localhost:8080";
   const minTop3 = Number(getArgValue("min-top3") ?? process.env.FINDY_EVAL_MIN_TOP3 ?? "0");
+  const minTop1 = Number(getArgValue("min-top1") ?? process.env.FINDY_EVAL_MIN_TOP1 ?? "0");
+  const minTop5 = Number(getArgValue("min-top5") ?? process.env.FINDY_EVAL_MIN_TOP5 ?? "0");
   const minMrr = Number(getArgValue("min-mrr") ?? process.env.FINDY_EVAL_MIN_MRR ?? "0");
+  const maxAvgLatencyMs = Number(
+    getArgValue("max-avg-latency-ms") ??
+      process.env.FINDY_EVAL_MAX_AVG_LATENCY_MS ??
+      "0"
+  );
+  const outputPath = getArgValue("output");
   const cookie = process.env.FINDY_SESSION_COOKIE;
   const cases = JSON.parse(readFileSync(casesPath, "utf8")) as EvalCase[];
 
@@ -192,24 +234,45 @@ async function main(): Promise<void> {
     }))
   );
 
-  console.log(
-    JSON.stringify(
-      {
-        cases: results.length,
-        top1: Number(top1.toFixed(4)),
-        top3: Number(top3.toFixed(4)),
-        top5: Number(top5.toFixed(4)),
-        mrr: Number(mrr.toFixed(4)),
-        avgLatencyMs: Math.round(avgLatencyMs),
-      },
-      null,
-      2
-    )
-  );
+  const summary = {
+    cases: results.length,
+    top1: Number(top1.toFixed(4)),
+    top3: Number(top3.toFixed(4)),
+    top5: Number(top5.toFixed(4)),
+    mrr: Number(mrr.toFixed(4)),
+    avgLatencyMs: Math.round(avgLatencyMs),
+    failedCases: results
+      .filter((result) => !result.matchedExpectation)
+      .map((result) => result.name),
+  };
 
-  if (top3 < minTop3 || mrr < minMrr) {
+  console.log(JSON.stringify(summary, null, 2));
+
+  if (outputPath) {
+    writeFileSync(
+      outputPath,
+      JSON.stringify(
+        {
+          generatedAt: new Date().toISOString(),
+          baseUrl,
+          summary,
+          results,
+        },
+        null,
+        2
+      )
+    );
+  }
+
+  if (
+    top1 < minTop1 ||
+    top3 < minTop3 ||
+    top5 < minTop5 ||
+    mrr < minMrr ||
+    (maxAvgLatencyMs > 0 && avgLatencyMs > maxAvgLatencyMs)
+  ) {
     throw new Error(
-      `AI 검색 평가 기준 미달: top3=${top3.toFixed(4)} min=${minTop3}, mrr=${mrr.toFixed(4)} min=${minMrr}`
+      `AI 검색 평가 기준 미달: top1=${top1.toFixed(4)} min=${minTop1}, top3=${top3.toFixed(4)} min=${minTop3}, top5=${top5.toFixed(4)} min=${minTop5}, mrr=${mrr.toFixed(4)} min=${minMrr}, avgLatencyMs=${Math.round(avgLatencyMs)} max=${maxAvgLatencyMs || "-"}`
     );
   }
 }

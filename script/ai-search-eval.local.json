@@ -5,9 +5,25 @@
       "prompt": "충남대에서 5월 2일에 잃어버린 민트색 텀블러"
     },
     "expected": {
+      "reportType": "found",
       "titleIncludes": ["민트", "텀블러"],
+      "itemCategoryIncludes": ["텀블러"],
+      "colorIncludes": ["민트"],
       "locationIncludes": ["대학로"],
+      "dateIncludes": ["2026-05-02"],
       "evidenceLabels": ["색상 유사", "지역 일치", "날짜 유사"]
+    }
+  },
+  {
+    "name": "충남대학교 스탠리 컵 - 장소 별칭",
+    "input": {
+      "prompt": "충남대학교 근처에서 잃어버린 스탠리 컵"
+    },
+    "expected": {
+      "titleIncludes": ["민트", "텀블러"],
+      "tagsInclude": ["Stanley"],
+      "locationIncludes": ["대학로"],
+      "evidenceLabels": ["특징 일치", "지역 일치"]
     }
   },
   {
@@ -19,6 +35,7 @@
     "expected": {
       "titleIncludes": ["텀블러"],
       "locationIncludes": ["대학로"],
+      "dateIncludes": ["2026-05-02"],
       "evidenceLabels": ["지역 일치", "날짜 유사"]
     }
   },
@@ -37,56 +54,248 @@
     }
   },
   {
-    "name": "검정 무선 이어폰",
+    "name": "민트 손잡이 빨대 대용량 텀블러 - 특징 태그",
     "input": {
-      "prompt": "검정 무선 이어폰"
+      "prompt": "손잡이 있고 빨대 있는 대용량 민트색 텀블러"
+    },
+    "expected": {
+      "titleIncludes": ["민트", "텀블러"],
+      "tagsInclude": ["손잡이", "빨대", "대용량"],
+      "evidenceLabels": ["특징 일치", "색상 유사"]
+    }
+  },
+  {
+    "name": "하남 미사도서관 파란 텀블러",
+    "input": {
+      "prompt": "하남시 미사도서관에서 잃어버린 파란색 텀블러"
+    },
+    "expected": {
+      "titleIncludes": ["텀블러"],
+      "colorIncludes": ["블루"],
+      "locationIncludes": ["하남"],
+      "placeNameIncludes": ["하남시미사도서관"],
+      "evidenceLabels": ["색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "에버랜드 흰색 스탠리 텀블러",
+    "input": {
+      "prompt": "에버랜드에서 흰색 스탠리 텀블러를 잃어버렸어"
+    },
+    "expected": {
+      "titleIncludes": ["스탠리", "텀블러"],
+      "colorIncludes": ["화이트"],
+      "placeNameIncludes": ["에버랜드"],
+      "evidenceLabels": ["특징 일치", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "경주역 검정 텀블러",
+    "input": {
+      "prompt": "경주역 검정색 텀블러"
+    },
+    "expected": {
+      "titleIncludes": ["검정", "텀블러"],
+      "colorIncludes": ["블랙"],
+      "placeNameIncludes": ["경주역"],
+      "evidenceLabels": ["색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "부산 5월 4일 검정 무선이어폰",
+    "input": {
+      "prompt": "부산에서 5월 4일 잃어버린 검정 무선 이어폰"
+    },
+    "expected": {
+      "titleIncludes": ["무선", "이어폰"],
+      "itemCategoryIncludes": ["무선이어폰"],
+      "colorIncludes": ["블랙"],
+      "locationIncludes": ["부산"],
+      "dateIncludes": ["2026-05-04"],
+      "evidenceLabels": ["분류 유사", "색상 유사", "지역 일치", "날짜 유사"]
+    }
+  },
+  {
+    "name": "부산 골전도 이어폰",
+    "input": {
+      "prompt": "부산에서 골전도 무선이어폰 주운 것"
+    },
+    "expected": {
+      "titleIncludes": ["골전도", "무선이어폰"],
+      "locationIncludes": ["부산"],
+      "tagsInclude": ["골전도 무선이어폰"],
+      "evidenceLabels": ["특징 일치", "분류 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "서울 용산 QCY 검정 무선이어폰",
+    "input": {
+      "prompt": "서울 용산에서 잃어버린 QCY 검정 무선이어폰"
+    },
+    "expected": {
+      "titleIncludes": ["QCY", "무선이어폰"],
+      "colorIncludes": ["블랙"],
+      "addressIncludes": ["서울 용산구"],
+      "evidenceLabels": ["특징 일치", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "국립생태원 검정 이어폰",
+    "input": {
+      "prompt": "국립생태원에서 검정색 이어폰을 잃어버렸어"
     },
     "expected": {
       "titleIncludes": ["이어폰"],
-      "evidenceLabels": ["특징 일치", "분류 유사", "색상 유사"]
+      "colorIncludes": ["블랙"],
+      "placeNameIncludes": ["국립생태원"],
+      "dateIncludes": ["2026-05-03"],
+      "evidenceLabels": ["색상 유사", "지역 일치"]
     }
   },
   {
-    "name": "부산 5월 2일 검정 지갑",
+    "name": "울산역 보라색 무선이어폰 케이스",
     "input": {
-      "prompt": "부산에서 5월 2일 잃어버린 검정 지갑"
+      "prompt": "울산역 근처 보라색 무선이어폰 케이스"
     },
     "expected": {
-      "titleIncludes": ["지갑"],
-      "locationIncludes": ["부산"],
-      "evidenceLabels": ["색상 유사", "지역 일치", "날짜 유사"]
+      "titleIncludes": ["보라", "무선이어폰", "케이스"],
+      "colorIncludes": ["바이올렛"],
+      "locationIncludes": ["울산"],
+      "evidenceLabels": ["특징 일치", "분류 유사", "색상 유사", "지역 일치"]
     }
   },
   {
-    "name": "부산 파란 우산",
+    "name": "부산 하늘색 카드지갑",
     "input": {
-      "prompt": "부산 파란 우산"
+      "prompt": "부산 하늘색 카드지갑"
     },
     "expected": {
-      "titleIncludes": ["우산"],
+      "titleIncludes": ["하늘색", "카드지갑"],
+      "itemCategoryIncludes": ["지갑"],
+      "colorIncludes": ["딥스카이블루"],
       "locationIncludes": ["부산"],
       "evidenceLabels": ["분류 유사", "색상 유사", "지역 일치"]
     }
   },
   {
-    "name": "대구 하늘색 지갑",
+    "name": "서울역 검정 카드지갑",
     "input": {
-      "prompt": "대구 하늘색 지갑"
+      "prompt": "서울역 근처에서 검정 카드지갑 분실"
     },
     "expected": {
-      "titleIncludes": ["지갑"],
-      "locationIncludes": ["대구"],
+      "titleIncludes": ["검정", "지갑"],
+      "itemCategoryIncludes": ["지갑"],
+      "colorIncludes": ["블랙"],
+      "locationIncludes": ["서울"],
+      "evidenceLabels": ["분류 유사", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "대전 코레일 본사 루이비통 지갑",
+    "input": {
+      "prompt": "대전 코레일 본사에서 루이비통 지갑"
+    },
+    "expected": {
+      "titleIncludes": ["루이비통", "지갑"],
+      "addressIncludes": ["대전"],
+      "placeNameIncludes": ["한국철도공사 본사"],
+      "evidenceLabels": ["특징 일치", "분류 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "부산 회색 강아지 동전지갑",
+    "input": {
+      "prompt": "부산 회색 강아지 동전지갑"
+    },
+    "expected": {
+      "titleIncludes": ["강아지", "동전지갑"],
+      "colorIncludes": ["그레이"],
+      "locationIncludes": ["부산"],
+      "evidenceLabels": ["특징 일치", "분류 유사", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "홍대입구역 하얀색 반지갑",
+    "input": {
+      "prompt": "홍대입구역 하얀색 반지갑"
+    },
+    "expected": {
+      "titleIncludes": ["하얀색", "반지갑"],
+      "colorIncludes": ["화이트"],
+      "locationIncludes": ["홍대입구역"],
+      "evidenceLabels": ["분류 유사", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "서울 수색 검정 우산",
+    "input": {
+      "prompt": "서울 수색역 근처 검정 우산"
+    },
+    "expected": {
+      "titleIncludes": ["우산"],
+      "colorIncludes": ["블랙"],
+      "locationIncludes": ["서울"],
+      "placeNameIncludes": ["수색"],
       "evidenceLabels": ["색상 유사", "지역 일치"]
     }
   },
   {
-    "name": "동대구역 초록색 텀블러",
+    "name": "부산 민트색 단우산",
     "input": {
-      "prompt": "동대구역 초록색 텀블러"
+      "prompt": "부산에서 민트색 작은 우산"
     },
     "expected": {
-      "titleIncludes": ["초록색", "텀블러"],
-      "locationIncludes": ["동대구"],
+      "titleIncludes": ["민트", "단우산"],
+      "colorIncludes": ["시안"],
+      "locationIncludes": ["부산"],
+      "evidenceLabels": ["특징 일치", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "서울본부 파란색 단우산",
+    "input": {
+      "prompt": "서울본부 파란색 단우산"
+    },
+    "expected": {
+      "titleIncludes": ["파란색", "단우산"],
+      "colorIncludes": ["코발트"],
+      "placeNameIncludes": ["서울본부"],
+      "evidenceLabels": ["특징 일치", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "고양 청록색 장우산",
+    "input": {
+      "prompt": "고양시에서 청록색 장우산"
+    },
+    "expected": {
+      "titleIncludes": ["청록색", "장우산"],
+      "colorIncludes": ["다크시안"],
+      "addressIncludes": ["고양시"],
+      "evidenceLabels": ["특징 일치", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "김천구미역 검정 이어폰 케이스",
+    "input": {
+      "prompt": "김천구미역 검정 무선이어폰 케이스"
+    },
+    "expected": {
+      "titleIncludes": ["검정", "이어폰", "케이스"],
+      "colorIncludes": ["블랙"],
+      "placeNameIncludes": ["김천구미역"],
+      "evidenceLabels": ["특징 일치", "분류 유사", "색상 유사", "지역 일치"]
+    }
+  },
+  {
+    "name": "에버랜드 회색 물병 텀블러",
+    "input": {
+      "prompt": "에버랜드 손님상담실 회색 물병 텀블러"
+    },
+    "expected": {
+      "titleIncludes": ["물병", "텀블러"],
+      "colorIncludes": ["그레이"],
+      "placeNameIncludes": ["에버랜드"],
       "evidenceLabels": ["특징 일치", "색상 유사", "지역 일치"]
     }
   }
