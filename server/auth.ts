@@ -1,5 +1,4 @@
 import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
 import {
@@ -49,32 +48,6 @@ export function setupAuth(app: Express) {
   );
   app.use(passport.initialize());
   app.use(passport.session());
-
-  passport.use(
-    new LocalStrategy(async (username, password, done) => {
-      try {
-        const user = await storage.getUserByUsername(username);
-        if (!user) {
-          return done(null, false, { message: "존재하지 않는 아이디입니다." });
-        }
-
-        if (user.status !== "active") {
-          return done(null, false, {
-            message: "정지된 계정입니다. 관리자에게 문의해주세요.",
-          });
-        }
-
-        const isValid = await storage.verifyPassword(password, user.password);
-        if (!isValid) {
-          return done(null, false, { message: "비밀번호가 올바르지 않습니다." });
-        }
-
-        return done(null, user);
-      } catch (error) {
-        return done(error);
-      }
-    })
-  );
 
   passport.serializeUser((user, done) => {
     done(null, user.id);

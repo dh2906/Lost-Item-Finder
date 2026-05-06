@@ -1,11 +1,15 @@
 import { z } from "zod";
 import {
   insertItemSchema,
+  insertItemClaimReportSchema,
   items,
+  claimReportStatuses,
   itemMatchStatuses,
   itemStatuses,
+  oauthProviders,
   reportTypes,
   updateItemSchema,
+  updateItemClaimReportStatusSchema,
   updateItemMatchStatusSchema,
   userRoles,
   userStatuses,
@@ -51,6 +55,9 @@ const safeUserResponseSchema = z.object({
   id: z.number(),
   username: z.string(),
   name: z.string().nullable(),
+  email: z.string().nullable().optional(),
+  profileImageUrl: z.string().nullable().optional(),
+  authProvider: z.string().optional(),
   role: z.enum(userRoles),
   status: z.enum(userStatuses),
   createdAt: z.union([z.string(), z.date()]).nullable(),
@@ -94,6 +101,23 @@ const adminDashboardResponseSchema = z.object({
   }),
   recentUsers: z.array(adminUserResponseSchema),
   recentItems: z.array(adminItemResponseSchema),
+});
+
+const claimReportResponseSchema = z.object({
+  id: z.number(),
+  reporterId: z.number(),
+  itemId: z.number().nullable(),
+  suspectedUserInfo: z.string().nullable(),
+  incidentSummary: z.string(),
+  evidence: z.string().nullable(),
+  contactInfo: z.string().nullable(),
+  status: z.enum(claimReportStatuses),
+  adminNote: z.string().nullable(),
+  createdAt: z.union([z.string(), z.date()]),
+  updatedAt: z.union([z.string(), z.date()]),
+  reporterName: z.string().nullable().optional(),
+  reporterUsername: z.string().nullable().optional(),
+  itemTitle: z.string().nullable().optional(),
 });
 
 const adminItemsResponseSchema = z.object({
@@ -268,29 +292,28 @@ export const errorSchemas = {
 
 export const api = {
   auth: {
-    register: {
-      method: "POST" as const,
-      path: "/api/auth/register" as const,
+    oauthStart: {
+      method: "GET" as const,
+      path: "/api/auth/oauth/:provider" as const,
       input: z.object({
-        username: z.string().min(3, "아이디는 3자 이상이어야 합니다."),
-        password: z.string().min(4, "비밀번호는 4자 이상이어야 합니다."),
-        name: z.string().optional(),
+        provider: z.enum(oauthProviders),
+        redirect: z.string().optional(),
       }),
       responses: {
-        201: safeUserResponseSchema,
         400: errorSchemas.validation,
       },
     },
-    login: {
-      method: "POST" as const,
-      path: "/api/auth/login" as const,
+    oauthCallback: {
+      method: "GET" as const,
+      path: "/api/auth/oauth/:provider/callback" as const,
       input: z.object({
-        username: z.string(),
-        password: z.string(),
+        provider: z.enum(oauthProviders),
+        code: z.string(),
+        state: z.string(),
       }),
       responses: {
         200: safeUserResponseSchema,
-        401: errorSchemas.validation,
+        400: errorSchemas.validation,
       },
     },
     logout: {
@@ -306,6 +329,18 @@ export const api = {
       path: "/api/auth/me" as const,
       responses: {
         200: safeUserResponseSchema.nullable(),
+      },
+    },
+  },
+  claimReports: {
+    create: {
+      method: "POST" as const,
+      path: "/api/claim-reports" as const,
+      input: insertItemClaimReportSchema,
+      responses: {
+        201: claimReportResponseSchema,
+        400: errorSchemas.validation,
+        401: errorSchemas.validation,
       },
     },
   },
@@ -633,6 +668,28 @@ export const api = {
         404: errorSchemas.notFound,
       },
     },
+    claimReports: {
+      method: "GET" as const,
+      path: "/api/admin/claim-reports" as const,
+      input: z
+        .object({
+          status: z.enum(claimReportStatuses).optional(),
+        })
+        .optional(),
+      responses: {
+        200: z.array(claimReportResponseSchema),
+      },
+    },
+    updateClaimReport: {
+      method: "PATCH" as const,
+      path: "/api/admin/claim-reports/:id" as const,
+      input: updateItemClaimReportStatusSchema,
+      responses: {
+        200: claimReportResponseSchema,
+        400: errorSchemas.validation,
+        404: errorSchemas.notFound,
+      },
+    },
   },
 };
 
@@ -684,3 +741,13 @@ export type AdminUserResponse = AdminUsersResponse[number];
 export type UpdateAdminUserInput = z.infer<typeof api.admin.updateUser.input>;
 export type AdminItemsResponse = z.infer<(typeof api.admin.items.responses)[200]>;
 export type AdminItemResponse = AdminItemsResponse["items"][number];
+export type CreateClaimReportInput = z.infer<typeof api.claimReports.create.input>;
+export type ClaimReportResponse = z.infer<
+  (typeof api.claimReports.create.responses)[201]
+>;
+export type AdminClaimReportsResponse = z.infer<
+  (typeof api.admin.claimReports.responses)[200]
+>;
+export type UpdateClaimReportInput = z.infer<
+  typeof api.admin.updateClaimReport.input
+>;

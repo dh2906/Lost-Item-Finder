@@ -27,6 +27,7 @@ const LoginPage = lazy(() =>
 );
 const MyPage = lazy(() => import("@/pages/mypage"));
 const AdminDashboardPage = lazy(() => import("@/pages/admin-dashboard"));
+const ClaimReportPage = lazy(() => import("@/pages/claim-report"));
 const RegisterPage = lazy(() =>
   import("@/pages/register").then((module) => ({
     default: module.RegisterPage,
@@ -90,6 +91,7 @@ function getPageTitle(location: string): string {
   if (path.startsWith("/chat/")) return "채팅 | Findy";
   if (path === "/login") return "로그인 | Findy";
   if (path === "/register") return "회원가입 | Findy";
+  if (path === "/claim-report") return "신고하기 | Findy";
 
   return "페이지를 찾을 수 없습니다 | Findy";
 }
@@ -167,6 +169,11 @@ function Router() {
             <Route path="/admin">
               <ProtectedRoute requireAdmin>
                 <AdminDashboardPage />
+              </ProtectedRoute>
+            </Route>
+            <Route path="/claim-report">
+              <ProtectedRoute>
+                <ClaimReportPage />
               </ProtectedRoute>
             </Route>
             <Route path="/matches">

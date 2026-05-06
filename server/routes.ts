@@ -1,7 +1,6 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
-import { createHash } from "crypto";
-import passport from "passport";
+import { createHash, randomBytes } from "crypto";
 import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
 import { storage, type ExternalFoundItemInput } from "./storage";
@@ -23,11 +22,14 @@ import {
   itemMatches,
   lost112SyncRuns,
   matchNotifications,
+  oauthProviders,
+  updateItemClaimReportStatusSchema,
   updateItemMatchStatusSchema,
   users,
   type Item,
   type ItemMatch,
   type ItemMatchStatus,
+  type OAuthProvider,
 } from "@shared/schema";
 import { sendFcmNotification } from "./fcm";
 
@@ -4938,71 +4940,265 @@ async function rerankCandidates(params: {
     );
 }
 
+type OAuthProfile = {
+  provider: OAuthProvider;
+  providerId: string;
+  email?: string | null;
+  name?: string | null;
+  profileImageUrl?: string | null;
+};
+
+type OAuthProviderConfig = {
+  authorizationUrl: string;
+  tokenUrl: string;
+  userInfoUrl: string;
+  scope: string;
+  clientIdEnv: string;
+  clientSecretEnv: string;
+};
+
+const oauthProviderConfigs = {
+  google: {
+    authorizationUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    userInfoUrl: "https://openidconnect.googleapis.com/v1/userinfo",
+    scope: "openid email profile",
+    clientIdEnv: "GOOGLE_OAUTH_CLIENT_ID",
+    clientSecretEnv: "GOOGLE_OAUTH_CLIENT_SECRET",
+  },
+  kakao: {
+    authorizationUrl: "https://kauth.kakao.com/oauth/authorize",
+    tokenUrl: "https://kauth.kakao.com/oauth/token",
+    userInfoUrl: "https://kapi.kakao.com/v2/user/me",
+    scope: "profile_nickname profile_image account_email",
+    clientIdEnv: "KAKAO_OAUTH_CLIENT_ID",
+    clientSecretEnv: "KAKAO_OAUTH_CLIENT_SECRET",
+  },
+  naver: {
+    authorizationUrl: "https://nid.naver.com/oauth2.0/authorize",
+    tokenUrl: "https://nid.naver.com/oauth2.0/token",
+    userInfoUrl: "https://openapi.naver.com/v1/nid/me",
+    scope: "name email profile_image",
+    clientIdEnv: "NAVER_OAUTH_CLIENT_ID",
+    clientSecretEnv: "NAVER_OAUTH_CLIENT_SECRET",
+  },
+} satisfies Record<OAuthProvider, OAuthProviderConfig>;
+
+function getOAuthProvider(value: unknown): OAuthProvider | null {
+  return typeof value === "string" &&
+    oauthProviders.includes(value as OAuthProvider)
+    ? (value as OAuthProvider)
+    : null;
+}
+
+function getSafeRedirect(value: unknown): string {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) {
+    return "/";
+  }
+
+  return value;
+}
+
+function getOAuthBaseUrl(req: Request): string {
+  return (
+    process.env.OAUTH_CALLBACK_BASE_URL ||
+    process.env.PUBLIC_URL ||
+    `${req.protocol}://${req.get("host")}`
+  ).replace(/\/$/, "");
+}
+
+function getOAuthRedirectUri(req: Request, provider: OAuthProvider): string {
+  return `${getOAuthBaseUrl(req)}/api/auth/oauth/${provider}/callback`;
+}
+
+function getOAuthCredentials(provider: OAuthProvider) {
+  const config = oauthProviderConfigs[provider];
+  return {
+    clientId: process.env[config.clientIdEnv],
+    clientSecret: process.env[config.clientSecretEnv],
+  };
+}
+
+function normalizeOAuthProfile(
+  provider: OAuthProvider,
+  payload: unknown
+): OAuthProfile {
+  const data = payload as Record<string, unknown>;
+
+  if (provider === "google") {
+    return {
+      provider,
+      providerId: String(data.sub ?? ""),
+      email: typeof data.email === "string" ? data.email : null,
+      name: typeof data.name === "string" ? data.name : null,
+      profileImageUrl: typeof data.picture === "string" ? data.picture : null,
+    };
+  }
+
+  if (provider === "kakao") {
+    const account = (data.kakao_account ?? {}) as Record<string, unknown>;
+    const profile = (account.profile ?? {}) as Record<string, unknown>;
+    const properties = (data.properties ?? {}) as Record<string, unknown>;
+    return {
+      provider,
+      providerId: String(data.id ?? ""),
+      email: typeof account.email === "string" ? account.email : null,
+      name:
+        typeof profile.nickname === "string"
+          ? profile.nickname
+          : typeof properties.nickname === "string"
+            ? properties.nickname
+            : null,
+      profileImageUrl:
+        typeof profile.profile_image_url === "string"
+          ? profile.profile_image_url
+          : null,
+    };
+  }
+
+  const response = (data.response ?? {}) as Record<string, unknown>;
+  return {
+    provider,
+    providerId: String(response.id ?? ""),
+    email: typeof response.email === "string" ? response.email : null,
+    name:
+      typeof response.name === "string"
+        ? response.name
+        : typeof response.nickname === "string"
+          ? response.nickname
+          : null,
+    profileImageUrl:
+      typeof response.profile_image === "string" ? response.profile_image : null,
+  };
+}
+
+async function fetchOAuthProfile(
+  req: Request,
+  provider: OAuthProvider,
+  code: string
+): Promise<OAuthProfile> {
+  const config = oauthProviderConfigs[provider];
+  const { clientId, clientSecret } = getOAuthCredentials(provider);
+
+  if (!clientId || !clientSecret) {
+    throw new Error(`${provider} OAuth credentials are not configured.`);
+  }
+
+  const tokenParams = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    redirect_uri: getOAuthRedirectUri(req, provider),
+  });
+  const tokenResponse = await fetch(config.tokenUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: tokenParams,
+  });
+
+  if (!tokenResponse.ok) {
+    throw new Error(`${provider} OAuth token exchange failed.`);
+  }
+
+  const token = z
+    .object({
+      access_token: z.string(),
+    })
+    .parse(await tokenResponse.json());
+  const profileResponse = await fetch(config.userInfoUrl, {
+    headers: {
+      Authorization: `Bearer ${token.access_token}`,
+    },
+  });
+
+  if (!profileResponse.ok) {
+    throw new Error(`${provider} OAuth profile request failed.`);
+  }
+
+  const profile = normalizeOAuthProfile(provider, await profileResponse.json());
+  if (!profile.providerId) {
+    throw new Error(`${provider} OAuth profile id is missing.`);
+  }
+
+  return profile;
+}
+
+function sanitizeUserForResponse(user: Express.User) {
+  const { password: _password, ...userWithoutPassword } = user;
+  return userWithoutPassword;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   // --- Auth API ---
-  app.post(api.auth.register.path, async (req, res) => {
-    try {
-      const input = api.auth.register.input.parse(req.body);
-
-      const existingUser = await storage.getUserByUsername(input.username);
-      if (existingUser) {
-        return res.status(400).json({ message: "이미 존재하는 아이디입니다" });
-      }
-
-      const user = await storage.createUser(input);
-      req.login(user, (err) => {
-        if (err) {
-          return res
-            .status(500)
-            .json({ message: "로그인 처리 중 오류가 발생했습니다" });
-        }
-        const { password: _, ...userWithoutPassword } = user;
-        res.status(201).json(userWithoutPassword);
-      });
-    } catch (err) {
-      console.error("Register error:", err);
-      if (err instanceof z.ZodError) {
-        return res.status(400).json({
-          message: err.errors[0].message,
-          field: err.errors[0].path.join("."),
-        });
-      }
-      res.status(500).json({
-        message: err instanceof Error ? err.message : "Internal server error",
-      });
+  app.get("/api/auth/oauth/:provider", (req, res) => {
+    const provider = getOAuthProvider(req.params.provider);
+    if (!provider) {
+      return res.status(400).json({ message: "지원하지 않는 OAuth 제공자입니다." });
     }
+
+    const { clientId } = getOAuthCredentials(provider);
+    if (!clientId) {
+      return res
+        .status(503)
+        .json({ message: `${provider} OAuth client id가 설정되지 않았습니다.` });
+    }
+
+    const state = randomBytes(24).toString("hex");
+    (req.session as typeof req.session & {
+      oauth?: { state: string; redirect: string };
+    }).oauth = {
+      state,
+      redirect: getSafeRedirect(req.query.redirect),
+    };
+
+    const config = oauthProviderConfigs[provider];
+    const authorizationUrl = new URL(config.authorizationUrl);
+    authorizationUrl.searchParams.set("response_type", "code");
+    authorizationUrl.searchParams.set("client_id", clientId);
+    authorizationUrl.searchParams.set("redirect_uri", getOAuthRedirectUri(req, provider));
+    authorizationUrl.searchParams.set("state", state);
+    authorizationUrl.searchParams.set("scope", config.scope);
+
+    res.redirect(authorizationUrl.toString());
   });
 
-  app.post(api.auth.login.path, (req, res, next) => {
-    passport.authenticate(
-      "local",
-      (
-        err: Error | null,
-        user: Express.User | false,
-        info: { message: string } | undefined
-      ) => {
-        if (err) {
-          return res.status(500).json({ message: "Internal server error" });
-        }
-        if (!user) {
-          return res
-            .status(401)
-            .json({ message: info?.message || "로그인에 실패했습니다" });
-        }
-        req.login(user, (err) => {
-          if (err) {
-            return res
-              .status(500)
-              .json({ message: "로그인 처리 중 오류가 발생했습니다" });
-          }
-          const { password: _, ...userWithoutPassword } = user;
-          res.json(userWithoutPassword);
-        });
+  app.get("/api/auth/oauth/:provider/callback", async (req, res) => {
+    try {
+      const provider = getOAuthProvider(req.params.provider);
+      const code = typeof req.query.code === "string" ? req.query.code : "";
+      const state = typeof req.query.state === "string" ? req.query.state : "";
+      const session = req.session as typeof req.session & {
+        oauth?: { state: string; redirect: string };
+      };
+
+      if (!provider || !code || !state || session.oauth?.state !== state) {
+        return res.redirect("/login?error=oauth");
       }
-    )(req, res, next);
+
+      const redirectTo = session.oauth.redirect;
+      delete session.oauth;
+
+      const profile = await fetchOAuthProfile(req, provider, code);
+      const user = await storage.upsertOAuthUser(profile);
+      if (user.status !== "active") {
+        return res.redirect("/login?error=suspended");
+      }
+
+      req.login(user, (err) => {
+        if (err) {
+          console.error("OAuth login error:", err);
+          return res.redirect("/login?error=oauth");
+        }
+        res.redirect(redirectTo);
+      });
+    } catch (err) {
+      console.error("OAuth callback error:", err);
+      res.redirect("/login?error=oauth");
+    }
   });
 
   app.post(api.auth.logout.path, (req, res) => {
@@ -5020,8 +5216,25 @@ export async function registerRoutes(
     if (!req.user) {
       return res.json(null);
     }
-    const { password: _, ...userWithoutPassword } = req.user;
-    res.json(userWithoutPassword);
+    res.json(sanitizeUserForResponse(req.user));
+  });
+
+  app.post(api.claimReports.create.path, isAuthenticated, async (req, res) => {
+    try {
+      const input = api.claimReports.create.input.parse(req.body);
+      const report = await storage.createClaimReport(req.user!.id, input);
+      res.status(201).json(report);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+
+      console.error("Claim report create error:", err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
   });
 
   // --- Admin API ---
@@ -5145,6 +5358,47 @@ export async function registerRoutes(
           field: err.errors[0].path.join("."),
         });
       }
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.get(api.admin.claimReports.path, isAdmin, async (req, res) => {
+    try {
+      const input = api.admin.claimReports.input.parse({
+        status: typeof req.query.status === "string" ? req.query.status : undefined,
+      });
+      const reports = await storage.getAdminClaimReports(input);
+      res.json(reports);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      console.error(err);
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
+  app.patch(api.admin.updateClaimReport.path, isAdmin, async (req, res) => {
+    try {
+      const reportId = positiveIdSchema.parse(req.params.id);
+      const input = updateItemClaimReportStatusSchema.parse(req.body);
+      const report = await storage.updateClaimReportByAdmin(reportId, input);
+      if (!report) {
+        return res.status(404).json({ message: "Report not found" });
+      }
+
+      res.json(report);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      console.error(err);
       res.status(500).json({ message: getErrorMessage(err) });
     }
   });

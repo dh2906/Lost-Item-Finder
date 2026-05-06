@@ -71,6 +71,7 @@ const navigation: NavigationItem[] = [
       { href: "/report/found", label: "주운 물건 등록" },
     ],
   },
+  { href: "/claim-report", label: "신고하기" },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {

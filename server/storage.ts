@@ -1,6 +1,7 @@
 import {
   items,
   itemEmbeddings,
+  itemClaimReports,
   itemMatches,
   matchNotifications,
   users,
@@ -9,12 +10,16 @@ import {
   type ItemMatchStatus,
   type ItemStatus,
   type InsertItem,
+  type InsertItemClaimReport,
   type InsertItemMatch,
   type InsertUser,
   type UpdateItem,
+  type UpdateItemClaimReportStatus,
   type User,
   type UserRole,
   type UserStatus,
+  type OAuthProvider,
+  type ClaimReportStatus,
 } from "@shared/schema";
 import { db } from "./db";
 import {
@@ -68,6 +73,31 @@ export interface AdminItemRecord extends Item {
   ownerName: string | null;
   ownerUsername: string | null;
   statusLabel: string;
+}
+
+export interface OAuthUserInput {
+  provider: OAuthProvider;
+  providerId: string;
+  email?: string | null;
+  name?: string | null;
+  profileImageUrl?: string | null;
+}
+
+export interface AdminClaimReportRecord {
+  id: number;
+  reporterId: number;
+  itemId: number | null;
+  suspectedUserInfo: string | null;
+  incidentSummary: string;
+  evidence: string | null;
+  contactInfo: string | null;
+  status: ClaimReportStatus;
+  adminNote: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  reporterName: string | null;
+  reporterUsername: string | null;
+  itemTitle: string | null;
 }
 
 export interface AdminDashboardStats {
@@ -134,16 +164,24 @@ function getConfiguredAdminUsernames(): string[] {
     .filter(Boolean);
 }
 
-function isConfiguredAdminUsername(username?: string | null): boolean {
-  if (!username) {
+function isConfiguredAdminIdentity(
+  username?: string | null,
+  email?: string | null
+): boolean {
+  const identities = [username, email]
+    .map((value) => value?.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (identities.length === 0) {
     return false;
   }
 
-  return getConfiguredAdminUsernames().includes(username.trim().toLowerCase());
+  const configuredAdmins = getConfiguredAdminUsernames();
+  return identities.some((identity) => configuredAdmins.includes(identity!));
 }
 
 function applyConfiguredAdminRole<T extends User>(user: T): T {
-  if (isConfiguredAdminUsername(user.username)) {
+  if (isConfiguredAdminIdentity(user.username, user.email)) {
     return {
       ...user,
       role: "admin",
@@ -161,13 +199,13 @@ async function syncConfiguredAdminRoles(): Promise<void> {
       .update(users)
       .set({ role: "admin" })
       .where(
-        sql`lower(${users.username}) = ${username} and ${users.role} <> 'admin'`
+        sql`(lower(${users.username}) = ${username} or lower(${users.email}) = ${username}) and ${users.role} <> 'admin'`
       );
   }
 }
 
 async function ensureConfiguredAdminRole(user: User): Promise<User> {
-  if (!isConfiguredAdminUsername(user.username) || user.role === "admin") {
+  if (!isConfiguredAdminIdentity(user.username, user.email) || user.role === "admin") {
     return user;
   }
 
@@ -285,6 +323,8 @@ export interface IStorage {
   ): Promise<MatchNotificationRecord | undefined>;
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByOAuth(provider: OAuthProvider, providerId: string): Promise<User | undefined>;
+  upsertOAuthUser(input: OAuthUserInput): Promise<User>;
   createUser(user: InsertUser): Promise<User>;
   hashPassword(password: string): Promise<string>;
   verifyPassword(supplied: string, stored: string): Promise<boolean>;
@@ -315,6 +355,17 @@ export interface IStorage {
     totalPages: number;
   }>;
   deleteItemByAdmin(itemId: number): Promise<boolean>;
+  createClaimReport(
+    reporterId: number,
+    report: InsertItemClaimReport
+  ): Promise<AdminClaimReportRecord>;
+  getAdminClaimReports(filters?: {
+    status?: ClaimReportStatus;
+  }): Promise<AdminClaimReportRecord[]>;
+  updateClaimReportByAdmin(
+    reportId: number,
+    updates: UpdateItemClaimReportStatus
+  ): Promise<AdminClaimReportRecord | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1145,9 +1196,71 @@ export class DatabaseStorage implements IStorage {
     return applyConfiguredAdminRole(syncedUser);
   }
 
+  async getUserByOAuth(
+    provider: OAuthProvider,
+    providerId: string
+  ): Promise<User | undefined> {
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(
+        and(
+          eq(users.authProvider, provider),
+          eq(users.authProviderId, providerId)
+        )
+      );
+
+    if (!user) {
+      return undefined;
+    }
+
+    const syncedUser = await ensureConfiguredAdminRole(user);
+    return applyConfiguredAdminRole(syncedUser);
+  }
+
+  async upsertOAuthUser(input: OAuthUserInput): Promise<User> {
+    const username = `${input.provider}_${input.providerId}`;
+    const role: UserRole = isConfiguredAdminIdentity(username, input.email)
+      ? "admin"
+      : "member";
+    const values = {
+      username,
+      password: null,
+      name: input.name ?? input.email ?? `${input.provider} user`,
+      email: input.email ?? null,
+      profileImageUrl: input.profileImageUrl ?? null,
+      authProvider: input.provider,
+      authProviderId: input.providerId,
+      role,
+      status: "active",
+    } satisfies typeof users.$inferInsert;
+
+    const [user] = await db
+      .insert(users)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [users.authProvider, users.authProviderId],
+        set: {
+          name: values.name,
+          email: values.email,
+          profileImageUrl: values.profileImageUrl,
+          role,
+        },
+      })
+      .returning();
+
+    return applyConfiguredAdminRole(user);
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
+    if (!insertUser.password) {
+      throw new Error("Password is required for local accounts.");
+    }
     const hashedPassword = await hashPassword(insertUser.password);
-    const role: UserRole = isConfiguredAdminUsername(insertUser.username)
+    const role: UserRole = isConfiguredAdminIdentity(
+      insertUser.username,
+      insertUser.email
+    )
       ? "admin"
       : "member";
 
@@ -1265,7 +1378,7 @@ export class DatabaseStorage implements IStorage {
 
     if (
       updates.role === "member" &&
-      isConfiguredAdminUsername(existingUser.username)
+      isConfiguredAdminIdentity(existingUser.username, existingUser.email)
     ) {
       throw new Error("Configured admin accounts cannot be demoted.");
     }
@@ -1355,6 +1468,115 @@ export class DatabaseStorage implements IStorage {
       .returning({ id: items.id });
 
     return deletedRows.length > 0;
+  }
+
+  async createClaimReport(
+    reporterId: number,
+    report: InsertItemClaimReport
+  ): Promise<AdminClaimReportRecord> {
+    const [savedReport] = await db
+      .insert(itemClaimReports)
+      .values({
+        ...report,
+        reporterId,
+        itemId: report.itemId ?? null,
+        suspectedUserInfo: report.suspectedUserInfo ?? null,
+        evidence: report.evidence ?? null,
+        contactInfo: report.contactInfo ?? null,
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    return (
+      (await this.getAdminClaimReportById(savedReport.id)) ??
+      {
+        ...savedReport,
+        status: savedReport.status as ClaimReportStatus,
+        reporterName: null,
+        reporterUsername: null,
+        itemTitle: null,
+      }
+    );
+  }
+
+  private async getAdminClaimReportById(
+    reportId: number
+  ): Promise<AdminClaimReportRecord | undefined> {
+    const rows = await db
+      .select({
+        report: itemClaimReports,
+        reporterName: users.name,
+        reporterUsername: users.username,
+        itemTitle: items.title,
+      })
+      .from(itemClaimReports)
+      .leftJoin(users, eq(itemClaimReports.reporterId, users.id))
+      .leftJoin(items, eq(itemClaimReports.itemId, items.id))
+      .where(eq(itemClaimReports.id, reportId))
+      .limit(1);
+
+    const row = rows[0];
+    if (!row) {
+      return undefined;
+    }
+
+    return {
+      ...row.report,
+      status: row.report.status as ClaimReportStatus,
+      reporterName: row.reporterName ?? null,
+      reporterUsername: row.reporterUsername ?? null,
+      itemTitle: row.itemTitle ?? null,
+    };
+  }
+
+  async getAdminClaimReports(filters?: {
+    status?: ClaimReportStatus;
+  }): Promise<AdminClaimReportRecord[]> {
+    const conditions = [];
+    if (filters?.status) {
+      conditions.push(eq(itemClaimReports.status, filters.status));
+    }
+
+    const rows = await db
+      .select({
+        report: itemClaimReports,
+        reporterName: users.name,
+        reporterUsername: users.username,
+        itemTitle: items.title,
+      })
+      .from(itemClaimReports)
+      .leftJoin(users, eq(itemClaimReports.reporterId, users.id))
+      .leftJoin(items, eq(itemClaimReports.itemId, items.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(itemClaimReports.createdAt), desc(itemClaimReports.id));
+
+    return rows.map((row) => ({
+      ...row.report,
+      status: row.report.status as ClaimReportStatus,
+      reporterName: row.reporterName ?? null,
+      reporterUsername: row.reporterUsername ?? null,
+      itemTitle: row.itemTitle ?? null,
+    }));
+  }
+
+  async updateClaimReportByAdmin(
+    reportId: number,
+    updates: UpdateItemClaimReportStatus
+  ): Promise<AdminClaimReportRecord | undefined> {
+    const [updatedReport] = await db
+      .update(itemClaimReports)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(itemClaimReports.id, reportId))
+      .returning();
+
+    if (!updatedReport) {
+      return undefined;
+    }
+
+    return this.getAdminClaimReportById(reportId);
   }
 
   hashPassword = hashPassword;
