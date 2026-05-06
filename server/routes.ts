@@ -2273,7 +2273,7 @@ function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
 }
 
 function buildDuplicateItemWindowStart(): Date {
-  return new Date(Date.now() - 5000);
+  return new Date(Date.now() - 1000 * 60 * 2);
 }
 
 function areSameNormalizedValue(
@@ -5346,6 +5346,9 @@ export async function registerRoutes(
           queryParts.push(trimmedPrompt);
         }
       }
+      if (searchLocation) {
+        queryParts.push(`Location context: ${searchLocation}`);
+      }
 
       if (input.imageUrl) {
         const imageSearchText = await createImageSearchText(input.imageUrl);
@@ -5405,6 +5408,7 @@ export async function registerRoutes(
         .filter((result) => {
           if (
             searchLocation &&
+            !searchCoordinates &&
             !itemMatchesLocationText(result.item, searchLocation)
           ) {
             return false;
