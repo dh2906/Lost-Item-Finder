@@ -14,7 +14,7 @@ import { normalizeItemImageUrls } from "@shared/item-images";
 import { z } from "zod";
 import OpenAI from "openai";
 import { db } from "./db";
-import { and, eq, ne, or, desc, asc, isNull, gte } from "drizzle-orm";
+import { and, eq, ne, or, desc, asc, isNull, gte, ilike } from "drizzle-orm";
 import {
   chatRooms,
   chatMessages,
@@ -88,7 +88,7 @@ const AUTO_MATCH_BACKFILL_LIMIT = Number(
   process.env.AUTO_MATCH_BACKFILL_LIMIT ?? 3
 );
 const AI_SEARCH_BACKFILL_LIMIT = Number(
-  process.env.AI_SEARCH_BACKFILL_LIMIT ?? 10
+  process.env.AI_SEARCH_BACKFILL_LIMIT ?? 0
 );
 const AUTO_MATCH_JOB_TIMEOUT_MS = Number(
   process.env.AUTO_MATCH_JOB_TIMEOUT_MS ?? 15000
@@ -1894,11 +1894,21 @@ function normalizeKoreanText(value: string): string {
     .trim();
 }
 
+function stripKoreanSearchParticle(token: string): string {
+  return token.replace(
+    /(에서|으로|로|에는|에선|에는|에게|한테|부터|까지|이라|라고|이고|이며|이고요|요|은|는|이|가|을|를|에|의|도|만|와|과|랑)$/g,
+    ""
+  );
+}
+
 function extractQueryKeywords(queryText: string): string[] {
   const tokens = normalizeKoreanText(queryText)
     .split(" ")
+    .map(stripKoreanSearchParticle)
     .filter((token) => token.length >= 2)
-    .filter((token) => !/^\d+$/.test(token));
+    .filter((token) => !/^\d+$/.test(token))
+    .filter((token) => !/^\d{1,2}(월|일)$/.test(token))
+    .filter((token) => !/^(오늘|어제|그제|이번주|저번주|지난주)$/.test(token));
   return Array.from(new Set(tokens)).slice(0, 20);
 }
 
@@ -2044,15 +2054,17 @@ const CATEGORY_SYNONYM_GROUPS = [
   ["노트북", "랩탑", "laptop", "macbook"],
   ["모자", "캡", "cap", "hat"],
   ["텀블러", "물병", "보틀", "컵", "머그", "tumbler", "bottle", "cup", "mug"],
+  ["우산", "장우산", "단우산", "접이식우산", "umbrella"],
 ] as const;
 
 const COLOR_SYNONYM_GROUPS = [
-  ["검정", "검은색", "블랙", "까만색", "black", "dark"],
+  ["검정", "검은", "검은색", "블랙", "까만", "까만색", "black", "dark"],
   ["흰색", "화이트", "하양", "white", "ivory", "cream"],
   ["회색", "그레이", "gray", "grey", "은색", "실버", "silver"],
   ["갈색", "브라운", "brown", "베이지", "tan", "camel"],
   [
     "파랑",
+    "파란",
     "파란색",
     "블루",
     "남색",
@@ -2074,6 +2086,7 @@ const COLOR_SYNONYM_GROUPS = [
     "민트색",
   ],
   ["빨강", "빨간색", "레드", "red", "burgundy", "와인"],
+  ["빨간", "빨강", "빨간색", "레드", "red", "burgundy", "와인"],
   [
     "초록",
     "초록색",
@@ -2089,6 +2102,7 @@ const COLOR_SYNONYM_GROUPS = [
     "turquoise",
   ],
   ["노랑", "노란색", "옐로", "yellow", "gold", "골드"],
+  ["노란", "노랑", "노란색", "옐로", "yellow", "gold", "골드"],
   ["보라", "보라색", "퍼플", "purple", "violet"],
   ["분홍", "분홍색", "핑크", "pink", "rose", "로즈"],
   ["주황", "주황색", "오렌지", "orange", "coral", "코랄"],
@@ -2099,6 +2113,7 @@ const LOCATION_SYNONYM_GROUPS = [
   ["버스", "정류장", "bus", "stop"],
   ["학교", "캠퍼스", "college", "campus"],
   ["카페", "커피숍", "coffee", "cafe"],
+  ["충남대", "충남대학교", "cnu", "대학로99", "대전유성구대학로99"],
   ["강남역", "2호선강남역", "강남역출구"],
   ["홍대입구역", "홍대역", "홍대입구"],
   ["잠실역", "잠실"],
@@ -2170,6 +2185,16 @@ const LOCATION_TOKEN_SUFFIXES = [
   "읍",
   "면",
   "리",
+] as const;
+
+const KNOWN_PLACE_ALIASES = [
+  {
+    aliases: ["충남대", "충남대학교", "cnu"],
+    query: "충남대학교",
+    latitude: 36.3683,
+    longitude: 127.3445,
+    tokens: ["충남대", "충남대학교", "대전", "유성", "대학로", "대학로99"],
+  },
 ] as const;
 
 type NormalizableItemMetadata = {
@@ -2632,6 +2657,75 @@ function applyAiSearchDateAdjustment(
   return Number((baseScore * 0.82 + dateScore * 0.18).toFixed(4));
 }
 
+function calculateAiSearchConditionScore(params: {
+  queryText: string;
+  item: VectorCandidate["item"];
+  distanceKm: number | null;
+  lostDateRange?: SearchDateRange | null;
+}): number | null {
+  const { queryText, item, distanceKm, lostDateRange } = params;
+  const weightedScores: Array<{ score: number; weight: number }> = [];
+
+  if (hasRequestedCategory(queryText)) {
+    weightedScores.push({
+      score: getRequestedCategoryScore(queryText, item),
+      weight: 0.32,
+    });
+  }
+  if (hasRequestedColor(queryText)) {
+    weightedScores.push({
+      score: getRequestedColorScore(queryText, item),
+      weight: 0.24,
+    });
+  }
+  if (hasRequestedLocation(queryText) || distanceKm !== null) {
+    weightedScores.push({
+      score:
+        distanceKm !== null
+          ? Math.max(
+              getRequestedLocationScore(queryText, item),
+              calculateSearchDistanceScore(distanceKm, DEFAULT_AI_SEARCH_RADIUS_KM)
+            )
+          : getRequestedLocationScore(queryText, item),
+      weight: 0.26,
+    });
+  }
+
+  const dateScore = calculateAiSearchDateScore(item.date, lostDateRange);
+  if (lostDateRange && dateScore !== null) {
+    weightedScores.push({ score: dateScore, weight: 0.18 });
+  }
+
+  if (weightedScores.length === 0) {
+    return null;
+  }
+
+  const totalWeight = weightedScores.reduce((sum, entry) => sum + entry.weight, 0);
+  return Number(
+    (
+      weightedScores.reduce(
+        (sum, entry) => sum + Math.max(0, Math.min(1, entry.score)) * entry.weight,
+        0
+      ) / totalWeight
+    ).toFixed(4)
+  );
+}
+
+function applyAiSearchConditionAdjustment(params: {
+  baseScore: number;
+  queryText: string;
+  item: VectorCandidate["item"];
+  distanceKm: number | null;
+  lostDateRange?: SearchDateRange | null;
+}): number {
+  const conditionScore = calculateAiSearchConditionScore(params);
+  if (conditionScore === null) {
+    return Number(params.baseScore.toFixed(4));
+  }
+
+  return Number((params.baseScore * 0.58 + conditionScore * 0.42).toFixed(4));
+}
+
 function buildAiSearchDateSummary(
   candidateDate: string | Date | null | undefined,
   lostDateRange?: SearchDateRange | null
@@ -2800,6 +2894,23 @@ function isLikelyLocationToken(token: string): boolean {
   return LOCATION_TOKEN_SUFFIXES.some((suffix) => normalizedToken.endsWith(suffix));
 }
 
+function findKnownPlaceAlias(
+  token: string
+): (typeof KNOWN_PLACE_ALIASES)[number] | null {
+  const normalizedToken = normalizeComparableText(token);
+  if (!normalizedToken) {
+    return null;
+  }
+
+  return (
+    KNOWN_PLACE_ALIASES.find((place) =>
+      [...place.aliases, ...place.tokens].some(
+        (alias) => normalizeComparableText(alias) === normalizedToken
+      )
+    ) ?? null
+  );
+}
+
 function extractRequestedLocationTokens(queryText: string): string[] {
   const categoryTokens = new Set(
     extractQueryKeywords(queryText).filter((token) =>
@@ -2817,7 +2928,7 @@ function extractRequestedLocationTokens(queryText: string): string[] {
   );
   const colorTokens = new Set(extractRequestedColorTokens(queryText));
 
-  return Array.from(
+  const extractedTokens = Array.from(
     new Set(
       extractQueryKeywords(queryText).filter((token) => {
         const normalizedToken = normalizeComparableText(token);
@@ -2829,7 +2940,20 @@ function extractRequestedLocationTokens(queryText: string): string[] {
         );
       })
     )
-  ).slice(0, 6);
+  );
+
+  const expandedTokens = new Set(extractedTokens);
+  for (const token of extractedTokens) {
+    const alias = findKnownPlaceAlias(token);
+    if (!alias) {
+      continue;
+    }
+    for (const aliasToken of alias.tokens) {
+      expandedTokens.add(normalizeComparableText(aliasToken));
+    }
+  }
+
+  return Array.from(expandedTokens).slice(0, 10);
 }
 
 function getRequestedColorScore(queryText: string, item: VectorCandidate["item"]) {
@@ -2900,7 +3024,10 @@ function getRequestedLocationQuery(promptText?: string | null): string | null {
   if (requestedLocationTokens.length === 0) {
     return null;
   }
-  return requestedLocationTokens.join(" ");
+  const alias = requestedLocationTokens
+    .map((token) => findKnownPlaceAlias(token))
+    .find((value): value is (typeof KNOWN_PLACE_ALIASES)[number] => Boolean(value));
+  return alias?.query ?? requestedLocationTokens.join(" ");
 }
 
 type AiCandidateEvaluation = {
@@ -2921,6 +3048,10 @@ type SearchLocationGeocodingResult = {
   longitude: number;
   placeName?: string | null;
   address?: string | null;
+};
+type SearchCoordinates = {
+  latitude: number;
+  longitude: number;
 };
 
 const AMBIGUOUS_STANDALONE_LOCATION_SUFFIXES = [
@@ -3032,6 +3163,44 @@ function parseSearchDateRange(input?: string | null): SearchDateRange | null {
   return null;
 }
 
+function extractSearchDateTextFromPrompt(promptText?: string | null): string | null {
+  const normalized = promptText?.replace(/\s+/g, " ").trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const relativeMatch = normalized.match(
+    /(오늘|어제|그제|이번\s*주|저번\s*주|지난\s*주|\d{1,2}\s*일\s*전)/
+  );
+  if (relativeMatch) {
+    return relativeMatch[1].replace(/\s+/g, "");
+  }
+
+  const ymdMatch = normalized.match(
+    /(\d{4})\s*[년./-]?\s*(\d{1,2})\s*[월./-]\s*(\d{1,2})\s*일?/
+  );
+  if (ymdMatch) {
+    return `${ymdMatch[1]}-${ymdMatch[2]}-${ymdMatch[3]}`;
+  }
+
+  const mdMatch = normalized.match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if (mdMatch) {
+    return `${mdMatch[1]}월 ${mdMatch[2]}일`;
+  }
+
+  return null;
+}
+
+function parseSearchDateRangeFromInputs(params: {
+  lostDateText?: string | null;
+  prompt?: string | null;
+}): SearchDateRange | null {
+  return (
+    parseSearchDateRange(params.lostDateText) ??
+    parseSearchDateRange(extractSearchDateTextFromPrompt(params.prompt))
+  );
+}
+
 function isAmbiguousStandaloneLocationQuery(
   query: string,
   totalCount: number
@@ -3051,15 +3220,45 @@ function isAmbiguousStandaloneLocationQuery(
   );
 }
 
+function isBroadRegionLocationQuery(query: string): boolean {
+  const tokens = extractQueryKeywords(query);
+  if (tokens.length === 0 || tokens.length > 2) {
+    return false;
+  }
+
+  return tokens.every((token) =>
+    KNOWN_REGION_TOKENS.includes(
+      normalizeComparableText(token) as (typeof KNOWN_REGION_TOKENS)[number]
+    )
+  );
+}
+
 async function geocodeSearchLocationQuery(
   query: string
 ): Promise<SearchLocationGeocodingResult | null> {
-  if (!KAKAO_REST_API_KEY) {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
     return null;
   }
 
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery) {
+  const knownPlace = extractQueryKeywords(trimmedQuery)
+    .map((token) => findKnownPlaceAlias(token))
+    .find((value): value is (typeof KNOWN_PLACE_ALIASES)[number] => Boolean(value));
+  if (knownPlace) {
+    return {
+      query: knownPlace.query,
+      latitude: knownPlace.latitude,
+      longitude: knownPlace.longitude,
+      placeName: knownPlace.query,
+      address: knownPlace.tokens.join(" "),
+    };
+  }
+
+  if (isBroadRegionLocationQuery(trimmedQuery)) {
+    return null;
+  }
+
+  if (!KAKAO_REST_API_KEY) {
     return null;
   }
 
@@ -3173,6 +3372,112 @@ function calculateAiSearchDateScore(
   return 0;
 }
 
+async function searchLexicalAiCandidates(params: {
+  queryText: string;
+  searchCoordinates: SearchCoordinates | null;
+  radiusKm?: number;
+  limit: number;
+}): Promise<RankedVectorCandidate[]> {
+  const { queryText, searchCoordinates, radiusKm, limit } = params;
+  const queryTokens = extractQueryKeywords(queryText).filter(
+    (token) => token.length >= 2 && !findKnownPlaceAlias(token)
+  );
+  const uniqueTokens = Array.from(new Set(queryTokens)).slice(0, 8);
+  if (uniqueTokens.length === 0) {
+    return [];
+  }
+
+  const rows = await Promise.all(
+    uniqueTokens.map((token) => {
+      const searchPattern = `%${token}%`;
+      return db
+        .select()
+        .from(items)
+        .where(
+          and(
+            eq(items.reportType, "found"),
+            eq(items.status, "active"),
+            or(
+              ilike(items.title, searchPattern),
+              ilike(items.description, searchPattern),
+              ilike(items.itemCategory, searchPattern),
+              ilike(items.color, searchPattern),
+              ilike(items.location, searchPattern),
+              ilike(items.region1, searchPattern),
+              ilike(items.region2, searchPattern),
+              ilike(items.region3, searchPattern),
+              ilike(items.address, searchPattern),
+              ilike(items.placeName, searchPattern)
+            )!
+          )
+        )
+        .orderBy(desc(items.date), desc(items.id))
+        .limit(30);
+    })
+  );
+  const candidatesById = new Map<number, RankedVectorCandidate>();
+
+  for (const row of rows) {
+    for (const item of row) {
+      const itemLatitude = parseCoordinate(item.latitude);
+      const itemLongitude = parseCoordinate(item.longitude);
+      const distanceKm =
+        searchCoordinates && itemLatitude !== null && itemLongitude !== null
+          ? calculateDistanceKm(searchCoordinates, {
+              latitude: itemLatitude,
+              longitude: itemLongitude,
+            })
+          : null;
+
+      if (
+        searchCoordinates &&
+        radiusKm !== undefined &&
+        (distanceKm === null || distanceKm > radiusKm)
+      ) {
+        continue;
+      }
+
+      const evidence = getMatchedQueryKeywords(queryText, item);
+      const categoryScore = getRequestedCategoryScore(queryText, item);
+      const colorScore = getRequestedColorScore(queryText, item);
+      const locationScore = getRequestedLocationScore(queryText, item);
+      const lexicalScore = Number(
+        Math.max(
+          0.32,
+          Math.min(
+            0.72,
+            evidence.overlapScore * 0.5 +
+              categoryScore * 0.2 +
+              colorScore * 0.18 +
+              locationScore * 0.12
+          )
+        ).toFixed(4)
+      );
+      const existing = candidatesById.get(item.id);
+      if (!existing || lexicalScore > existing.score) {
+        candidatesById.set(item.id, { item, score: lexicalScore, distanceKm });
+      }
+    }
+  }
+
+  return Array.from(candidatesById.values())
+    .sort((left, right) => right.score - left.score)
+    .slice(0, limit);
+}
+
+function mergeRankedCandidates(
+  candidates: RankedVectorCandidate[]
+): RankedVectorCandidate[] {
+  const candidatesById = new Map<number, RankedVectorCandidate>();
+  for (const candidate of candidates) {
+    const existing = candidatesById.get(candidate.item.id);
+    if (!existing || candidate.score > existing.score) {
+      candidatesById.set(candidate.item.id, candidate);
+    }
+  }
+  return Array.from(candidatesById.values());
+}
+
 function evaluateAiSearchCandidate(params: {
   queryText: string;
   candidate: RankedVectorCandidate;
@@ -3197,7 +3502,11 @@ function evaluateAiSearchCandidate(params: {
     evidence.matchedKeywords.length > 0 || evidence.overlapScore >= 0.18;
   const weakSemanticMatch = candidate.score < 0.18 && evidence.overlapScore < 0.16;
 
-  if (categoryScore === 0 && candidate.score < 0.55) {
+  if (
+    categoryScore === 0 &&
+    hasRequestedCategory(queryText) &&
+    evidence.overlapScore < 0.55
+  ) {
     return { keep: false, scoreCap: 0, evidenceLabels: [] };
   }
 
@@ -5310,8 +5619,11 @@ export async function registerRoutes(
       }
 
       const explicitSearchCoordinates = getSearchCoordinates(input);
-      const inferredLocationQuery = getRequestedLocationQuery(input.prompt);
-      const inferredLocation = !explicitSearchCoordinates && !input.location
+      const promptAndLocationText = [input.prompt, input.location]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .join(" ");
+      const inferredLocationQuery = getRequestedLocationQuery(promptAndLocationText);
+      const inferredLocation = !explicitSearchCoordinates
         ? await geocodeSearchLocationQuery(inferredLocationQuery ?? "")
         : null;
       const searchCoordinates = explicitSearchCoordinates
@@ -5322,8 +5634,14 @@ export async function registerRoutes(
             longitude: inferredLocation.longitude,
           }
         : null;
-      const searchLocation = normalizeSearchLocationText(input.location);
-      const lostDateRange = parseSearchDateRange(input.lostDateText);
+      const explicitSearchLocation = normalizeSearchLocationText(input.location);
+      const searchLocation = explicitSearchLocation || inferredLocationQuery || undefined;
+      const searchLocationTextFilter =
+        !searchCoordinates && explicitSearchLocation ? explicitSearchLocation : undefined;
+      const lostDateRange = parseSearchDateRangeFromInputs({
+        lostDateText: input.lostDateText,
+        prompt: input.prompt,
+      });
       const radiusKm =
         typeof input.radiusKm === "number" && Number.isFinite(input.radiusKm)
           ? input.radiusKm
@@ -5358,6 +5676,13 @@ export async function registerRoutes(
       }
       if (searchLocation) {
         queryParts.push(`Location context: ${searchLocation}`);
+      }
+
+      if (searchLocation && !trimmedPrompt?.includes(searchLocation)) {
+        queryParts.push(`장소: ${searchLocation}`);
+      }
+      if (lostDateRange) {
+        queryParts.push(`분실 시점: ${lostDateRange.label}`);
       }
 
       if (input.imageUrl) {
@@ -5396,7 +5721,7 @@ export async function registerRoutes(
               vectorCandidateCount
             );
 
-      const filteredVectorMatches: RankedVectorCandidate[] = vectorMatches
+      const rankedVectorMatches: RankedVectorCandidate[] = vectorMatches
         .filter((result) => result.score >= minVectorMatchScore)
         .map((result) => {
           const itemLatitude = parseCoordinate(result.item.latitude);
@@ -5414,20 +5739,33 @@ export async function registerRoutes(
             ...result,
             distanceKm,
           };
-        })
+        });
+      const lexicalMatches = await searchLexicalAiCandidates({
+        queryText,
+        searchCoordinates,
+        radiusKm: effectiveRadiusKm,
+        limit: vectorCandidateCount,
+      });
+      const filteredVectorMatches: RankedVectorCandidate[] = mergeRankedCandidates([
+        ...rankedVectorMatches,
+        ...lexicalMatches,
+      ])
         .filter((result) => {
           if (
-            searchLocation &&
-            !searchCoordinates &&
-            !itemMatchesLocationText(result.item, searchLocation)
+            searchLocationTextFilter &&
+            !itemMatchesLocationText(result.item, searchLocationTextFilter)
           ) {
             return false;
           }
 
           if (searchCoordinates && effectiveRadiusKm !== undefined) {
             return (
-              result.distanceKm !== null &&
-              result.distanceKm <= effectiveRadiusKm
+              (result.distanceKm !== null &&
+                result.distanceKm <= effectiveRadiusKm) ||
+              Boolean(
+                searchLocation &&
+                  itemMatchesLocationText(result.item, searchLocation)
+              )
             );
           }
 
@@ -5487,16 +5825,22 @@ export async function registerRoutes(
           }
 
           const llmScore = Math.max(0, Math.min(1, result.score));
-          const blendedScore = applyAiSearchDateAdjustment(
-            blendAiSearchScore({
-              vectorScore: vectorMatch.score,
-              llmScore,
-              distanceKm: vectorMatch.distanceKm,
-              radiusKm: effectiveRadiusKm,
-            }),
-            vectorMatch.item.date,
-            lostDateRange
-          );
+          const blendedScore = applyAiSearchConditionAdjustment({
+            baseScore: applyAiSearchDateAdjustment(
+              blendAiSearchScore({
+                vectorScore: vectorMatch.score,
+                llmScore,
+                distanceKm: vectorMatch.distanceKm,
+                radiusKm: effectiveRadiusKm,
+              }),
+              vectorMatch.item.date,
+              lostDateRange
+            ),
+            queryText,
+            item: vectorMatch.item,
+            distanceKm: vectorMatch.distanceKm,
+            lostDateRange,
+          });
           const dateSummary = buildAiSearchDateSummary(
             vectorMatch.item.date,
             lostDateRange
@@ -5542,11 +5886,17 @@ export async function registerRoutes(
               result.distanceKm,
               effectiveRadiusKm
             );
-            const adjustedScore = applyAiSearchDateAdjustment(
-              score,
-              result.item.date,
-              lostDateRange
-            );
+            const adjustedScore = applyAiSearchConditionAdjustment({
+              baseScore: applyAiSearchDateAdjustment(
+                score,
+                result.item.date,
+                lostDateRange
+              ),
+              queryText,
+              item: result.item,
+              distanceKm: result.distanceKm,
+              lostDateRange,
+            });
             const dateSummary = buildAiSearchDateSummary(
               result.item.date,
               lostDateRange
