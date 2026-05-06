@@ -56,6 +56,25 @@ The JSON output is intended for reports and presentations. The failed case list
 shows which query dimension regressed first, so future improvements can be
 tracked with repeatable numbers instead of screenshots.
 
+To compare the current search pipeline against weaker baselines, run:
+
+```bash
+npm run eval:ai-search:compare -- \
+  --cases=script/ai-search-eval.local.json \
+  --base-url=http://localhost:8080 \
+  --output=tmp/ai-search-compare.json
+```
+
+The comparison modes are:
+
+- `keyword`: direct database keyword search over item text fields.
+- `vector`: vector similarity only, without location/date/color/category
+  filtering and rescoring.
+- `api-content`: the current hybrid pipeline evaluated only by returned item
+  content.
+- `api`: the current hybrid pipeline evaluated by returned item content and
+  evidence labels.
+
 ## Current Local Baseline
 
 The first 24-case local baseline measured on May 6, 2026 was:
@@ -70,3 +89,28 @@ The failed cases are mostly location alias extraction and strict place-name
 disambiguation cases. That is useful signal: the next search-quality work should
 target natural-place extraction, place geocoding, and latency reduction rather
 than only prompt tuning.
+
+The first baseline comparison on the same 24 cases was:
+
+| Mode | What It Checks | Top-1 | Top-3 | Top-5 | MRR | Avg latency |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Keyword only | Literal DB text search | 0.7500 | 0.7500 | 0.7500 | 0.7569 | 1134ms |
+| Vector only | Embedding similarity only | 0.6250 | 0.6250 | 0.7083 | 0.6549 | 715ms |
+| Hybrid API, content only | Product pipeline, returned item only | 0.7083 | 0.7083 | 0.7917 | 0.7271 | 15874ms |
+| Hybrid API, content + evidence | Product pipeline, item and labels | 0.6667 | 0.6667 | 0.7083 | 0.6750 | 16724ms |
+
+This comparison should not be presented as "hybrid always beats keyword." On
+the current local dataset, many cases contain literal item/color/location words,
+so keyword search is a strong baseline and is faster. The stronger claim is more
+specific:
+
+- On the natural-place/date subset represented by the first four cases,
+  `keyword` and `vector` fail the three `충남대/충남대학교` alias-date cases,
+  while `api-content` resolves all four at rank 1.
+- `vector` is weaker than the product pipeline on overall Top-1 and MRR because
+  it lacks structured color, date, and location constraints.
+- The product pipeline is the only mode that can evaluate whether the result is
+  explainable through evidence labels such as `색상 유사`, `지역 일치`, and
+  `날짜 유사`.
+- Latency is the main regression target: the product pipeline is much slower
+  than direct keyword/vector baselines.
