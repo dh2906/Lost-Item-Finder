@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Map, MapMarker, useKakaoLoader } from "react-kakao-maps-sdk";
+import { reverseGeocodeKakao } from "@/lib/kakao-reverse-geocode";
 
 interface LocationDisplayProps {
   latitude: string | null | undefined;
@@ -29,14 +30,17 @@ export function LocationDisplay({ latitude, longitude, height = "250px" }: Locat
   // 좌표를 주소로 변환
   useEffect(() => {
     if (!position || !window.kakao?.maps?.services) return;
-    
-    const geocoder = new window.kakao.maps.services.Geocoder();
-    geocoder.coord2Address(position.lng, position.lat, (result: any, status: any) => {
-      if (status === window.kakao.maps.services.Status.OK && result[0]) {
-        const addr = result[0].road_address?.address_name || result[0].address?.address_name;
-        setAddress(addr || "");
+
+    let cancelled = false;
+    reverseGeocodeKakao(position.lat, position.lng).then((nextAddress) => {
+      if (!cancelled) {
+        setAddress(nextAddress || "");
       }
     });
+
+    return () => {
+      cancelled = true;
+    };
   }, [position]);
 
   if (!latitude || !longitude) {
