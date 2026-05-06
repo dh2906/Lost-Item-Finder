@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -207,6 +208,10 @@ export const users = pgTable(
     authProviderIdUnique: uniqueIndex("users_auth_provider_id_unique").on(
       table.authProvider,
       table.authProviderId
+    ),
+    oauthProviderIdRequired: check(
+      "users_oauth_provider_id_required",
+      sql`${table.authProvider} = 'local' or ${table.authProviderId} is not null`
     ),
   })
 );

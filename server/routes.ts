@@ -171,6 +171,9 @@ const AUTH_RATE_LIMIT_WINDOW_MS = Number(
   process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? 60_000
 );
 const AUTH_LOGIN_RATE_LIMIT = Number(process.env.AUTH_LOGIN_RATE_LIMIT ?? 10);
+const OAUTH_REQUEST_TIMEOUT_MS = Number(
+  process.env.OAUTH_REQUEST_TIMEOUT_MS ?? 10_000
+);
 const CHAT_RATE_LIMIT_WINDOW_MS = Number(
   process.env.CHAT_RATE_LIMIT_WINDOW_MS ?? 60_000
 );
@@ -5219,6 +5222,7 @@ async function fetchOAuthProfile(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: tokenParams,
+    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
   });
 
   if (!tokenResponse.ok) {
@@ -5234,6 +5238,7 @@ async function fetchOAuthProfile(
     headers: {
       Authorization: `Bearer ${token.access_token}`,
     },
+    signal: AbortSignal.timeout(OAUTH_REQUEST_TIMEOUT_MS),
   });
 
   if (!profileResponse.ok) {
@@ -5249,8 +5254,17 @@ async function fetchOAuthProfile(
 }
 
 function sanitizeUserForResponse(user: Express.User) {
-  const { password: _password, ...userWithoutPassword } = user;
-  return userWithoutPassword;
+  return {
+    id: user.id,
+    username: user.username,
+    name: user.name,
+    email: user.email,
+    profileImageUrl: user.profileImageUrl,
+    authProvider: user.authProvider,
+    role: user.role,
+    status: user.status,
+    createdAt: user.createdAt,
+  };
 }
 
 export async function registerRoutes(
@@ -5275,9 +5289,10 @@ export async function registerRoutes(
 
     const state = randomBytes(24).toString("hex");
     (req.session as typeof req.session & {
-      oauth?: { state: string; redirect: string };
+      oauth?: { state: string; provider: OAuthProvider; redirect: string };
     }).oauth = {
       state,
+      provider,
       redirect: getSafeRedirect(req.query.redirect),
     };
 
@@ -5298,10 +5313,16 @@ export async function registerRoutes(
       const code = typeof req.query.code === "string" ? req.query.code : "";
       const state = typeof req.query.state === "string" ? req.query.state : "";
       const session = req.session as typeof req.session & {
-        oauth?: { state: string; redirect: string };
+        oauth?: { state: string; provider: OAuthProvider; redirect: string };
       };
 
-      if (!provider || !code || !state || session.oauth?.state !== state) {
+      if (
+        !provider ||
+        !code ||
+        !state ||
+        session.oauth?.state !== state ||
+        session.oauth?.provider !== provider
+      ) {
         return res.redirect("/login?error=oauth");
       }
 

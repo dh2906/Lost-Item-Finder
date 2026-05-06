@@ -1300,6 +1300,8 @@ export class DatabaseStorage implements IStorage {
       .insert(users)
       .values({
         ...insertUser,
+        authProvider: "local",
+        authProviderId: null,
         password: hashedPassword,
         role,
         status: "active",
