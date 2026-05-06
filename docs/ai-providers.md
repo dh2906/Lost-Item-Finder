@@ -58,7 +58,7 @@ export LOST112_NORMALIZE_MODEL="qwen3.5-plus"
 
 For a one-time Lost112 backfill, call `POST /api/lost112/sync` as an admin with `{"numOfRows":100,"maxPages":1000}`. Scheduled sync should usually keep a smaller `LOST112_SYNC_MAX_PAGES` value to avoid repeated AI/API cost.
 
-Set `KAKAO_REST_API_KEY` to enrich Lost112 facility names with Kakao Local API addresses and coordinates. Without this key, Lost112 sync still stores the source location text but cannot fill latitude/longitude.
+Set `KAKAO_REST_API_KEY` to enrich Lost112 facility names with Kakao Local API addresses and coordinates. The same key is used by `GET /api/geocode/reverse`, which caches coordinate-to-address lookups on the server so repeated map/detail views do not repeatedly hit Kakao `coord2address`. Without this key, Lost112 sync still stores the source location text but cannot fill latitude/longitude, and the browser falls back to the Kakao Maps JavaScript geocoder for reverse geocoding.
 
 If you run this project in Replit, put these values in the Replit Secrets panel.
 If you run it locally, export them in your shell before `npm run dev`.

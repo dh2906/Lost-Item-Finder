@@ -110,6 +110,12 @@ const MIN_FALLBACK_MATCH_SCORE = Number(
   process.env.MIN_FALLBACK_MATCH_SCORE ?? 0.3
 );
 const DEFAULT_AI_SEARCH_RADIUS_KM = 1;
+const REVERSE_GEOCODE_CACHE_TTL_MS = Number(
+  process.env.REVERSE_GEOCODE_CACHE_TTL_MS ?? 24 * 60 * 60 * 1000
+);
+const REVERSE_GEOCODE_CACHE_LIMIT = Number(
+  process.env.REVERSE_GEOCODE_CACHE_LIMIT ?? 10_000
+);
 const positiveIdSchema = z.coerce.number().int().positive();
 const embeddingRelevantFields = new Set([
   "title",
@@ -178,6 +184,104 @@ const CHAT_RATE_LIMIT_WINDOW_MS = Number(
 const CHAT_MESSAGE_RATE_LIMIT = Number(
   process.env.CHAT_MESSAGE_RATE_LIMIT ?? 30
 );
+
+interface ReverseGeocodeCacheEntry {
+  address: string | null;
+  savedAt: number;
+}
+
+const reverseGeocodeCache = new Map<string, ReverseGeocodeCacheEntry>();
+
+function getReverseGeocodeCacheKey(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+}
+
+function pruneReverseGeocodeCache(): void {
+  if (reverseGeocodeCache.size <= REVERSE_GEOCODE_CACHE_LIMIT) {
+    return;
+  }
+
+  const overflow = reverseGeocodeCache.size - REVERSE_GEOCODE_CACHE_LIMIT;
+  const staleKeys = Array.from(reverseGeocodeCache.entries())
+    .sort(([, left], [, right]) => left.savedAt - right.savedAt)
+    .slice(0, overflow)
+    .map(([key]) => key);
+
+  for (const key of staleKeys) {
+    reverseGeocodeCache.delete(key);
+  }
+}
+
+function getCachedReverseGeocode(key: string): string | null | undefined {
+  const entry = reverseGeocodeCache.get(key);
+  if (!entry) {
+    return undefined;
+  }
+
+  if (Date.now() - entry.savedAt > REVERSE_GEOCODE_CACHE_TTL_MS) {
+    reverseGeocodeCache.delete(key);
+    return undefined;
+  }
+
+  return entry.address;
+}
+
+function setCachedReverseGeocode(key: string, address: string | null): void {
+  reverseGeocodeCache.set(key, { address, savedAt: Date.now() });
+  pruneReverseGeocodeCache();
+}
+
+async function reverseGeocodeWithKakao(
+  latitude: number,
+  longitude: number
+): Promise<string | null> {
+  if (!KAKAO_REST_API_KEY) {
+    throw new Error("KAKAO_REST_API_KEY가 설정되지 않았습니다.");
+  }
+
+  const url = new URL("https://dapi.kakao.com/v2/local/geo/coord2address.json");
+  url.searchParams.set("x", String(longitude));
+  url.searchParams.set("y", String(latitude));
+
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `KakaoAK ${KAKAO_REST_API_KEY}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Kakao reverse geocoding failed: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const body = z
+    .object({
+      documents: z.array(
+        z.object({
+          road_address: z
+            .object({
+              address_name: z.string().optional(),
+            })
+            .nullable()
+            .optional(),
+          address: z
+            .object({
+              address_name: z.string().optional(),
+            })
+            .nullable()
+            .optional(),
+        })
+      ),
+    })
+    .parse(await response.json());
+
+  return (
+    body.documents[0]?.road_address?.address_name ||
+    body.documents[0]?.address?.address_name ||
+    null
+  );
+}
 const MAX_FCM_TOKEN_LENGTH = 4096;
 
 type RateLimitBucket = {
@@ -5151,6 +5255,39 @@ export async function registerRoutes(
     }
     const { password: _, ...userWithoutPassword } = req.user;
     res.json(userWithoutPassword);
+  });
+
+  app.get(api.geocode.reverse.path, async (req, res) => {
+    try {
+      const input = api.geocode.reverse.input.parse(req.query);
+      const cacheKey = getReverseGeocodeCacheKey(
+        input.latitude,
+        input.longitude
+      );
+      const cachedAddress = getCachedReverseGeocode(cacheKey);
+
+      if (cachedAddress !== undefined) {
+        return res.json({ address: cachedAddress, cached: true });
+      }
+
+      const address = await reverseGeocodeWithKakao(
+        input.latitude,
+        input.longitude
+      );
+      setCachedReverseGeocode(cacheKey, address);
+
+      res.json({ address, cached: false });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+
+      console.error("Reverse geocoding error:", err);
+      res.status(503).json({ message: getErrorMessage(err) });
+    }
   });
 
   // --- Admin API ---
