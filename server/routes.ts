@@ -5,7 +5,11 @@ import passport from "passport";
 import { isAdmin, isAuthenticated } from "./auth";
 import { maskSensitiveInfo } from "./lib/masking";
 import { storage, type ExternalFoundItemInput } from "./storage";
-import { api, MAX_SEARCH_LOCATION_LENGTH } from "@shared/routes";
+import {
+  api,
+  MAX_SEARCH_LOCATION_LENGTH,
+  MAX_SEARCH_LOCATION_RAW_LENGTH,
+} from "@shared/routes";
 import { normalizeItemImageUrls } from "@shared/item-images";
 import { z } from "zod";
 import OpenAI from "openai";
@@ -1650,7 +1654,8 @@ function normalizePlainSearchText(value?: string | null): string {
 }
 
 function normalizeSearchLocationText(value?: string | null): string | undefined {
-  const normalized = (value ?? "").replace(/\s+/g, " ").trim();
+  const bounded = (value ?? "").slice(0, MAX_SEARCH_LOCATION_RAW_LENGTH);
+  const normalized = bounded.replace(/\s+/g, " ").trim();
   return normalized ? normalized.slice(0, MAX_SEARCH_LOCATION_LENGTH) : undefined;
 }
 
