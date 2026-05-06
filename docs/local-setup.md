@@ -19,8 +19,8 @@ AI image payloads are additionally capped by the shared API schema before Vision
 
 ## Production essentials
 
-- Set `SESSION_SECRET` to at least 32 random characters. Production startup fails without it.
-- Set `SESSION_SECURE=true` when serving over HTTPS.
+- Set `SESSION_SECRET` to at least 32 random characters. Production startup fails without it or with the example placeholder.
+- Set `SESSION_SECURE=true` when serving over HTTPS. Production rejects `SESSION_SECURE=false`.
 - Replace `ADMIN_USERNAMES=change-me-admin-username` before creating admin accounts. Production rejects this placeholder value.
 - Set `CORS_ORIGIN` to the deployed web origin if the API is served from a different host.
 - Keep `ALLOW_NGROK_ORIGINS=false` in production. Enable it only for temporary tunnel testing.
