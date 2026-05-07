@@ -5275,16 +5275,13 @@ export async function registerRoutes(
   app.get(api.auth.oauthStart.path, authLoginRateLimit, (req, res) => {
     const provider = getOAuthProvider(req.params.provider);
     if (!provider) {
-      return res
-        .status(400)
-        .json({ message: "지원하지 않는 OAuth 제공자입니다." });
+      return res.redirect("/login?error=oauth");
     }
 
     const { clientId, clientSecret } = getOAuthCredentials(provider);
     if (!clientId || !clientSecret) {
-      return res.status(503).json({
-        message: `${provider} OAuth client id/secret이 설정되지 않았습니다.`,
-      });
+      console.warn(`${provider} OAuth client id/secret is not configured.`);
+      return res.redirect("/login?error=oauth");
     }
 
     const state = randomBytes(24).toString("hex");
@@ -5549,7 +5546,7 @@ export async function registerRoutes(
       const input = updateItemClaimReportStatusSchema.parse(req.body);
       const report = await storage.updateClaimReportByAdmin(reportId, input);
       if (!report) {
-        return res.status(404).json({ message: "Report not found" });
+        return res.status(404).json({ message: "신고를 찾을 수 없습니다." });
       }
 
       res.json(report);
