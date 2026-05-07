@@ -27,6 +27,7 @@ import { useDeleteItem, useMyItems, useUpdateItem } from "@/hooks/use-items";
 import { useMatches } from "@/hooks/use-matches";
 import { useToast } from "@/hooks/use-toast";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
+import { formatItemDate } from "@/lib/item-date";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -205,9 +206,6 @@ export default function MyPage() {
                   <div>
                     <p className="text-xl font-semibold text-foreground">
                       {user?.name || user?.username}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {user?.username}
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -655,9 +653,7 @@ export default function MyPage() {
                             {item.date ? (
                               <span className="inline-flex items-center gap-1.5">
                                 <CheckCircle2 className="h-4 w-4" />
-                                {format(new Date(item.date), "PPP", {
-                                  locale: ko,
-                                })}
+                                {formatItemDate(item.date)}
                               </span>
                             ) : null}
                           </div>

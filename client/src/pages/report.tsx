@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+} from "react";
 import { Redirect, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -236,6 +243,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
   );
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isImageDragActive, setIsImageDragActive] = useState(false);
   const [completedItemId, setCompletedItemId] = useState<number | null>(null);
   const isFinalSubmitInFlightRef = useRef(false);
 
@@ -538,6 +546,34 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
     e.target.value = "";
   };
 
+  const handleImageDragOver = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsImageDragActive(true);
+  };
+
+  const handleImageDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsImageDragActive(false);
+    }
+  };
+
+  const handleImageDrop = async (event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsImageDragActive(false);
+
+    const files = Array.from(event.dataTransfer.files ?? []);
+    if (files.length === 0) {
+      return;
+    }
+
+    await processSelectedFiles(files);
+  };
+
   const handleRemoveImage = (indexToRemove: number) => {
     const nextImages = imagePreviews.filter(
       (_, index) => index !== indexToRemove
@@ -820,7 +856,7 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
         </div>
 
         <form
-          onSubmit={form.handleSubmit(onSubmit)}
+          onSubmit={(event) => event.preventDefault()}
           className="space-y-5"
         >
           <div className="rounded-xl border border-border bg-white p-2 shadow-sm">
@@ -889,6 +925,9 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                   </div>
 
                   <div
+                    onDragOver={handleImageDragOver}
+                    onDragLeave={handleImageDragLeave}
+                    onDrop={(event) => void handleImageDrop(event)}
                     className={cn(
                       "grid gap-3",
                       imagePreviews.length === 0
@@ -903,7 +942,8 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                         "group relative overflow-hidden rounded-[18px] border transition-all",
                         imagePreviews.length === 0
                           ? "aspect-[16/9] border-dashed border-primary/35 bg-[linear-gradient(180deg,hsl(var(--primary-light))_0%,white_100%)] hover:border-primary/55"
-                          : "aspect-square border-border/70 bg-white hover:border-primary/45 hover:shadow-md"
+                          : "aspect-square border-border/70 bg-white hover:border-primary/45 hover:shadow-md",
+                        isImageDragActive && "border-primary bg-[hsl(var(--primary-light))] shadow-md"
                       )}
                     >
                       <div className="flex h-full flex-col items-center justify-center px-4 text-center">
@@ -1311,10 +1351,11 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
                 </Button>
               ) : (
                 <Button
-                  type="submit"
+                  type="button"
                   className="h-11 min-w-[180px] rounded-lg px-5 font-semibold"
                   disabled={isSubmitting}
                   aria-busy={isSubmitting}
+                  onClick={() => void form.handleSubmit(onSubmit)()}
                 >
                   {isSubmitting ? (
                     <>

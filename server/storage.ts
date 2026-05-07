@@ -167,7 +167,7 @@ export interface ExternalFoundItemInput {
   placeName?: string | null;
   latitude?: string | null;
   longitude?: string | null;
-  date?: Date | null;
+  date?: string | null;
   contactInfo?: string | null;
 }
 
@@ -179,6 +179,26 @@ function getConfiguredAdminUsernames(): string[] {
 
   assertNoProductionAdminPlaceholders(configuredAdminUsernames);
   return configuredAdminUsernames;
+}
+
+function toKstDateOnly(value: Date | string): string {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
+function addDaysToDateOnly(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function isConfiguredAdminIdentity(
@@ -572,7 +592,7 @@ export class DatabaseStorage implements IStorage {
       } as const;
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - daysByRange[filters.dateRange]);
-      conditions.push(gte(items.date, startDate));
+      conditions.push(gte(items.date, toKstDateOnly(startDate)));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -637,7 +657,7 @@ export class DatabaseStorage implements IStorage {
     const conditions = [
       eq(items.reportType, item.reportType),
       eq(items.title, item.title),
-      gte(items.date, since),
+      gte(items.date, toKstDateOnly(since)),
     ];
 
     if (item.userId) {
@@ -1012,17 +1032,13 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (sourceItem.date) {
-      const sourceDate = new Date(sourceItem.date);
+      const sourceDate = toKstDateOnly(sourceItem.date);
 
       if (targetReportType === "found") {
-        const windowEnd = new Date(sourceDate);
-        windowEnd.setDate(windowEnd.getDate() + AUTO_MATCH_DATE_WINDOW_DAYS);
         conditions.push(gte(items.date, sourceDate));
-        conditions.push(lte(items.date, windowEnd));
+        conditions.push(lte(items.date, addDaysToDateOnly(sourceDate, AUTO_MATCH_DATE_WINDOW_DAYS)));
       } else {
-        const windowStart = new Date(sourceDate);
-        windowStart.setDate(windowStart.getDate() - AUTO_MATCH_DATE_WINDOW_DAYS);
-        conditions.push(gte(items.date, windowStart));
+        conditions.push(gte(items.date, addDaysToDateOnly(sourceDate, -AUTO_MATCH_DATE_WINDOW_DAYS)));
         conditions.push(lte(items.date, sourceDate));
       }
     }
