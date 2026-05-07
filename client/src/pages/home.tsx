@@ -189,7 +189,6 @@ export default function Home() {
                   key={item.id}
                   item={item}
                   variant="compact"
-                  showDateTime
                   imageLoading={index < 6 ? "eager" : "lazy"}
                 />
               ))}

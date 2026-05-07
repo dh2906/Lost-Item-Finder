@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import { useRoute } from "wouter";
-import { format } from "date-fns";
-import { ko } from "date-fns/locale";
 import { Layout } from "@/components/layout";
 import { useAuth } from "@/hooks/use-auth";
 import { useItem } from "@/hooks/use-items";
@@ -35,6 +33,7 @@ import {
   type CarouselApi,
 } from "@/components/ui/carousel";
 import { cn } from "@/lib/utils";
+import { formatItemDate } from "@/lib/item-date";
 import { normalizeItemImageUrls } from "@shared/item-images";
 
 const INTERNAL_TAGS = new Set(["lost112", "police", "경찰청"]);
@@ -277,7 +276,7 @@ export default function ItemDetail() {
                <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
                 <p className="mb-1 text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">날짜</p>
                 <p className="text-sm font-medium">
-                  {item.date ? format(new Date(item.date), "MM/dd", { locale: ko }) : "-"}
+                  {formatItemDate(item.date, "MM/dd")}
                 </p>
               </div>
                <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
@@ -477,7 +476,7 @@ export default function ItemDetail() {
                   {item.date && (
                      <div className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5">
                       <Calendar className="h-3.5 w-3.5" />
-                      {format(new Date(item.date), "PPP", { locale: ko })}
+                      {formatItemDate(item.date)}
                     </div>
                   )}
                 </div>

@@ -996,7 +996,7 @@ function getLost112DetailUrl(item: Lost112NormalizedItem): string | null {
   return `https://www.lost112.go.kr/find/findDetail.do?${params.toString()}`;
 }
 
-function parseLost112Date(value?: string): Date | null {
+function parseLost112Date(value?: string): string | null {
   if (!value) {
     return null;
   }
@@ -1009,17 +1009,15 @@ function parseLost112Date(value?: string): Date | null {
   const day = Number(digits.slice(6, 8));
   const parsed = new Date(year, month, day);
 
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
   if (
+    Number.isNaN(parsed.getTime()) ||
     parsed.getFullYear() !== year ||
     parsed.getMonth() !== month ||
     parsed.getDate() !== day
   ) {
     return null;
   }
-  return parsed;
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 
 function stableStringify(value: unknown): string {

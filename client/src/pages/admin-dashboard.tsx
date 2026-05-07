@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { formatItemDateNumeric } from "@/lib/item-date";
 import { apiRequest } from "@/lib/queryClient";
 import {
   buildUrl,
@@ -536,7 +537,7 @@ export default function AdminDashboardPage() {
                           <div>
                             <p className="font-medium text-foreground">{item.title}</p>
                             <p className="text-xs text-muted-foreground">
-                              {item.ownerName || item.ownerUsername || "익명"} · {formatDate(item.date)}
+                              {item.ownerName || item.ownerUsername || "익명"} · {formatItemDateNumeric(item.date)}
                             </p>
                           </div>
                           <Badge variant={item.reportType === "lost" ? "info" : "warning"}>
@@ -621,7 +622,7 @@ export default function AdminDashboardPage() {
                           </Badge>
                         </TableCell>
                         <TableCell>{item.location || "-"}</TableCell>
-                        <TableCell>{formatDate(item.date)}</TableCell>
+                        <TableCell>{formatItemDateNumeric(item.date)}</TableCell>
                         <TableCell className="text-right">
                           <Button
                             variant="destructive"

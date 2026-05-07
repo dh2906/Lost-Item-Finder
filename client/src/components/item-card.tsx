@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { format } from "date-fns";
-import { ko } from "date-fns/locale";
 import {
   MapPin,
   Calendar,
@@ -17,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { getPrimaryItemImageUrl } from "@shared/item-images";
 import type { Item } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { formatItemDate } from "@/lib/item-date";
 
 const INTERNAL_TAGS = new Set(["lost112", "police", "경찰청"]);
 
@@ -28,7 +27,6 @@ interface ItemCardProps {
   distanceText?: string;
   className?: string;
   variant?: "default" | "compact" | "list";
-  showDateTime?: boolean;
   imageLoading?: "eager" | "lazy";
 }
 
@@ -133,7 +131,6 @@ export function ItemCard({
   distanceText,
   className,
   variant = "default",
-  showDateTime = false,
   imageLoading = "lazy",
 }: ItemCardProps) {
   const [isReasonExpanded, setIsExpanded] = useState(false);
@@ -313,11 +310,7 @@ export function ItemCard({
                   <div className="flex items-center gap-2 leading-none">
                     <Calendar className="h-3.5 w-3.5 shrink-0 text-primary/50" />
                     <span className="pt-px font-medium text-muted-foreground">
-                      {format(
-                        new Date(item.date),
-                        showDateTime ? "PPP p" : "PPP",
-                        { locale: ko }
-                      )}
+                      {formatItemDate(item.date)}
                     </span>
                   </div>
                 ) : null}

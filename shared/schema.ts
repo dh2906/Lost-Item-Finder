@@ -2,6 +2,7 @@ import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   check,
+  date as pgDate,
   index,
   integer,
   jsonb,
@@ -62,7 +63,9 @@ export const items = pgTable(
     placeName: text("place_name"),
     latitude: text("latitude"),
     longitude: text("longitude"),
-    date: timestamp("date").defaultNow(),
+    date: pgDate("date", { mode: "string" }).default(
+      sql`(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Seoul')::date`
+    ),
     contactInfo: text("contact_info"),
     // External fields are reserved for third-party source records such as
     // Lost112. User-created posts keep these null so source-specific behavior
