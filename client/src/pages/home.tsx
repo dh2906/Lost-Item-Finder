@@ -7,6 +7,7 @@ import {
   PackageSearch,
   Plus,
   Search,
+  ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
 import { Layout } from "@/components/layout";
@@ -36,7 +37,7 @@ export default function Home() {
         <div className="container py-8 sm:py-10 lg:py-12 xl:max-w-[1440px]">
           <div className="grid items-stretch gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
             <div className="flex min-w-0 flex-col gap-3">
-              <div className="grid items-stretch gap-3 md:grid-cols-3">
+              <div className="grid items-stretch gap-3 md:grid-cols-2 2xl:grid-cols-4">
                 <Link
                   href="/report/lost"
                   className="group flex min-h-[176px] flex-col rounded-xl border border-primary/20 bg-primary p-5 text-primary-foreground shadow-[0_2px_8px_rgba(0,0,0,0.08)] transition-all hover:-translate-y-0.5"
@@ -78,6 +79,21 @@ export default function Home() {
                   </p>
                   <span className="mt-auto inline-flex items-center gap-2 pt-5 text-sm font-semibold text-primary">
                     탐색하기
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </Link>
+
+                <Link
+                  href="/claim-report"
+                  className="group flex min-h-[176px] flex-col rounded-xl border border-destructive/20 bg-white p-5 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all hover:-translate-y-0.5 hover:border-destructive/35"
+                >
+                  <ShieldAlert className="h-6 w-6 text-destructive" />
+                  <h2 className="mt-3 text-lg font-bold text-foreground">신고하기</h2>
+                  <p className="mt-2 min-h-[3rem] text-sm leading-6 text-muted-foreground">
+                    분실자인 척 물건을 가져간 정황이 있으면 관리자에게 신고할 수 있습니다.
+                  </p>
+                  <span className="mt-auto inline-flex items-center gap-2 pt-5 text-sm font-semibold text-destructive">
+                    신고 접수
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </span>
                 </Link>

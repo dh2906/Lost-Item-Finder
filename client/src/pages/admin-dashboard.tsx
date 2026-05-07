@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity,
+  AlertTriangle,
   Ban,
   PackageSearch,
   Shield,
@@ -37,7 +38,14 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { buildUrl, api, type AdminDashboardResponse, type AdminItemsResponse, type AdminUsersResponse } from "@shared/routes";
+import {
+  buildUrl,
+  api,
+  type AdminClaimReportsResponse,
+  type AdminDashboardResponse,
+  type AdminItemsResponse,
+  type AdminUsersResponse,
+} from "@shared/routes";
 
 const dashboardQueryKey = [api.admin.dashboard.path] as const;
 
@@ -90,6 +98,7 @@ export default function AdminDashboardPage() {
   const [itemSearch, setItemSearch] = useState("");
   const [itemTypeFilter, setItemTypeFilter] = useState("all");
   const [itemPage, setItemPage] = useState(1);
+  const [claimReportStatusFilter, setClaimReportStatusFilter] = useState("all");
   const itemPageSize = 30;
 
   const { data: dashboard, isLoading: isDashboardLoading } =
@@ -159,6 +168,28 @@ export default function AdminDashboardPage() {
     });
   const items = itemsResponse?.items ?? [];
 
+  const { data: claimReports = [], isLoading: isClaimReportsLoading } =
+    useQuery<AdminClaimReportsResponse>({
+      queryKey: [api.admin.claimReports.path, claimReportStatusFilter],
+      queryFn: async () => {
+        const res = await fetch(
+          `${api.admin.claimReports.path}${buildQueryString({
+            status:
+              claimReportStatusFilter !== "all"
+                ? claimReportStatusFilter
+                : undefined,
+          })}`,
+          {
+            credentials: "include",
+          }
+        );
+        if (!res.ok) {
+          throw new Error("신고 목록을 불러오지 못했습니다.");
+        }
+        return res.json();
+      },
+    });
+
   const updateUserMutation = useMutation({
     mutationFn: async (payload: {
       id: number;
@@ -205,6 +236,37 @@ export default function AdminDashboardPage() {
       toast({
         variant: "destructive",
         title: error instanceof Error ? error.message : "게시글 삭제에 실패했습니다.",
+      });
+    },
+  });
+
+  const updateClaimReportMutation = useMutation({
+    mutationFn: async (payload: {
+      id: number;
+      status: "open" | "reviewing" | "resolved" | "dismissed";
+    }) => {
+      const response = await apiRequest(
+        "PATCH",
+        buildUrl(api.admin.updateClaimReport.path, { id: payload.id }),
+        { status: payload.status }
+      );
+      return response.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: [api.admin.claimReports.path],
+      });
+      toast({
+        title: "신고 상태를 업데이트했습니다.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title:
+          error instanceof Error
+            ? error.message
+            : "신고 상태 업데이트에 실패했습니다.",
       });
     },
   });
@@ -618,6 +680,129 @@ export default function AdminDashboardPage() {
                   </Button>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                부정 수령 신고 관리
+              </CardTitle>
+              <CardDescription>
+                분실자인 척 물건을 가져간 것으로 의심되는 신고를 확인하고 처리 상태를 관리합니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="max-w-[220px]">
+                <Select
+                  value={claimReportStatusFilter}
+                  onValueChange={setClaimReportStatusFilter}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="처리 상태" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">전체 신고</SelectItem>
+                    <SelectItem value="open">접수</SelectItem>
+                    <SelectItem value="reviewing">검토 중</SelectItem>
+                    <SelectItem value="resolved">처리 완료</SelectItem>
+                    <SelectItem value="dismissed">반려</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>신고 내용</TableHead>
+                    <TableHead>신고자</TableHead>
+                    <TableHead>관련 게시글</TableHead>
+                    <TableHead>접수일</TableHead>
+                    <TableHead>상태</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isClaimReportsLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                        신고 목록을 불러오는 중입니다.
+                      </TableCell>
+                    </TableRow>
+                  ) : claimReports.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground">
+                        조건에 맞는 신고가 없습니다.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    claimReports.map((report) => (
+                      <TableRow key={report.id}>
+                        <TableCell className="max-w-[420px]">
+                          <div className="space-y-1">
+                            <p className="line-clamp-2 font-medium text-foreground">
+                              {report.incidentSummary}
+                            </p>
+                            {report.suspectedUserInfo ? (
+                              <p className="text-xs text-muted-foreground">
+                                의심 대상: {report.suspectedUserInfo}
+                              </p>
+                            ) : null}
+                            {report.evidence ? (
+                              <p className="line-clamp-1 text-xs text-muted-foreground">
+                                증거: {report.evidence}
+                              </p>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {report.reporterName || report.reporterUsername || "-"}
+                        </TableCell>
+                        <TableCell>
+                          {report.itemId ? (
+                            <a
+                              href={`/item/${report.itemId}`}
+                              className="font-medium text-primary hover:underline"
+                            >
+                              #{report.itemId} {report.itemTitle ?? ""}
+                            </a>
+                          ) : (
+                            "-"
+                          )}
+                        </TableCell>
+                        <TableCell>{formatDate(report.createdAt)}</TableCell>
+                        <TableCell>
+                          <Select
+                            value={report.status}
+                            disabled={updateClaimReportMutation.isPending}
+                            onValueChange={(
+                              value: "open" | "reviewing" | "resolved" | "dismissed"
+                            ) => {
+                              if (value === report.status) {
+                                return;
+                              }
+                              updateClaimReportMutation.mutate({
+                                id: report.id,
+                                status: value,
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="h-8 w-[120px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="open">접수</SelectItem>
+                              <SelectItem value="reviewing">검토 중</SelectItem>
+                              <SelectItem value="resolved">처리 완료</SelectItem>
+                              <SelectItem value="dismissed">반려</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </CardContent>
           </Card>
 

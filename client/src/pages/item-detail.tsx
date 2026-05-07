@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   ExternalLink,
   ShieldCheck,
+  ShieldAlert,
   BellRing,
   MessageCircleMore,
 } from "lucide-react";
@@ -582,6 +583,14 @@ export default function ItemDetail() {
                     <MessageCircleMore className="h-4 w-4 text-primary" />
                     로그인 후 등록자와 채팅할 수 있어요.
                   </div>
+                ) : null}
+                {isAuthenticated && !isOwner ? (
+                  <Button asChild variant="outline" className="mt-3 w-full rounded-full border-destructive/25 text-destructive hover:bg-destructive/5 hover:text-destructive">
+                    <Link href={`/claim-report?itemId=${item.id}`}>
+                      <ShieldAlert className="mr-2 h-4 w-4" />
+                      부정 수령 신고하기
+                    </Link>
+                  </Button>
                 ) : null}
               </CardContent>
             </Card>

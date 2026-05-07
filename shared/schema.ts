@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   index,
   integer,
   jsonb,
@@ -313,21 +314,45 @@ export const updateItemMatchStatusSchema = z.object({
 
 export type InsertItemMatch = z.infer<typeof insertItemMatchSchema>;
 
-export const users = pgTable("users", {
-  id: serial("id").primaryKey(),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
-  name: text("name"),
-  fcmToken: text("fcm_token"),
-  role: text("role").notNull().default("member"),
-  status: text("status").notNull().default("active"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: serial("id").primaryKey(),
+    username: text("username").notNull().unique(),
+    password: text("password"),
+    name: text("name"),
+    email: text("email"),
+    profileImageUrl: text("profile_image_url"),
+    authProvider: text("auth_provider").notNull().default("local"),
+    authProviderId: text("auth_provider_id"),
+    fcmToken: text("fcm_token"),
+    role: text("role").notNull().default("member"),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    authProviderIdUnique: uniqueIndex("users_auth_provider_id_unique").on(
+      table.authProvider,
+      table.authProviderId
+    ),
+    oauthProviderIdRequired: check(
+      "users_oauth_provider_id_required",
+      sql`${table.authProvider} = 'local' or ${table.authProviderId} is not null`
+    ),
+    localPasswordRequired: check(
+      "users_local_password_required",
+      sql`${table.authProvider} <> 'local' or ${table.password} is not null`
+    ),
+  })
+);
 
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
 });
+
+export const oauthProviders = ["google", "kakao", "naver"] as const;
+export type OAuthProvider = (typeof oauthProviders)[number];
 
 export const sessions = pgTable("sessions", {
   sid: text("sid").primaryKey(),
@@ -361,6 +386,72 @@ export const matchNotifications = pgTable(
     ).on(table.userId, table.lostItemId, table.foundItemId),
   })
 );
+
+export const claimReportStatuses = [
+  "open",
+  "reviewing",
+  "resolved",
+  "dismissed",
+] as const;
+export type ClaimReportStatus = (typeof claimReportStatuses)[number];
+
+export const itemClaimReports = pgTable(
+  "item_claim_reports",
+  {
+    id: serial("id").primaryKey(),
+    reporterId: integer("reporter_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    itemId: integer("item_id").references(() => items.id, {
+      onDelete: "set null",
+    }),
+    suspectedUserInfo: text("suspected_user_info"),
+    incidentSummary: text("incident_summary").notNull(),
+    evidence: text("evidence"),
+    contactInfo: text("contact_info"),
+    status: text("status").notNull().default("open"),
+    adminNote: text("admin_note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    reporterIndex: index("item_claim_reports_reporter_idx").on(table.reporterId),
+    itemIndex: index("item_claim_reports_item_idx").on(table.itemId),
+    statusIndex: index("item_claim_reports_status_idx").on(table.status),
+    statusAllowed: check(
+      "item_claim_reports_status_check",
+      sql`${table.status} in ('open', 'reviewing', 'resolved', 'dismissed')`
+    ),
+  })
+);
+
+export const insertItemClaimReportSchema = createInsertSchema(itemClaimReports, {
+  status: z.enum(claimReportStatuses),
+})
+  .omit({
+    id: true,
+    reporterId: true,
+    status: true,
+    adminNote: true,
+    createdAt: true,
+    updatedAt: true,
+  })
+  .extend({
+    itemId: z.number().int().positive().optional(),
+    suspectedUserInfo: z.string().trim().max(300).optional(),
+    incidentSummary: z.string().trim().min(10).max(2000),
+    evidence: z.string().trim().max(2000).optional(),
+    contactInfo: z.string().trim().max(120).optional(),
+  });
+
+export const updateItemClaimReportStatusSchema = z
+  .object({
+    status: z.enum(claimReportStatuses).optional(),
+    adminNote: z.string().trim().max(2000).optional(),
+  })
+  .refine((value) => value.status !== undefined || value.adminNote !== undefined, {
+    message: "최소 한 개 이상의 필드를 입력해야 합니다.",
+  });
 
 export const chatRooms = pgTable("chat_rooms", {
   id: serial("id").primaryKey(),
@@ -403,6 +494,11 @@ export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type ItemClaimReport = typeof itemClaimReports.$inferSelect;
+export type InsertItemClaimReport = z.infer<typeof insertItemClaimReportSchema>;
+export type UpdateItemClaimReportStatus = z.infer<
+  typeof updateItemClaimReportStatusSchema
+>;
 export type MatchNotification = typeof matchNotifications.$inferSelect;
 export type ChatRoom = typeof chatRooms.$inferSelect;
 export type InsertChatRoom = z.infer<typeof insertChatRoomSchema>;
@@ -443,6 +539,18 @@ export const usersRelations = relations(users, ({ many }) => ({
   sentChatRooms: many(chatRooms, { relationName: "chat_room_sender" }),
   receivedChatRooms: many(chatRooms, { relationName: "chat_room_receiver" }),
   chatMessages: many(chatMessages),
+  claimReports: many(itemClaimReports),
+}));
+
+export const itemClaimReportsRelations = relations(itemClaimReports, ({ one }) => ({
+  reporter: one(users, {
+    fields: [itemClaimReports.reporterId],
+    references: [users.id],
+  }),
+  item: one(items, {
+    fields: [itemClaimReports.itemId],
+    references: [items.id],
+  }),
 }));
 
 export const chatRoomsRelations = relations(chatRooms, ({ one, many }) => ({

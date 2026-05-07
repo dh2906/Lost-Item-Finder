@@ -11,6 +11,9 @@ export interface User {
   id: number;
   username: string;
   name: string | null;
+  email?: string | null;
+  profileImageUrl?: string | null;
+  authProvider?: string;
   role: "member" | "admin";
   status: "active" | "suspended";
   createdAt: string | null;
