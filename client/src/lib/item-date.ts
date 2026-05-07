@@ -9,8 +9,21 @@ function parseItemDate(value: string | Date): Date | null {
   const dateOnlyMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (dateOnlyMatch) {
     const [, year, month, day] = dateOnlyMatch;
-    const parsed = new Date(Number(year), Number(month) - 1, Number(day));
-    return Number.isNaN(parsed.getTime()) ? null : parsed;
+    const numericYear = Number(year);
+    const numericMonth = Number(month);
+    const numericDay = Number(day);
+    const parsed = new Date(numericYear, numericMonth - 1, numericDay);
+
+    if (
+      Number.isNaN(parsed.getTime()) ||
+      parsed.getFullYear() !== numericYear ||
+      parsed.getMonth() !== numericMonth - 1 ||
+      parsed.getDate() !== numericDay
+    ) {
+      return null;
+    }
+
+    return parsed;
   }
 
   const parsed = new Date(value);

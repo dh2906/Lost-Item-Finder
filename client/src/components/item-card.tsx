@@ -27,7 +27,6 @@ interface ItemCardProps {
   distanceText?: string;
   className?: string;
   variant?: "default" | "compact" | "list";
-  showDateTime?: boolean;
   imageLoading?: "eager" | "lazy";
 }
 
@@ -132,7 +131,6 @@ export function ItemCard({
   distanceText,
   className,
   variant = "default",
-  showDateTime = false,
   imageLoading = "lazy",
 }: ItemCardProps) {
   const [isReasonExpanded, setIsExpanded] = useState(false);
