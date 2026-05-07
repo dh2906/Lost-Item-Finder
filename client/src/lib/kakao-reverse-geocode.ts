@@ -74,14 +74,31 @@ function setPersistentAddress(key: string, address: string | undefined): void {
   writePersistentCache(cache);
 }
 
+async function reverseGeocodeFromServer(
+  lat: number,
+  lng: number,
+): Promise<string | undefined> {
+  try {
+    const params = new URLSearchParams({
+      latitude: String(lat),
+      longitude: String(lng),
+    });
+    const response = await fetch(`/api/geocode/reverse?${params.toString()}`);
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const body = (await response.json()) as { address?: string | null };
+    return body.address || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function reverseGeocodeKakao(
   lat: number,
   lng: number,
 ): Promise<string | undefined> {
-  if (!window.kakao?.maps?.services) {
-    return Promise.resolve(undefined);
-  }
-
   const key = getCoordinateKey(lat, lng);
   if (reverseGeocodeCache.has(key)) {
     return Promise.resolve(reverseGeocodeCache.get(key));
@@ -97,18 +114,27 @@ export function reverseGeocodeKakao(
     return pending;
   }
 
-  const request = new Promise<string | undefined>((resolve) => {
-    const geocoder = new window.kakao.maps.services.Geocoder();
-    geocoder.coord2Address(lng, lat, (result: any, status: any) => {
-      const address =
-        status === window.kakao.maps.services.Status.OK && result?.[0]
-          ? result[0].road_address?.address_name || result[0].address?.address_name
-          : undefined;
-
-      reverseGeocodeCache.set(key, address);
-      setPersistentAddress(key, address);
+  const request = reverseGeocodeFromServer(lat, lng).then((serverAddress) => {
+    if (serverAddress || !window.kakao?.maps?.services) {
+      reverseGeocodeCache.set(key, serverAddress);
+      setPersistentAddress(key, serverAddress);
       pendingReverseGeocodes.delete(key);
-      resolve(address);
+      return serverAddress;
+    }
+
+    return new Promise<string | undefined>((resolve) => {
+      const geocoder = new window.kakao.maps.services.Geocoder();
+      geocoder.coord2Address(lng, lat, (result: any, status: any) => {
+        const address =
+          status === window.kakao.maps.services.Status.OK && result?.[0]
+            ? result[0].road_address?.address_name || result[0].address?.address_name
+            : undefined;
+
+        reverseGeocodeCache.set(key, address);
+        setPersistentAddress(key, address);
+        pendingReverseGeocodes.delete(key);
+        resolve(address);
+      });
     });
   });
 

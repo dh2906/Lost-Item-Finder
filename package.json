@@ -14,6 +14,7 @@
     "db:down": "docker compose down",
     "db:logs": "docker compose logs db",
     "eval:ai-search": "tsx script/ai-search-eval.ts",
+    "eval:ai-search:compare": "tsx script/ai-search-compare.ts",
     "smoke": "tsx script/service-smoke.ts",
     "pwa:icons": "tsx script/generate-pwa-icons.ts"
   },
@@ -62,8 +63,8 @@
     "express": "^5.0.1",
     "express-session": "^1.18.1",
     "firebase": "^12.11.0",
-    "firebase-admin": "^13.7.0",
     "framer-motion": "^11.18.2",
+    "google-auth-library": "^10.6.2",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",

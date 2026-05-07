@@ -15,7 +15,18 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
-import { MAX_ITEM_IMAGE_COUNT } from "./item-images";
+import {
+  MAX_ITEM_CONTACT_INFO_LENGTH,
+  MAX_ITEM_COORDINATE_TEXT_LENGTH,
+  MAX_ITEM_DESCRIPTION_LENGTH,
+  MAX_ITEM_LOCATION_TEXT_LENGTH,
+  MAX_ITEM_SHORT_TEXT_LENGTH,
+  MAX_ITEM_TAG_COUNT,
+  MAX_ITEM_TAG_LENGTH,
+  MAX_ITEM_TITLE_LENGTH,
+  MIN_ITEM_TITLE_LENGTH,
+} from "./item-limits";
+import { MAX_ITEM_IMAGE_COUNT, MAX_ITEM_IMAGE_URL_LENGTH } from "./item-images";
 
 export const reportTypes = ["lost", "found"] as const;
 export type ReportType = (typeof reportTypes)[number];
@@ -131,11 +142,126 @@ export const itemMatches = pgTable(
 const itemBaseSchema = createInsertSchema(items, {
   reportType: z.enum(reportTypes),
   status: z.enum(itemStatuses),
-  imageUrl: z.string().trim().min(1).optional(),
+  title: z
+    .string()
+    .trim()
+    .min(MIN_ITEM_TITLE_LENGTH, `제목은 ${MIN_ITEM_TITLE_LENGTH}자 이상이어야 합니다.`)
+    .max(MAX_ITEM_TITLE_LENGTH, `제목은 ${MAX_ITEM_TITLE_LENGTH}자 이내로 입력해 주세요.`),
+  description: z
+    .string()
+    .trim()
+    .max(
+      MAX_ITEM_DESCRIPTION_LENGTH,
+      `설명은 ${MAX_ITEM_DESCRIPTION_LENGTH}자 이내로 입력해 주세요.`
+    )
+    .optional()
+    .nullable(),
+  imageUrl: z
+    .string()
+    .trim()
+    .min(1)
+    .max(
+      MAX_ITEM_IMAGE_URL_LENGTH,
+      "이미지 용량이 너무 큽니다. 더 작은 사진을 선택해 주세요."
+    )
+    .optional()
+    .nullable(),
   imageUrls: z
-    .array(z.string().trim().min(1))
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(
+          MAX_ITEM_IMAGE_URL_LENGTH,
+          "이미지 용량이 너무 큽니다. 더 작은 사진을 선택해 주세요."
+        )
+    )
     .max(MAX_ITEM_IMAGE_COUNT)
     .optional(),
+  itemCategory: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_SHORT_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  color: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_SHORT_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  size: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_SHORT_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  tags: z
+    .array(
+      z
+        .string()
+        .trim()
+        .min(1)
+        .max(MAX_ITEM_TAG_LENGTH, `태그는 ${MAX_ITEM_TAG_LENGTH}자 이내로 입력해 주세요.`)
+    )
+    .max(MAX_ITEM_TAG_COUNT, `태그는 최대 ${MAX_ITEM_TAG_COUNT}개까지 입력할 수 있어요.`)
+    .optional()
+    .nullable(),
+  location: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_LOCATION_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  region1: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_SHORT_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  region2: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_SHORT_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  region3: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_SHORT_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  address: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_LOCATION_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  placeName: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_LOCATION_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  latitude: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_COORDINATE_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  longitude: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_COORDINATE_TEXT_LENGTH)
+    .optional()
+    .nullable(),
+  contactInfo: z
+    .string()
+    .trim()
+    .max(MAX_ITEM_CONTACT_INFO_LENGTH)
+    .optional()
+    .nullable(),
 }).omit({
   id: true,
   userId: true,

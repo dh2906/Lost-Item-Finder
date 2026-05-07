@@ -1,0 +1,9 @@
+export const MIN_ITEM_TITLE_LENGTH = 3;
+export const MAX_ITEM_TITLE_LENGTH = 120;
+export const MAX_ITEM_DESCRIPTION_LENGTH = 2000;
+export const MAX_ITEM_SHORT_TEXT_LENGTH = 80;
+export const MAX_ITEM_LOCATION_TEXT_LENGTH = 200;
+export const MAX_ITEM_CONTACT_INFO_LENGTH = 40;
+export const MAX_ITEM_TAG_COUNT = 20;
+export const MAX_ITEM_TAG_LENGTH = 40;
+export const MAX_ITEM_COORDINATE_TEXT_LENGTH = 32;

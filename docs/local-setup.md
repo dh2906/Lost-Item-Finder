@@ -19,14 +19,17 @@ AI image payloads are additionally capped by the shared API schema before Vision
 
 ## Production essentials
 
-- Set `SESSION_SECRET` to at least 32 random characters. Production startup fails without it.
-- Set `SESSION_SECURE=true` when serving over HTTPS.
-- Replace `ADMIN_USERNAMES=change-me-admin-username` before creating admin accounts.
+- Set `SESSION_SECRET` to at least 32 random characters. Production startup fails without it or with the example placeholder.
+- Set `SESSION_SECURE=true` when serving over HTTPS. Production rejects `SESSION_SECURE=false`.
+- Replace `ADMIN_USERNAMES=change-me-admin-username` before creating admin accounts. Production rejects this placeholder value.
 - Set `CORS_ORIGIN` to the deployed web origin if the API is served from a different host.
+- Keep `ALLOW_NGROK_ORIGINS=false` in production. Enable it only for temporary tunnel testing.
 - Keep `AI_RERANK_ENABLED`, `AUTOMATIC_MATCH_QUEUE_ENABLED`, and `OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED` disabled unless you intentionally accept the extra LLM cost.
 - Tune `AI_SEARCH_GUEST_RATE_LIMIT`, `AI_SEARCH_USER_RATE_LIMIT`, and `AI_IMAGE_ANALYSIS_RATE_LIMIT` before opening the service publicly.
 - Tune `AUTH_LOGIN_RATE_LIMIT` and `AUTH_REGISTER_RATE_LIMIT` if your deployment sits behind a shared proxy or classroom network.
 - Tune `CHAT_MESSAGE_RATE_LIMIT` if real users need faster back-and-forth messaging.
+- Set `KAKAO_REST_API_KEY` so reverse geocoding goes through the server cache before falling back to the browser Kakao SDK.
+- Tune `REVERSE_GEOCODE_GUEST_RATE_LIMIT` and `REVERSE_GEOCODE_USER_RATE_LIMIT` if map/detail views create too much Kakao Local API traffic.
 
 ## Database
 

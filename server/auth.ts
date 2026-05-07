@@ -14,6 +14,7 @@ import { User as UserType } from "@shared/schema";
 const PostgresSessionStore = connectPg(session);
 const fallbackSessionSecret = "dev-secret-change-in-production";
 const productionSessionSecretMinLength = 32;
+const placeholderSessionSecret = "replace-with-a-long-random-session-secret";
 
 declare global {
   namespace Express {
@@ -33,10 +34,20 @@ export function setupAuth(app: Express) {
       throw new Error("SESSION_SECRET must be set in production.");
     }
 
+    if (sessionSecret === placeholderSessionSecret) {
+      throw new Error(
+        "SESSION_SECRET must be replaced with a real random value in production."
+      );
+    }
+
     if (sessionSecret.length < productionSessionSecretMinLength) {
       throw new Error(
         `SESSION_SECRET must be at least ${productionSessionSecretMinLength} characters in production.`
       );
+    }
+
+    if (process.env.SESSION_SECURE === "false") {
+      throw new Error("SESSION_SECURE must not be false in production.");
     }
   }
 

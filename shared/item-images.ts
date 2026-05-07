@@ -1,4 +1,5 @@
 export const MAX_ITEM_IMAGE_COUNT = 10;
+export const MAX_ITEM_IMAGE_URL_LENGTH = 4 * 1024 * 1024;
 
 type ItemImageSource = {
   imageUrl?: string | null;

@@ -187,6 +187,20 @@ const optionalRadiusKmQuerySchema = z.preprocess((value) => {
   return getOptionalTrimmedQueryValue(value);
 }, z.coerce.number().min(0.1).max(50).optional());
 
+const reverseGeocodeQuerySchema = z.object({
+  latitude: z.preprocess((value) => {
+    return getOptionalTrimmedQueryValue(value);
+  }, z.coerce.number().min(-90).max(90)),
+  longitude: z.preprocess((value) => {
+    return getOptionalTrimmedQueryValue(value);
+  }, z.coerce.number().min(-180).max(180)),
+});
+
+const reverseGeocodeResponseSchema = z.object({
+  address: z.string().nullable(),
+  cached: z.boolean(),
+});
+
 const lost112ItemResponseSchema = z.object({
   atcId: z.string(),
   fdSn: z.string().optional().default("1"),
@@ -352,6 +366,18 @@ export const api = {
         201: claimReportResponseSchema,
         400: errorSchemas.validation,
         401: errorSchemas.validation,
+      },
+    },
+  },
+  geocode: {
+    reverse: {
+      method: "GET" as const,
+      path: "/api/geocode/reverse" as const,
+      input: reverseGeocodeQuerySchema,
+      responses: {
+        200: reverseGeocodeResponseSchema,
+        400: errorSchemas.validation,
+        503: errorSchemas.internal,
       },
     },
   },

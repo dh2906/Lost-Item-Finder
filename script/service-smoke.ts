@@ -1,3 +1,11 @@
+import { insertItemSchema, updateItemSchema } from "../shared/schema";
+import {
+  MAX_ITEM_TAG_COUNT,
+  MAX_ITEM_TAG_LENGTH,
+  MAX_ITEM_TITLE_LENGTH,
+} from "../shared/item-limits";
+import { MAX_ITEM_IMAGE_URL_LENGTH } from "../shared/item-images";
+
 type CheckResult = {
   name: string;
   status: "pass" | "fail" | "skip";
@@ -22,6 +30,7 @@ function printUsage(): void {
   npm run smoke -- --base-url=http://localhost:8080
 
 Optional:
+  npm run smoke -- --schema-only
   FINDY_BASE_URL=http://localhost:8080 npm run smoke
   FINDY_SESSION_COOKIE="connect.sid=..." npm run smoke -- --base-url=http://localhost:8080
   FINDY_SMOKE_EXPECT_AI_RATE_LIMIT=true AI_SEARCH_GUEST_RATE_LIMIT=1 npm run smoke
@@ -99,12 +108,88 @@ async function runCheck(
   }
 }
 
+async function runSchemaChecks(): Promise<CheckResult[]> {
+  return [
+    await runCheck("item title length schema", async () => {
+      const shortTitle = insertItemSchema.safeParse({
+        reportType: "lost",
+        title: "ab",
+      });
+      const longTitle = insertItemSchema.safeParse({
+        reportType: "lost",
+        title: "가".repeat(MAX_ITEM_TITLE_LENGTH + 1),
+      });
+      const validTitle = insertItemSchema.safeParse({
+        reportType: "lost",
+        title: "민트색 텀블러",
+      });
+
+      if (shortTitle.success || longTitle.success || !validTitle.success) {
+        throw new Error("제목 길이 제한이 예상대로 동작하지 않습니다.");
+      }
+
+      return {
+        detail: `min/max enforced, max=${MAX_ITEM_TITLE_LENGTH}`,
+        latencyMs: 0,
+      };
+    }),
+    await runCheck("item tag limits schema", async () => {
+      const longTag = insertItemSchema.safeParse({
+        reportType: "lost",
+        title: "민트색 텀블러",
+        tags: ["가".repeat(MAX_ITEM_TAG_LENGTH + 1)],
+      });
+      const tooManyTags = insertItemSchema.safeParse({
+        reportType: "lost",
+        title: "민트색 텀블러",
+        tags: Array.from({ length: MAX_ITEM_TAG_COUNT + 1 }, (_, index) => `tag-${index}`),
+      });
+
+      if (longTag.success || tooManyTags.success) {
+        throw new Error("태그 길이/개수 제한이 예상대로 동작하지 않습니다.");
+      }
+
+      return {
+        detail: `tagLength=${MAX_ITEM_TAG_LENGTH}, tagCount=${MAX_ITEM_TAG_COUNT}`,
+        latencyMs: 0,
+      };
+    }),
+    await runCheck("item image payload schema", async () => {
+      const largeImage = insertItemSchema.safeParse({
+        reportType: "found",
+        title: "민트색 텀블러",
+        imageUrls: [`data:image/jpeg;base64,${"a".repeat(MAX_ITEM_IMAGE_URL_LENGTH)}`],
+      });
+
+      if (largeImage.success) {
+        throw new Error("이미지 URL 길이 제한이 예상대로 동작하지 않습니다.");
+      }
+
+      return {
+        detail: `maxImageUrlLength=${MAX_ITEM_IMAGE_URL_LENGTH}`,
+        latencyMs: 0,
+      };
+    }),
+    await runCheck("item update empty body schema", async () => {
+      const emptyUpdate = updateItemSchema.safeParse({});
+      const validUpdate = updateItemSchema.safeParse({ title: "민트색 텀블러" });
+
+      if (emptyUpdate.success || !validUpdate.success) {
+        throw new Error("수정 입력 스키마가 예상대로 동작하지 않습니다.");
+      }
+
+      return { detail: "empty update rejected", latencyMs: 0 };
+    }),
+  ];
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes("--help")) {
     printUsage();
     return;
   }
 
+  const schemaOnly = process.argv.includes("--schema-only");
   const baseUrl = getArgValue("base-url") ?? process.env.FINDY_BASE_URL ?? "http://localhost:8080";
   const configuredCookie = process.env.FINDY_SESSION_COOKIE;
   const smokeUsername = process.env.FINDY_SMOKE_USERNAME;
@@ -115,6 +200,24 @@ async function main(): Promise<void> {
   let authenticatedCookie = configuredCookie;
 
   const checks: CheckResult[] = [];
+  checks.push(...await runSchemaChecks());
+
+  if (schemaOnly) {
+    console.table(
+      checks.map((check) => ({
+        check: check.name,
+        status: check.status,
+        detail: check.detail,
+        latencyMs: check.latencyMs,
+      }))
+    );
+
+    const failures = checks.filter((check) => check.status === "fail");
+    if (failures.length > 0) {
+      throw new Error(`스모크 검증 실패: ${failures.map((check) => check.name).join(", ")}`);
+    }
+    return;
+  }
 
   checks.push(
     await runCheck("health", async () => {
