@@ -417,6 +417,10 @@ export const api = {
           sort: z.enum(itemSortOrders).optional(),
           page: optionalPositiveIntegerQuerySchema,
           limit: optionalItemsPageLimitQuerySchema,
+          skipTotal: z
+            .union([z.literal("true"), z.literal(true)])
+            .transform(() => true)
+            .optional(),
         })
         .superRefine((value, ctx) => {
           const hasLatitude = value.latitude !== undefined;

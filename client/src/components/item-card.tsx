@@ -291,6 +291,11 @@ export function ItemCard({
               </h3>
 
               <div className="flex flex-col gap-1.5 pt-0.5 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 leading-none">
+                  <span className="rounded-md bg-secondary px-1.5 py-0.5 text-xs font-semibold text-foreground/70">
+                    게시글 #{item.id}
+                  </span>
+                </div>
                 {displayLocation ? (
                   <div className="flex items-start gap-2 leading-snug">
                     <MapPin className="h-3.5 w-3.5 shrink-0 text-primary/50" />

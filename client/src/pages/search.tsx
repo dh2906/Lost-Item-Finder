@@ -100,7 +100,11 @@ export default function SearchPage() {
     }
 
     try {
-      const base64 = await optimizeImageForUpload(file);
+      const base64 = await optimizeImageForUpload(file, {
+        maxWidth: 1280,
+        maxHeight: 1280,
+        quality: 0.72,
+      });
       setImagePreview(base64);
       form.setValue("imageUrl", base64);
       form.clearErrors("prompt");

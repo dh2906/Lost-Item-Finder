@@ -17,6 +17,22 @@ function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: strin
   return result.data;
 }
 
+async function readJsonResponse(res: Response): Promise<unknown> {
+  const responseText = await res.text();
+  if (!responseText) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    const fallbackMessage = res.ok
+      ? "서버 응답을 해석하지 못했습니다."
+      : "서버에서 오류 페이지를 반환했습니다. 잠시 후 다시 시도해 주세요.";
+    throw new Error(fallbackMessage);
+  }
+}
+
 export function useAnalyzeImage(): UseMutationResult<AnalyzeImageResponse, Error, AnalyzeImageInput> {
   return useMutation({
     mutationFn: async (data: AnalyzeImageInput) => {
@@ -28,10 +44,17 @@ export function useAnalyzeImage(): UseMutationResult<AnalyzeImageResponse, Error
         credentials: "include",
       });
       
-      const resData = await res.json();
+      const resData = await readJsonResponse(res);
       
       if (!res.ok) {
-        throw new Error(resData.message || "Failed to analyze image");
+        const message =
+          resData &&
+          typeof resData === "object" &&
+          "message" in resData &&
+          typeof resData.message === "string"
+            ? resData.message
+            : "Failed to analyze image";
+        throw new Error(message);
       }
       return parseWithLogging(api.ai.analyzeImage.responses[200], resData, "ai.analyzeImage");
     },
@@ -49,10 +72,17 @@ export function useSearchSimilar(): UseMutationResult<SearchSimilarResponse, Err
         credentials: "include",
       });
       
-      const resData = await res.json();
+      const resData = await readJsonResponse(res);
       
       if (!res.ok) {
-        throw new Error(resData.message || "Failed to search items");
+        const message =
+          resData &&
+          typeof resData === "object" &&
+          "message" in resData &&
+          typeof resData.message === "string"
+            ? resData.message
+            : "Failed to search items";
+        throw new Error(message);
       }
       return parseWithLogging(api.ai.searchSimilar.responses[200], resData, "ai.searchSimilar");
     },

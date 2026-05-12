@@ -124,7 +124,7 @@ const config = {
     locationLabel: "발견 장소",
     locationPlaceholder: "예: 중앙도서관 1층 앞",
     submitText: "주운 물건 등록하기",
-    requireImage: true,
+    requireImage: false,
     title: "주운 물건 등록",
     description:
       "사진과 위치를 함께 등록하면 잃어버린 사람이 더 빨리 확인할 수 있어요.",
@@ -602,17 +602,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
       return;
     }
 
-    if (
-      reportType === "found" &&
-      (!data.imageUrls || data.imageUrls.length === 0)
-    ) {
-      toast({
-        title: "습득물 등록에는 사진이 필요해요.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const isValid = await form.trigger();
     if (!isValid) {
       navigateToStep(2);
@@ -677,14 +666,6 @@ export default function ReportPage({ forcedType, itemId }: ReportPageProps) {
 
   const goToNextStep = async () => {
     if (currentStep === 1) {
-      if (reportType === "found" && imagePreviews.length === 0) {
-        toast({
-          title: "습득물 등록에는 사진이 필요해요.",
-          description: "사진을 먼저 올린 뒤 다음 단계로 이동해 주세요.",
-          variant: "destructive",
-        });
-        return;
-      }
       navigateToStep(2);
       return;
     }

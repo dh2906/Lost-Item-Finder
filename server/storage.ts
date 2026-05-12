@@ -298,6 +298,7 @@ export interface IStorage {
     sort?: "latest" | "oldest";
     page?: number;
     limit?: number;
+    skipTotal?: boolean;
   }): Promise<{
     items: Item[];
     totalCount: number;
@@ -475,6 +476,7 @@ export class DatabaseStorage implements IStorage {
     sort?: "latest" | "oldest";
     page?: number;
     limit?: number;
+    skipTotal?: boolean;
   }): Promise<{
     items: Item[];
     totalCount: number;
@@ -491,6 +493,7 @@ export class DatabaseStorage implements IStorage {
     const sort = filters?.sort ?? "latest";
     const page = Math.max(1, filters?.page ?? 1);
     const limit = Math.min(Math.max(1, filters?.limit ?? 24), 60);
+    const skipTotal = filters?.skipTotal === true;
     const hasCoordinates =
       typeof filters?.latitude === "number" && typeof filters?.longitude === "number";
     const radiusKm = filters?.radiusKm ?? DEFAULT_LOCATION_RADIUS_KM;
@@ -596,14 +599,14 @@ export class DatabaseStorage implements IStorage {
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-    const [{ totalCount }] = await db
-      .select({ totalCount: sql<number>`count(*)::int` })
-      .from(items)
-      .where(whereClause);
-    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
-    const currentPage = Math.min(page, totalPages);
-    const currentOffset = (currentPage - 1) * limit;
-    const pageItems = await db
+    const totalCountPromise = skipTotal
+      ? Promise.resolve<{ totalCount: number }[]>([])
+      : db
+          .select({ totalCount: sql<number>`count(*)::int` })
+          .from(items)
+          .where(whereClause);
+    const currentOffset = (page - 1) * limit;
+    const pageItemsPromise = db
       .select()
       .from(items)
       .where(whereClause)
@@ -614,13 +617,24 @@ export class DatabaseStorage implements IStorage {
       )
       .limit(limit)
       .offset(currentOffset);
+    const [totalCountRows, pageItems] = await Promise.all([
+      totalCountPromise,
+      pageItemsPromise,
+    ]);
+    const totalCount = skipTotal
+      ? pageItems.length
+      : totalCountRows[0]?.totalCount ?? 0;
+    const normalizedTotalPages = skipTotal
+      ? 1
+      : Math.max(1, Math.ceil(totalCount / limit));
+    const currentPage = skipTotal ? page : Math.min(page, normalizedTotalPages);
 
     return {
       items: pageItems,
       totalCount,
       page: currentPage,
       limit,
-      totalPages,
+      totalPages: normalizedTotalPages,
     };
   }
 
