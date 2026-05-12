@@ -31,6 +31,11 @@ function formatDistance(distanceKm: number): string {
   return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)}km`;
 }
 
+function normalizeOptionalText(value?: string): string | undefined {
+  const trimmedValue = value?.trim();
+  return trimmedValue ? trimmedValue : undefined;
+}
+
 const searchSchema = z
   .object({
     prompt: z.string().optional(),
@@ -41,7 +46,12 @@ const searchSchema = z
     longitude: z.string().optional(),
     radiusKm: z.number().positive().optional(),
   })
-  .refine((data) => data.prompt || data.imageUrl, {
+  .refine((data) => {
+    return (
+      normalizeOptionalText(data.prompt) ||
+      normalizeOptionalText(data.imageUrl)
+    );
+  }, {
     message: "설명이나 이미지를 제공해주세요.",
     path: ["prompt"],
   });
@@ -193,10 +203,15 @@ export default function SearchPage() {
   const onSubmit = async (data: SearchFormValues) => {
     try {
       const payload = {
-        ...data,
-        location: locationMode === "map" ? data.location : undefined,
-        latitude: locationMode === "map" ? data.latitude : undefined,
-        longitude: locationMode === "map" ? data.longitude : undefined,
+        prompt: normalizeOptionalText(data.prompt),
+        imageUrl: normalizeOptionalText(data.imageUrl),
+        lostDateText: normalizeOptionalText(data.lostDateText),
+        location:
+          locationMode === "map" ? normalizeOptionalText(data.location) : undefined,
+        latitude:
+          locationMode === "map" ? normalizeOptionalText(data.latitude) : undefined,
+        longitude:
+          locationMode === "map" ? normalizeOptionalText(data.longitude) : undefined,
         radiusKm: locationMode === "map" ? data.radiusKm : undefined,
       };
 

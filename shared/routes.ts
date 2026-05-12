@@ -31,6 +31,23 @@ const aiImageDataUrlSchema = z
     "이미지 용량이 너무 큽니다. 더 작은 사진을 선택해 주세요."
   );
 
+const optionalAiImageDataUrlSchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  return value.trim().length === 0 ? undefined : value;
+}, aiImageDataUrlSchema.optional());
+
+const optionalTrimmedStringSchema = z.preprocess((value) => {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmedValue = value.trim();
+  return trimmedValue.length === 0 ? undefined : trimmedValue;
+}, z.string().optional());
+
 const itemResponseSchema = z.custom<typeof items.$inferSelect>();
 
 const matchResponseSchema = z.object({
@@ -610,8 +627,8 @@ export const api = {
       method: "POST" as const,
       path: "/api/ai/search" as const,
       input: z.object({
-        prompt: z.string().optional(),
-        imageUrl: aiImageDataUrlSchema.optional(),
+        prompt: optionalTrimmedStringSchema,
+        imageUrl: optionalAiImageDataUrlSchema,
         lostDateText: z.string().trim().max(40).optional(),
         location: z
           .string()
