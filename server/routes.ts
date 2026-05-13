@@ -523,6 +523,23 @@ function isEmbeddingServiceUnavailableError(
   );
 }
 
+class AiSearchServiceUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "AiSearchServiceUnavailableError";
+    Object.setPrototypeOf(this, AiSearchServiceUnavailableError.prototype);
+  }
+}
+
+function isAiSearchServiceUnavailableError(
+  error: unknown
+): error is AiSearchServiceUnavailableError {
+  return (
+    error instanceof AiSearchServiceUnavailableError ||
+    (error instanceof Error && error.name === "AiSearchServiceUnavailableError")
+  );
+}
+
 type Lost112NormalizedItem = {
   atcId?: string;
   fdSn?: string;
@@ -2323,7 +2340,13 @@ function isAbortError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
-  return error.name === "AbortError" || error.message === "Operation aborted";
+  return (
+    error.name === "AbortError" ||
+    error.name === "TimeoutError" ||
+    error.message === "Operation aborted" ||
+    error.message.toLowerCase().includes("aborted") ||
+    error.message.toLowerCase().includes("timeout")
+  );
 }
 
 function normalizeComparableText(value?: string | null): string {
@@ -4524,8 +4547,11 @@ async function createEmbedding(
         signal: requestSignal,
       });
     } catch (error) {
+      const message = isAbortError(error)
+        ? "로컬 임베딩 서버 요청 시간이 초과되었습니다."
+        : "로컬 임베딩 서버에 연결할 수 없습니다.";
       throw new EmbeddingServiceUnavailableError(
-        "로컬 임베딩 서버에 연결할 수 없습니다.",
+        message,
         { cause: error }
       );
     }
@@ -4563,16 +4589,24 @@ async function createEmbedding(
   if (EMBEDDING_PROVIDER !== "openai") {
     throw new Error(`지원하지 않는 임베딩 provider입니다: ${EMBEDDING_PROVIDER}`);
   }
-  const response = await openai.embeddings.create(
-    {
-      model: OPENAI_EMBEDDING_MODEL,
-      input,
-      dimensions: EMBEDDING_DIMENSIONS,
-    },
-    {
-      signal: requestSignal,
-    }
-  );
+  let response: Awaited<ReturnType<typeof openai.embeddings.create>>;
+  try {
+    response = await openai.embeddings.create(
+      {
+        model: OPENAI_EMBEDDING_MODEL,
+        input,
+        dimensions: EMBEDDING_DIMENSIONS,
+      },
+      {
+        signal: requestSignal,
+      }
+    );
+  } catch (error) {
+    const message = isAbortError(error)
+      ? "OpenAI 임베딩 요청 시간이 초과되었습니다."
+      : "OpenAI 임베딩 생성에 실패했습니다.";
+    throw new EmbeddingServiceUnavailableError(message, { cause: error });
+  }
 
   const embedding = response.data[0]?.embedding;
   if (!embedding) {
@@ -4587,10 +4621,12 @@ async function createImageSearchText(
 ): Promise<string> {
   const requestSignal = signal ?? AbortSignal.timeout(AI_SEARCH_IMAGE_TIMEOUT_MS);
   abortIfNeeded(requestSignal);
-  const response = await getQwenClient().chat.completions.create(
-    {
-      model: QWEN_VISION_MODEL,
-      messages: [
+  let response: Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>;
+  try {
+    response = await getQwenClient().chat.completions.create(
+      {
+        model: QWEN_VISION_MODEL,
+        messages: [
         {
           role: "system",
           content:
@@ -4606,13 +4642,19 @@ async function createImageSearchText(
             { type: "image_url", image_url: { url: imageUrl } },
           ],
         },
-      ],
-      response_format: { type: "json_object" },
-    },
-    {
-      signal: requestSignal,
-    }
-  );
+        ],
+        response_format: { type: "json_object" },
+      },
+      {
+        signal: requestSignal,
+      }
+    );
+  } catch (error) {
+    const message = isAbortError(error)
+      ? "이미지 검색 분석 요청 시간이 초과되었습니다."
+      : "이미지 검색 분석에 실패했습니다.";
+    throw new AiSearchServiceUnavailableError(message, { cause: error });
+  }
 
   const content = getCompletionText(
     response,
@@ -6487,7 +6529,19 @@ export async function registerRoutes(
       }
 
       if (input.imageUrl) {
-        const imageSearchText = await createImageSearchText(input.imageUrl);
+        const imageSearchText = await createImageSearchText(input.imageUrl).catch(
+          (imageSearchError) => {
+            if (trimmedPrompt && isAiSearchServiceUnavailableError(imageSearchError)) {
+              console.warn(
+                "[AI Search] image analysis failed; falling back to prompt-only search:",
+                imageSearchError
+              );
+              return "";
+            }
+
+            throw imageSearchError;
+          }
+        );
         if (imageSearchText) {
           queryParts.push(imageSearchText);
         }
@@ -6753,6 +6807,9 @@ export async function registerRoutes(
         });
       }
       if (isEmbeddingServiceUnavailableError(err)) {
+        return res.status(503).json({ message: getErrorMessage(err) });
+      }
+      if (isAiSearchServiceUnavailableError(err)) {
         return res.status(503).json({ message: getErrorMessage(err) });
       }
       res.status(500).json({ message: getErrorMessage(err) });
