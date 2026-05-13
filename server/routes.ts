@@ -98,6 +98,18 @@ const AUTO_MATCH_BACKFILL_LIMIT = Number(
 const AI_SEARCH_BACKFILL_LIMIT = Number(
   process.env.AI_SEARCH_BACKFILL_LIMIT ?? 0
 );
+const EMBEDDING_REQUEST_TIMEOUT_MS = Number(
+  process.env.EMBEDDING_REQUEST_TIMEOUT_MS ?? 10_000
+);
+const AI_SEARCH_GEOCODE_TIMEOUT_MS = Number(
+  process.env.AI_SEARCH_GEOCODE_TIMEOUT_MS ?? 2_000
+);
+const AI_SEARCH_IMAGE_TIMEOUT_MS = Number(
+  process.env.AI_SEARCH_IMAGE_TIMEOUT_MS ?? 20_000
+);
+const AI_SEARCH_RERANK_TIMEOUT_MS = Number(
+  process.env.AI_SEARCH_RERANK_TIMEOUT_MS ?? 12_000
+);
 const AUTO_MATCH_JOB_TIMEOUT_MS = Number(
   process.env.AUTO_MATCH_JOB_TIMEOUT_MS ?? 15000
 );
@@ -169,6 +181,8 @@ const LOST112_SYNC_START_PAGE = Number(process.env.LOST112_SYNC_START_PAGE ?? 1)
 const LOST112_SYNC_LOOKBACK_DAYS = Number(
   process.env.LOST112_SYNC_LOOKBACK_DAYS ?? 1
 );
+const LOST112_SYNC_AUTO_MATCH_ENABLED =
+  process.env.LOST112_SYNC_AUTO_MATCH_ENABLED === "true";
 const KAKAO_REST_API_KEY = process.env.KAKAO_REST_API_KEY;
 const AI_RATE_LIMIT_WINDOW_MS = Number(
   process.env.AI_RATE_LIMIT_WINDOW_MS ?? 60_000
@@ -506,6 +520,23 @@ function isEmbeddingServiceUnavailableError(
   return (
     error instanceof EmbeddingServiceUnavailableError ||
     (error instanceof Error && error.name === "EmbeddingServiceUnavailableError")
+  );
+}
+
+class AiSearchServiceUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "AiSearchServiceUnavailableError";
+    Object.setPrototypeOf(this, AiSearchServiceUnavailableError.prototype);
+  }
+}
+
+function isAiSearchServiceUnavailableError(
+  error: unknown
+): error is AiSearchServiceUnavailableError {
+  return (
+    error instanceof AiSearchServiceUnavailableError ||
+    (error instanceof Error && error.name === "AiSearchServiceUnavailableError")
   );
 }
 
@@ -1656,7 +1687,11 @@ async function runLost112Sync({
         console.error("Failed to store Lost112 item embedding:", embeddingError);
       }
 
-      if (item.status === "active" && itemEmbedding !== undefined) {
+      if (
+        LOST112_SYNC_AUTO_MATCH_ENABLED &&
+        item.status === "active" &&
+        itemEmbedding !== undefined
+      ) {
         queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
         try {
           automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
@@ -1822,7 +1857,11 @@ async function reprocessExistingLost112Items({
         );
       }
 
-      if (item.status === "active" && itemEmbedding !== undefined) {
+      if (
+        LOST112_SYNC_AUTO_MATCH_ENABLED &&
+        item.status === "active" &&
+        itemEmbedding !== undefined
+      ) {
         queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
         try {
           automaticMatchCount += await findAutomaticMatchesForFoundItem(item);
@@ -2301,7 +2340,13 @@ function isAbortError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
   }
-  return error.name === "AbortError" || error.message === "Operation aborted";
+  return (
+    error.name === "AbortError" ||
+    error.name === "TimeoutError" ||
+    error.message === "Operation aborted" ||
+    error.message.toLowerCase().includes("aborted") ||
+    error.message.toLowerCase().includes("timeout")
+  );
 }
 
 function normalizeComparableText(value?: string | null): string {
@@ -3636,6 +3681,7 @@ async function geocodeSearchLocationQuery(
       headers: {
         Authorization: `KakaoAK ${KAKAO_REST_API_KEY}`,
       },
+      signal: AbortSignal.timeout(AI_SEARCH_GEOCODE_TIMEOUT_MS),
     });
 
     if (!response.ok) {
@@ -4488,7 +4534,9 @@ async function createEmbedding(
   signal?: AbortSignal
 ): Promise<number[]> {
   const input = formatEmbeddingInput(text, kind);
-  abortIfNeeded(signal);
+  const requestSignal =
+    signal ?? AbortSignal.timeout(EMBEDDING_REQUEST_TIMEOUT_MS);
+  abortIfNeeded(requestSignal);
   if (EMBEDDING_PROVIDER === "local") {
     let response: Response;
     try {
@@ -4496,11 +4544,14 @@ async function createEmbedding(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input }),
-        signal,
+        signal: requestSignal,
       });
     } catch (error) {
+      const message = isAbortError(error)
+        ? "로컬 임베딩 서버 요청 시간이 초과되었습니다."
+        : "로컬 임베딩 서버에 연결할 수 없습니다.";
       throw new EmbeddingServiceUnavailableError(
-        "로컬 임베딩 서버에 연결할 수 없습니다.",
+        message,
         { cause: error }
       );
     }
@@ -4538,16 +4589,24 @@ async function createEmbedding(
   if (EMBEDDING_PROVIDER !== "openai") {
     throw new Error(`지원하지 않는 임베딩 provider입니다: ${EMBEDDING_PROVIDER}`);
   }
-  const response = await openai.embeddings.create(
-    {
-      model: OPENAI_EMBEDDING_MODEL,
-      input,
-      dimensions: EMBEDDING_DIMENSIONS,
-    },
-    {
-      signal,
-    }
-  );
+  let response: Awaited<ReturnType<typeof openai.embeddings.create>>;
+  try {
+    response = await openai.embeddings.create(
+      {
+        model: OPENAI_EMBEDDING_MODEL,
+        input,
+        dimensions: EMBEDDING_DIMENSIONS,
+      },
+      {
+        signal: requestSignal,
+      }
+    );
+  } catch (error) {
+    const message = isAbortError(error)
+      ? "OpenAI 임베딩 요청 시간이 초과되었습니다."
+      : "OpenAI 임베딩 생성에 실패했습니다.";
+    throw new EmbeddingServiceUnavailableError(message, { cause: error });
+  }
 
   const embedding = response.data[0]?.embedding;
   if (!embedding) {
@@ -4560,11 +4619,14 @@ async function createImageSearchText(
   imageUrl: string,
   signal?: AbortSignal
 ): Promise<string> {
-  abortIfNeeded(signal);
-  const response = await getQwenClient().chat.completions.create(
-    {
-      model: QWEN_VISION_MODEL,
-      messages: [
+  const requestSignal = signal ?? AbortSignal.timeout(AI_SEARCH_IMAGE_TIMEOUT_MS);
+  abortIfNeeded(requestSignal);
+  let response: Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>;
+  try {
+    response = await getQwenClient().chat.completions.create(
+      {
+        model: QWEN_VISION_MODEL,
+        messages: [
         {
           role: "system",
           content:
@@ -4580,13 +4642,19 @@ async function createImageSearchText(
             { type: "image_url", image_url: { url: imageUrl } },
           ],
         },
-      ],
-      response_format: { type: "json_object" },
-    },
-    {
-      signal,
-    }
-  );
+        ],
+        response_format: { type: "json_object" },
+      },
+      {
+        signal: requestSignal,
+      }
+    );
+  } catch (error) {
+    const message = isAbortError(error)
+      ? "이미지 검색 분석 요청 시간이 초과되었습니다."
+      : "이미지 검색 분석에 실패했습니다.";
+    throw new AiSearchServiceUnavailableError(message, { cause: error });
+  }
 
   const content = getCompletionText(
     response,
@@ -5311,8 +5379,10 @@ async function rerankCandidates(params: {
   const { prompt, imageUrl, queryText, candidates, signal } = params;
   const aiClient = imageUrl ? getQwenClient() : openai;
   const model = imageUrl ? QWEN_VISION_MODEL : GPT_TEXT_MODEL;
+  const requestSignal =
+    signal ?? AbortSignal.timeout(AI_SEARCH_RERANK_TIMEOUT_MS);
 
-  abortIfNeeded(signal);
+  abortIfNeeded(requestSignal);
 
   const userContent: Array<
     | { type: "text"; text: string }
@@ -5367,7 +5437,7 @@ async function rerankCandidates(params: {
       response_format: { type: "json_object" },
     },
     {
-      signal,
+      signal: requestSignal,
     }
   );
 
@@ -6459,7 +6529,19 @@ export async function registerRoutes(
       }
 
       if (input.imageUrl) {
-        const imageSearchText = await createImageSearchText(input.imageUrl);
+        const imageSearchText = await createImageSearchText(input.imageUrl).catch(
+          (imageSearchError) => {
+            if (trimmedPrompt && isAiSearchServiceUnavailableError(imageSearchError)) {
+              console.warn(
+                "[AI Search] image analysis failed; falling back to prompt-only search:",
+                imageSearchError
+              );
+              return "";
+            }
+
+            throw imageSearchError;
+          }
+        );
         if (imageSearchText) {
           queryParts.push(imageSearchText);
         }
@@ -6480,19 +6562,33 @@ export async function registerRoutes(
       const locationDistanceByItemId = new Map(
         locationScopedItems.map((result) => [result.item.id, result.distanceKm])
       );
-      const vectorMatches =
+      const [vectorMatches, lexicalMatches, dateMatches] = await Promise.all([
         locationScopedItems.length > 0
-          ? await storage.searchItemsByEmbeddingWithinItemIds(
+          ? storage.searchItemsByEmbeddingWithinItemIds(
               "found",
               queryEmbedding,
               locationScopedItems.map((result) => result.item.id),
               vectorCandidateCount
             )
-          : await storage.searchItemsByEmbedding(
+          : storage.searchItemsByEmbedding(
               "found",
               queryEmbedding,
               vectorCandidateCount
-            );
+            ),
+        searchLexicalAiCandidates({
+          queryText,
+          searchCoordinates,
+          radiusKm: effectiveRadiusKm,
+          limit: vectorCandidateCount,
+        }),
+        searchDateAiCandidates({
+          range: lostDateRange,
+          queryText,
+          searchCoordinates,
+          radiusKm: effectiveRadiusKm,
+          limit: vectorCandidateCount,
+        }),
+      ]);
 
       const rankedVectorMatches: RankedVectorCandidate[] = vectorMatches
         .filter((result) => result.score >= minVectorMatchScore)
@@ -6513,19 +6609,6 @@ export async function registerRoutes(
             distanceKm,
           };
         });
-      const lexicalMatches = await searchLexicalAiCandidates({
-        queryText,
-        searchCoordinates,
-        radiusKm: effectiveRadiusKm,
-        limit: vectorCandidateCount,
-      });
-      const dateMatches = await searchDateAiCandidates({
-        range: lostDateRange,
-        queryText,
-        searchCoordinates,
-        radiusKm: effectiveRadiusKm,
-        limit: vectorCandidateCount,
-      });
       const filteredVectorMatches: RankedVectorCandidate[] = mergeRankedCandidates([
         ...rankedVectorMatches,
         ...lexicalMatches,
@@ -6724,6 +6807,9 @@ export async function registerRoutes(
         });
       }
       if (isEmbeddingServiceUnavailableError(err)) {
+        return res.status(503).json({ message: getErrorMessage(err) });
+      }
+      if (isAiSearchServiceUnavailableError(err)) {
         return res.status(503).json({ message: getErrorMessage(err) });
       }
       res.status(500).json({ message: getErrorMessage(err) });
