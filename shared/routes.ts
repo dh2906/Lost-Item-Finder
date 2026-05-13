@@ -157,10 +157,11 @@ const adminItemsResponseSchema = z.object({
 
 const itemsListResponseSchema = z.object({
   items: z.array(itemResponseSchema),
-  totalCount: z.number(),
+  totalCount: z.number().nullable(),
   page: z.number(),
   limit: z.number(),
-  totalPages: z.number(),
+  totalPages: z.number().nullable(),
+  hasExactTotal: z.boolean(),
 });
 
 function getFirstQueryValue(value: unknown) {

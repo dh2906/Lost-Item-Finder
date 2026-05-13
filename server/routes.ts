@@ -3007,15 +3007,13 @@ function buildAiSearchDateSummary(
     return null;
   }
 
-  const candidateTime = new Date(candidateDate as string | Date).getTime();
-  if (Number.isNaN(candidateTime)) {
+  const candidateDateOnly = toCandidateDateOnly(candidateDate);
+  const candidateDay = candidateDateOnly ? dateOnlyToUtcDay(candidateDateOnly) : null;
+  if (candidateDay === null) {
     return null;
   }
 
-  const diffDays = Math.max(
-    0,
-    Math.round((candidateTime - lostDateRange.end.getTime()) / (1000 * 60 * 60 * 24))
-  );
+  const diffDays = Math.max(0, candidateDay - lostDateRange.endDay);
 
   if (dateScore >= 1) {
     return `입력한 분실 시점 '${lostDateRange.label}'과 후보 등록 날짜가 매우 가깝습니다.`;
@@ -3310,8 +3308,12 @@ type AiCandidateEvaluation = {
 
 type SearchDateRange = {
   label: string;
-  start: Date;
-  end: Date;
+  startDate: string;
+  endDate: string;
+  endDateWithTolerance: string;
+  startDay: number;
+  endDay: number;
+  endDayWithTolerance: number;
   precision: "day" | "week";
   toleranceDays: number;
 };
@@ -3341,18 +3343,6 @@ const AMBIGUOUS_STANDALONE_LOCATION_SUFFIXES = [
   "도서관",
 ] as const;
 
-function startOfDay(date: Date): Date {
-  const next = new Date(date);
-  next.setHours(0, 0, 0, 0);
-  return next;
-}
-
-function endOfDay(date: Date): Date {
-  const next = new Date(date);
-  next.setHours(23, 59, 59, 999);
-  return next;
-}
-
 function toKstDateOnly(value: Date): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -3362,21 +3352,111 @@ function toKstDateOnly(value: Date): string {
   }).format(value);
 }
 
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
+function getKstTodayDateOnly(): string {
+  return toKstDateOnly(new Date());
 }
 
-function startOfWeekMonday(date: Date): Date {
-  const next = startOfDay(date);
-  const day = next.getDay();
+function formatDateOnly(year: number, month: number, day: number): string {
+  return [
+    year.toString().padStart(4, "0"),
+    month.toString().padStart(2, "0"),
+    day.toString().padStart(2, "0"),
+  ].join("-");
+}
+
+function parseDateOnlyParts(
+  dateOnly: string
+): { year: number; month: number; day: number } | null {
+  const match = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  if (
+    value.getUTCFullYear() !== year ||
+    value.getUTCMonth() !== month - 1 ||
+    value.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return { year, month, day };
+}
+
+function createDateOnly(year: number, month: number, day: number): string | null {
+  const dateOnly = formatDateOnly(year, month, day);
+  return parseDateOnlyParts(dateOnly) ? dateOnly : null;
+}
+
+function dateOnlyToUtcDay(dateOnly: string): number | null {
+  const parts = parseDateOnlyParts(dateOnly);
+  if (!parts) {
+    return null;
+  }
+
+  return Math.floor(Date.UTC(parts.year, parts.month - 1, parts.day) / 86400000);
+}
+
+function addDaysToDateOnly(dateOnly: string, days: number): string {
+  const parts = parseDateOnlyParts(dateOnly);
+  if (!parts) {
+    return dateOnly;
+  }
+
+  const next = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days));
+  return formatDateOnly(next.getUTCFullYear(), next.getUTCMonth() + 1, next.getUTCDate());
+}
+
+function getDateOnlyDayOfWeek(dateOnly: string): number {
+  const parts = parseDateOnlyParts(dateOnly);
+  if (!parts) {
+    return 0;
+  }
+
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay();
+}
+
+function startOfWeekMondayDateOnly(dateOnly: string): string {
+  const day = getDateOnlyDayOfWeek(dateOnly);
   const diff = day === 0 ? -6 : 1 - day;
-  return addDays(next, diff);
+  return addDaysToDateOnly(dateOnly, diff);
 }
 
-function endOfWeekSunday(date: Date): Date {
-  return endOfDay(addDays(startOfWeekMonday(date), 6));
+function endOfWeekSundayDateOnly(dateOnly: string): string {
+  return addDaysToDateOnly(startOfWeekMondayDateOnly(dateOnly), 6);
+}
+
+function createSearchDateRange(
+  label: string,
+  startDate: string,
+  endDate: string,
+  precision: "day" | "week",
+  toleranceDays: number
+): SearchDateRange | null {
+  const startDay = dateOnlyToUtcDay(startDate);
+  const endDay = dateOnlyToUtcDay(endDate);
+  const endDateWithTolerance = addDaysToDateOnly(endDate, toleranceDays);
+  const endDayWithTolerance = dateOnlyToUtcDay(endDateWithTolerance);
+
+  if (startDay === null || endDay === null || endDayWithTolerance === null) {
+    return null;
+  }
+
+  return {
+    label,
+    startDate,
+    endDate,
+    endDateWithTolerance,
+    startDay,
+    endDay,
+    endDayWithTolerance,
+    precision,
+    toleranceDays,
+  };
 }
 
 function parseSearchDateRange(input?: string | null): SearchDateRange | null {
@@ -3385,69 +3465,45 @@ function parseSearchDateRange(input?: string | null): SearchDateRange | null {
     return null;
   }
 
-  const today = new Date();
+  const today = getKstTodayDateOnly();
   const normalized = trimmedInput.replace(/\s+/g, "");
 
   if (normalized === "오늘") {
-    return {
-      label: trimmedInput,
-      start: startOfDay(today),
-      end: endOfDay(today),
-      precision: "day",
-      toleranceDays: 1,
-    };
+    return createSearchDateRange(trimmedInput, today, today, "day", 1);
   }
   if (normalized === "어제") {
-    const target = addDays(today, -1);
-    return {
-      label: trimmedInput,
-      start: startOfDay(target),
-      end: endOfDay(target),
-      precision: "day",
-      toleranceDays: 1,
-    };
+    const target = addDaysToDateOnly(today, -1);
+    return createSearchDateRange(trimmedInput, target, target, "day", 1);
   }
   if (normalized === "그제") {
-    const target = addDays(today, -2);
-    return {
-      label: trimmedInput,
-      start: startOfDay(target),
-      end: endOfDay(target),
-      precision: "day",
-      toleranceDays: 1,
-    };
+    const target = addDaysToDateOnly(today, -2);
+    return createSearchDateRange(trimmedInput, target, target, "day", 1);
   }
   if (normalized === "이번주") {
-    return {
-      label: trimmedInput,
-      start: startOfWeekMonday(today),
-      end: endOfWeekSunday(today),
-      precision: "week",
-      toleranceDays: 1,
-    };
+    return createSearchDateRange(
+      trimmedInput,
+      startOfWeekMondayDateOnly(today),
+      endOfWeekSundayDateOnly(today),
+      "week",
+      1
+    );
   }
   if (normalized === "저번주" || normalized === "지난주") {
-    const target = addDays(today, -7);
-    return {
-      label: trimmedInput,
-      start: startOfWeekMonday(target),
-      end: endOfWeekSunday(target),
-      precision: "week",
-      toleranceDays: 1,
-    };
+    const target = addDaysToDateOnly(today, -7);
+    return createSearchDateRange(
+      trimmedInput,
+      startOfWeekMondayDateOnly(target),
+      endOfWeekSundayDateOnly(target),
+      "week",
+      1
+    );
   }
 
   const daysAgoMatch = normalized.match(/^(\d{1,2})일전$/);
   if (daysAgoMatch) {
     const days = Number(daysAgoMatch[1]);
-    const target = addDays(today, -days);
-    return {
-      label: trimmedInput,
-      start: startOfDay(target),
-      end: endOfDay(target),
-      precision: "day",
-      toleranceDays: 1,
-    };
+    const target = addDaysToDateOnly(today, -days);
+    return createSearchDateRange(trimmedInput, target, target, "day", 1);
   }
 
   const ymdMatch = normalized.match(/^(\d{4})[./-]?(\d{1,2})[./-]?(\d{1,2})$/);
@@ -3455,15 +3511,9 @@ function parseSearchDateRange(input?: string | null): SearchDateRange | null {
     const year = Number(ymdMatch[1]);
     const month = Number(ymdMatch[2]);
     const day = Number(ymdMatch[3]);
-    const target = new Date(year, month - 1, day);
-    if (!Number.isNaN(target.getTime())) {
-      return {
-        label: trimmedInput,
-        start: startOfDay(target),
-        end: endOfDay(target),
-        precision: "day",
-        toleranceDays: 1,
-      };
+    const target = createDateOnly(year, month, day);
+    if (target) {
+      return createSearchDateRange(trimmedInput, target, target, "day", 1);
     }
   }
 
@@ -3471,15 +3521,10 @@ function parseSearchDateRange(input?: string | null): SearchDateRange | null {
   if (mdMatch) {
     const month = Number(mdMatch[1]);
     const day = Number(mdMatch[2]);
-    const target = new Date(today.getFullYear(), month - 1, day);
-    if (!Number.isNaN(target.getTime())) {
-      return {
-        label: trimmedInput,
-        start: startOfDay(target),
-        end: endOfDay(target),
-        precision: "day",
-        toleranceDays: 1,
-      };
+    const year = Number(today.slice(0, 4));
+    const target = createDateOnly(year, month, day);
+    if (target) {
+      return createSearchDateRange(trimmedInput, target, target, "day", 1);
     }
   }
 
@@ -3667,19 +3712,17 @@ function calculateAiSearchDateScore(
     return null;
   }
 
-  const candidateTime = new Date(candidateDate).getTime();
-  if (Number.isNaN(candidateTime)) {
+  const candidateDateOnly = toCandidateDateOnly(candidateDate);
+  const candidateDay = candidateDateOnly ? dateOnlyToUtcDay(candidateDateOnly) : null;
+  if (candidateDay === null) {
     return null;
   }
 
-  const startTime = range.start.getTime();
-  const endTime = range.end.getTime();
-
-  if (candidateTime < startTime) {
+  if (candidateDay < range.startDay) {
     return 0;
   }
 
-  const diffDays = (candidateTime - endTime) / (1000 * 60 * 60 * 24);
+  const diffDays = candidateDay - range.endDay;
   if (diffDays <= range.toleranceDays) {
     return 1;
   }
@@ -3703,6 +3746,29 @@ function calculateAiSearchDateScore(
   return 0;
 }
 
+function toCandidateDateOnly(candidateDate: string | Date | null | undefined): string | null {
+  if (!candidateDate) {
+    return null;
+  }
+
+  if (candidateDate instanceof Date) {
+    return Number.isNaN(candidateDate.getTime()) ? null : toKstDateOnly(candidateDate);
+  }
+
+  const trimmedDate = candidateDate.trim();
+  const dateOnlyMatch = trimmedDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnlyMatch) {
+    return createDateOnly(
+      Number(dateOnlyMatch[1]),
+      Number(dateOnlyMatch[2]),
+      Number(dateOnlyMatch[3])
+    );
+  }
+
+  const parsedDate = new Date(trimmedDate);
+  return Number.isNaN(parsedDate.getTime()) ? null : toKstDateOnly(parsedDate);
+}
+
 async function searchDateAiCandidates(params: {
   range: SearchDateRange | null;
   queryText: string;
@@ -3715,7 +3781,6 @@ async function searchDateAiCandidates(params: {
     return [];
   }
 
-  const endWithTolerance = addDays(range.end, range.toleranceDays);
   const rows = await db
     .select()
     .from(items)
@@ -3723,8 +3788,8 @@ async function searchDateAiCandidates(params: {
       and(
         eq(items.reportType, "found"),
         eq(items.status, "active"),
-        gte(items.date, toKstDateOnly(range.start)),
-        lte(items.date, toKstDateOnly(endWithTolerance))
+        gte(items.date, range.startDate),
+        lte(items.date, range.endDateWithTolerance)
       )
     )
     .orderBy(desc(items.date), desc(items.id))

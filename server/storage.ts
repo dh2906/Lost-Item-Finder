@@ -301,10 +301,11 @@ export interface IStorage {
     skipTotal?: boolean;
   }): Promise<{
     items: Item[];
-    totalCount: number;
+    totalCount: number | null;
     page: number;
     limit: number;
-    totalPages: number;
+    totalPages: number | null;
+    hasExactTotal: boolean;
   }>;
   getMyItems(
     userId: number,
@@ -479,10 +480,11 @@ export class DatabaseStorage implements IStorage {
     skipTotal?: boolean;
   }): Promise<{
     items: Item[];
-    totalCount: number;
+    totalCount: number | null;
     page: number;
     limit: number;
-    totalPages: number;
+    totalPages: number | null;
+    hasExactTotal: boolean;
   }> {
     const conditions = [eq(items.status, "active" as const)];
     const search = filters?.search?.trim();
@@ -600,6 +602,7 @@ export class DatabaseStorage implements IStorage {
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
     if (skipTotal) {
+      const currentOffset = (page - 1) * limit;
       const pageItems = await db
         .select()
         .from(items)
@@ -610,14 +613,15 @@ export class DatabaseStorage implements IStorage {
           sort === "oldest" ? asc(items.id) : desc(items.id)
         )
         .limit(limit)
-        .offset(0);
+        .offset(currentOffset);
 
       return {
         items: pageItems,
-        totalCount: 0,
-        page: 1,
+        totalCount: null,
+        page,
         limit,
-        totalPages: 1,
+        totalPages: null,
+        hasExactTotal: false,
       };
     }
 
@@ -646,6 +650,7 @@ export class DatabaseStorage implements IStorage {
       page: currentPage,
       limit,
       totalPages,
+      hasExactTotal: true,
     };
   }
 
