@@ -298,12 +298,14 @@ export interface IStorage {
     sort?: "latest" | "oldest";
     page?: number;
     limit?: number;
+    skipTotal?: boolean;
   }): Promise<{
     items: Item[];
-    totalCount: number;
+    totalCount: number | null;
     page: number;
     limit: number;
-    totalPages: number;
+    totalPages: number | null;
+    hasExactTotal: boolean;
   }>;
   getMyItems(
     userId: number,
@@ -475,12 +477,14 @@ export class DatabaseStorage implements IStorage {
     sort?: "latest" | "oldest";
     page?: number;
     limit?: number;
+    skipTotal?: boolean;
   }): Promise<{
     items: Item[];
-    totalCount: number;
+    totalCount: number | null;
     page: number;
     limit: number;
-    totalPages: number;
+    totalPages: number | null;
+    hasExactTotal: boolean;
   }> {
     const conditions = [eq(items.status, "active" as const)];
     const search = filters?.search?.trim();
@@ -491,6 +495,7 @@ export class DatabaseStorage implements IStorage {
     const sort = filters?.sort ?? "latest";
     const page = Math.max(1, filters?.page ?? 1);
     const limit = Math.min(Math.max(1, filters?.limit ?? 24), 60);
+    const skipTotal = filters?.skipTotal === true;
     const hasCoordinates =
       typeof filters?.latitude === "number" && typeof filters?.longitude === "number";
     const radiusKm = filters?.radiusKm ?? DEFAULT_LOCATION_RADIUS_KM;
@@ -596,6 +601,30 @@ export class DatabaseStorage implements IStorage {
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    if (skipTotal) {
+      const currentOffset = (page - 1) * limit;
+      const pageItems = await db
+        .select()
+        .from(items)
+        .where(whereClause)
+        .orderBy(
+          ...(distanceKm ? [asc(distanceKm)] : []),
+          sort === "oldest" ? asc(items.date) : desc(items.date),
+          sort === "oldest" ? asc(items.id) : desc(items.id)
+        )
+        .limit(limit)
+        .offset(currentOffset);
+
+      return {
+        items: pageItems,
+        totalCount: null,
+        page,
+        limit,
+        totalPages: null,
+        hasExactTotal: false,
+      };
+    }
+
     const [{ totalCount }] = await db
       .select({ totalCount: sql<number>`count(*)::int` })
       .from(items)
@@ -621,6 +650,7 @@ export class DatabaseStorage implements IStorage {
       page: currentPage,
       limit,
       totalPages,
+      hasExactTotal: true,
     };
   }
 

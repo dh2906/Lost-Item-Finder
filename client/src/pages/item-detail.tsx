@@ -440,6 +440,9 @@ export default function ItemDetail() {
                   </p>
                   <CardTitle className="text-2xl leading-tight">{displayTitle}</CardTitle>
                   <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary" className="border border-border/70 bg-secondary text-foreground">
+                      게시글 #{item.id}
+                    </Badge>
                     <Badge
                       variant="outline"
                       className={cn(

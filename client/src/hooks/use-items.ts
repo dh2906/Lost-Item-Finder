@@ -36,6 +36,7 @@ export function useItems(filters?: Partial<ItemsListFilters>) {
   if (filters?.sort) queryParams.set("sort", filters.sort);
   if (filters?.page) queryParams.set("page", String(filters.page));
   if (filters?.limit) queryParams.set("limit", String(filters.limit));
+  if (filters?.skipTotal) queryParams.set("skipTotal", "true");
   
   const queryString = queryParams.toString() ? `?${queryParams.toString()}` : "";
   const url = `${api.items.list.path}${queryString}`;

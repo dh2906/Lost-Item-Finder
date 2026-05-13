@@ -25,6 +25,7 @@ export default function Home() {
   const { data: foundItemsResult, isLoading } = useItems({
     type: "found",
     limit: 6,
+    skipTotal: true,
   });
 
   const lostItemCount = myItems.filter((item) => item.reportType === "lost").length;

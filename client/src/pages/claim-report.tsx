@@ -114,6 +114,9 @@ export default function ClaimReportPage() {
                     value={itemId}
                     onChange={(event) => setItemId(event.target.value.replace(/\D/g, ""))}
                   />
+                  <p className="text-xs leading-5 text-muted-foreground">
+                    게시글 상세 화면과 목록 카드에 표시되는 "게시글 #번호"를 입력하세요.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="suspectedUserInfo">의심 대상 정보</Label>
