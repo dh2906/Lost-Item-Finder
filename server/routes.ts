@@ -3313,7 +3313,6 @@ type SearchDateRange = {
   endDateWithTolerance: string;
   startDay: number;
   endDay: number;
-  endDayWithTolerance: number;
   precision: "day" | "week";
   toleranceDays: number;
 };
@@ -3440,9 +3439,8 @@ function createSearchDateRange(
   const startDay = dateOnlyToUtcDay(startDate);
   const endDay = dateOnlyToUtcDay(endDate);
   const endDateWithTolerance = addDaysToDateOnly(endDate, toleranceDays);
-  const endDayWithTolerance = dateOnlyToUtcDay(endDateWithTolerance);
 
-  if (startDay === null || endDay === null || endDayWithTolerance === null) {
+  if (startDay === null || endDay === null || dateOnlyToUtcDay(endDateWithTolerance) === null) {
     return null;
   }
 
@@ -3453,7 +3451,6 @@ function createSearchDateRange(
     endDateWithTolerance,
     startDay,
     endDay,
-    endDayWithTolerance,
     precision,
     toleranceDays,
   };
