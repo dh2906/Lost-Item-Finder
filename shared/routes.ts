@@ -182,6 +182,26 @@ const optionalItemsPageLimitQuerySchema = z.preprocess((value) => {
   return normalizedValue === undefined ? undefined : normalizedValue;
 }, z.coerce.number().int().positive().max(60).optional());
 
+const optionalBooleanQuerySchema = z.preprocess((value) => {
+  const normalizedValue = getFirstQueryValue(value);
+  if (normalizedValue === undefined || normalizedValue === "") {
+    return undefined;
+  }
+  if (typeof normalizedValue === "boolean") {
+    return normalizedValue;
+  }
+  if (typeof normalizedValue === "string") {
+    const trimmedValue = normalizedValue.trim().toLowerCase();
+    if (trimmedValue === "true" || trimmedValue === "1") {
+      return true;
+    }
+    if (trimmedValue === "false" || trimmedValue === "0") {
+      return false;
+    }
+  }
+  return normalizedValue;
+}, z.boolean().optional());
+
 function getOptionalTrimmedQueryValue(value: unknown) {
   const normalizedValue = getFirstQueryValue(value);
   if (typeof normalizedValue !== "string") {
@@ -417,10 +437,7 @@ export const api = {
           sort: z.enum(itemSortOrders).optional(),
           page: optionalPositiveIntegerQuerySchema,
           limit: optionalItemsPageLimitQuerySchema,
-          skipTotal: z
-            .union([z.literal("true"), z.literal(true)])
-            .transform(() => true)
-            .optional(),
+          skipTotal: optionalBooleanQuerySchema,
         })
         .superRefine((value, ctx) => {
           const hasLatitude = value.latitude !== undefined;

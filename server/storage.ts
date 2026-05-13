@@ -599,14 +599,36 @@ export class DatabaseStorage implements IStorage {
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-    const totalCountPromise = skipTotal
-      ? Promise.resolve<{ totalCount: number }[]>([])
-      : db
-          .select({ totalCount: sql<number>`count(*)::int` })
-          .from(items)
-          .where(whereClause);
-    const currentOffset = (page - 1) * limit;
-    const pageItemsPromise = db
+    if (skipTotal) {
+      const pageItems = await db
+        .select()
+        .from(items)
+        .where(whereClause)
+        .orderBy(
+          ...(distanceKm ? [asc(distanceKm)] : []),
+          sort === "oldest" ? asc(items.date) : desc(items.date),
+          sort === "oldest" ? asc(items.id) : desc(items.id)
+        )
+        .limit(limit)
+        .offset(0);
+
+      return {
+        items: pageItems,
+        totalCount: 0,
+        page: 1,
+        limit,
+        totalPages: 1,
+      };
+    }
+
+    const [{ totalCount }] = await db
+      .select({ totalCount: sql<number>`count(*)::int` })
+      .from(items)
+      .where(whereClause);
+    const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+    const currentPage = Math.min(page, totalPages);
+    const currentOffset = (currentPage - 1) * limit;
+    const pageItems = await db
       .select()
       .from(items)
       .where(whereClause)
@@ -617,24 +639,13 @@ export class DatabaseStorage implements IStorage {
       )
       .limit(limit)
       .offset(currentOffset);
-    const [totalCountRows, pageItems] = await Promise.all([
-      totalCountPromise,
-      pageItemsPromise,
-    ]);
-    const totalCount = skipTotal
-      ? pageItems.length
-      : totalCountRows[0]?.totalCount ?? 0;
-    const normalizedTotalPages = skipTotal
-      ? 1
-      : Math.max(1, Math.ceil(totalCount / limit));
-    const currentPage = skipTotal ? page : Math.min(page, normalizedTotalPages);
 
     return {
       items: pageItems,
       totalCount,
       page: currentPage,
       limit,
-      totalPages: normalizedTotalPages,
+      totalPages,
     };
   }
 
