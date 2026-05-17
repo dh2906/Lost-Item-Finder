@@ -50,14 +50,44 @@ app.use(
   }),
 );
 
-const allowedOrigins = (process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim()).filter(Boolean)
-  : [
-      "http://localhost:5173",
-      "http://127.0.0.1:5173",
-      "http://localhost:8080",
-      "http://127.0.0.1:8080",
-    ]);
+function parseOriginList(value?: string): string[] {
+  return value
+    ? value.split(",").map((origin) => origin.trim()).filter(Boolean)
+    : [];
+}
+
+function getUrlOrigin(value?: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(value).origin;
+  } catch {
+    return null;
+  }
+}
+
+const defaultAllowedOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:8080",
+  "http://127.0.0.1:8080",
+];
+
+const configuredAllowedOrigins = parseOriginList(process.env.CORS_ORIGIN);
+const deploymentOrigins = [
+  getUrlOrigin(process.env.PUBLIC_URL),
+  getUrlOrigin(process.env.OAUTH_CALLBACK_BASE_URL),
+].filter((origin): origin is string => Boolean(origin));
+
+const allowedOrigins = Array.from(
+  new Set([
+    ...defaultAllowedOrigins,
+    ...configuredAllowedOrigins,
+    ...deploymentOrigins,
+  ]),
+);
 
 const allowNgrokOrigins =
   process.env.ALLOW_NGROK_ORIGINS === "true" ||

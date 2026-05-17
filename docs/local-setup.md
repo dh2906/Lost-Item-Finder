@@ -22,8 +22,9 @@ AI image payloads are additionally capped by the shared API schema before Vision
 - Set `SESSION_SECRET` to at least 32 random characters. Production startup fails without it or with the example placeholder.
 - Set `SESSION_SECURE=true` when serving over HTTPS. Production rejects `SESSION_SECURE=false`.
 - Replace `ADMIN_USERNAMES=change-me-admin-username` before creating admin accounts. Production rejects this placeholder value.
-- Set `CORS_ORIGIN` to the deployed web origin if the API is served from a different host.
-- Keep `ALLOW_NGROK_ORIGINS=false` in production. Enable it only for temporary tunnel testing.
+- Set `PUBLIC_URL` to the deployed web origin, for example `https://findy.r-e.kr`. The server automatically allows this origin for CORS.
+- Set `CORS_ORIGIN` to any additional comma-separated web origins if the API is served from multiple hosts.
+- Keep `ALLOW_NGROK_ORIGINS=false` in production. Set `ALLOW_NGROK_ORIGINS=true` only for temporary tunnel testing, then restart the server.
 - Keep `AI_RERANK_ENABLED`, `AUTOMATIC_MATCH_QUEUE_ENABLED`, and `OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED` disabled unless you intentionally accept the extra LLM cost.
 - Tune `AI_SEARCH_GUEST_RATE_LIMIT`, `AI_SEARCH_USER_RATE_LIMIT`, and `AI_IMAGE_ANALYSIS_RATE_LIMIT` before opening the service publicly.
 - Tune `AUTH_LOGIN_RATE_LIMIT` and `AUTH_REGISTER_RATE_LIMIT` if your deployment sits behind a shared proxy or classroom network.
