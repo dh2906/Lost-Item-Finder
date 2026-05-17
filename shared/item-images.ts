@@ -31,7 +31,9 @@ export function normalizeItemImageUrls(source: ItemImageSource): string[] {
     source.imageUrls.forEach((imageUrl) => pushUnique(imageUrl));
   }
 
-  pushUnique(source.imageUrl);
+  if (normalizedUrls.length === 0) {
+    pushUnique(source.imageUrl);
+  }
 
   return normalizedUrls.slice(0, MAX_ITEM_IMAGE_COUNT);
 }

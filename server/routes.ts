@@ -18,6 +18,7 @@ import { normalizeItemImageUrls } from "@shared/item-images";
 import { MAX_CHAT_MESSAGE_LENGTH } from "@shared/chat";
 import { z } from "zod";
 import OpenAI from "openai";
+import sharp from "sharp";
 import { db } from "./db";
 import { and, eq, ne, or, desc, asc, isNull, gte, lte, ilike } from "drizzle-orm";
 import {
@@ -2624,6 +2625,99 @@ function normalizeItemMetadata<T extends NormalizableItemMetadata>(item: T): T {
   return normalizedItem;
 }
 
+function compactItemImagesForList<T extends NormalizableItemMetadata>(item: T): T {
+  const primaryImageUrl =
+    item.imageUrl?.trim() || normalizeItemImageUrls(item)[0] || null;
+
+  return {
+    ...item,
+    imageUrl: primaryImageUrl,
+    imageUrls: primaryImageUrl ? [primaryImageUrl] : [],
+  };
+}
+
+function parseImageDataUrl(imageUrl?: string | null): {
+  data: Buffer;
+} | null {
+  if (!imageUrl) {
+    return null;
+  }
+
+  const match = imageUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    data: Buffer.from(match[2], "base64"),
+  };
+}
+
+async function createItemThumbnailDataUrl(
+  imageUrl?: string | null
+): Promise<string | null> {
+  const parsedImage = parseImageDataUrl(imageUrl);
+  if (!parsedImage) {
+    return imageUrl?.trim() || null;
+  }
+
+  let thumbnailBuffer: Buffer;
+  try {
+    thumbnailBuffer = await sharp(parsedImage.data)
+      .rotate()
+      .resize({
+        width: 360,
+        height: 360,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 60, mozjpeg: true })
+      .toBuffer();
+  } catch (error) {
+    console.warn(
+      "Failed to create item thumbnail; using original image:",
+      error
+    );
+    return imageUrl?.trim() || null;
+  }
+
+  return `data:image/jpeg;base64,${thumbnailBuffer.toString("base64")}`;
+}
+
+async function attachPrimaryImageThumbnail<T extends NormalizableItemMetadata>(
+  item: T
+): Promise<T> {
+  if (item.imageUrl === undefined && item.imageUrls === undefined) {
+    return item;
+  }
+
+  const imageUrls = normalizeItemImageUrls(item);
+  const thumbnail = await createItemThumbnailDataUrl(imageUrls[0]);
+  return {
+    ...item,
+    imageUrl: thumbnail,
+    imageUrls,
+  };
+}
+
+function compactItemsListResponse<T extends { items: NormalizableItemMetadata[] }>(
+  response: T
+): T {
+  return {
+    ...response,
+    items: response.items.map((item) => compactItemImagesForList(item)),
+  };
+}
+
+function compactAiSearchResultsForList<T extends { item: NormalizableItemMetadata }>(
+  results: T[]
+): T[] {
+  return results.map((result) => ({
+    ...result,
+    item: compactItemImagesForList(result.item),
+  }));
+}
+
 function buildDuplicateItemWindowStart(): Date {
   return new Date(Date.now() - 1000 * 60 * 2);
 }
@@ -5172,6 +5266,54 @@ function queueAutomaticMatchNotificationsForFoundItem(
     });
 }
 
+function queueAutomaticMatchCreationForItem(
+  item: Item,
+  existingEmbedding?: number[]
+): void {
+  automaticMatchQueue = automaticMatchQueue
+    .catch(() => undefined)
+    .then(() =>
+      monitorAutomaticMatchJob(
+        async (signal) => {
+          if (item.reportType === "found") {
+            const matchCount = await findAutomaticMatchesForFoundItem(item);
+            console.log(
+              `[AutoMatch] found item ${item.id} queued job created ${matchCount} matches`
+            );
+
+            if (AUTOMATIC_MATCH_QUEUE_ENABLED) {
+              try {
+                await runAutomaticMatchNotificationsForFoundItem(
+                  item,
+                  existingEmbedding,
+                  signal
+                );
+              } catch (notificationError) {
+                console.error(
+                  "Failed to process automatic match notifications:",
+                  notificationError
+                );
+              }
+            }
+            return;
+          }
+
+          if (item.reportType === "lost") {
+            const matchCount = await findAutomaticMatchesForLostItem(item);
+            console.log(
+              `[AutoMatch] lost item ${item.id} queued job created ${matchCount} matches`
+            );
+          }
+        },
+        AUTO_MATCH_JOB_TIMEOUT_MS,
+        `Automatic match creation job for item ${item.id}`
+      )
+    )
+    .catch((error) => {
+      console.error("Failed to create automatic matches:", error);
+    });
+}
+
 async function runAutomaticMatchNotificationsForFoundItem(
   foundItem: FoundItemForAutoMatch,
   existingEmbedding?: number[],
@@ -6035,7 +6177,7 @@ export async function registerRoutes(
             : undefined,
       });
       const itemsList = await storage.getItems(filters);
-      res.json(itemsList);
+      res.json(compactItemsListResponse(itemsList));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -6056,7 +6198,7 @@ export async function registerRoutes(
       });
 
       const itemsList = await storage.getMyItems(req.user!.id, filters);
-      res.json(itemsList);
+      res.json(itemsList.map((item) => compactItemImagesForList(item)));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
@@ -6089,7 +6231,9 @@ export async function registerRoutes(
         input.reportType,
         input.title
       );
-      const normalizedInput = normalizeItemMetadata(input);
+      const normalizedInput = await attachPrimaryImageThumbnail(
+        normalizeItemMetadata(input)
+      );
       const duplicateItem = await storage.findRecentDuplicateUserItem(
         {
           ...normalizedInput,
@@ -6130,33 +6274,12 @@ export async function registerRoutes(
         itemEmbedding !== undefined
       ) {
         console.log(
-          `[AutoMatch] 습득물 ${item.id} - 매칭 알림 큐 추가 및 실행`
+          `[AutoMatch] 습득물 ${item.id} - 매칭 생성 큐 추가`
         );
-        queueAutomaticMatchNotificationsForFoundItem(item, itemEmbedding);
-        try {
-          automaticMatchCount = await findAutomaticMatchesForFoundItem(item);
-          console.log(
-            `[AutoMatch] 습득물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`
-          );
-        } catch (matchError) {
-          console.error(
-            "Failed to create automatic matches for found item:",
-            matchError
-          );
-        }
+        queueAutomaticMatchCreationForItem(item, itemEmbedding);
       } else if (item.reportType === "lost" && item.status === "active") {
-        console.log(`[AutoMatch] 분실물 ${item.id} - 매칭 실행`);
-        try {
-          automaticMatchCount = await findAutomaticMatchesForLostItem(item);
-          console.log(
-            `[AutoMatch] 분실물 ${item.id} - ${automaticMatchCount}개 매칭 생성 완료`
-          );
-        } catch (matchError) {
-          console.error(
-            "Failed to create automatic matches for lost item:",
-            matchError
-          );
-        }
+        console.log(`[AutoMatch] 분실물 ${item.id} - 매칭 생성 큐 추가`);
+        queueAutomaticMatchCreationForItem(item, itemEmbedding);
       } else {
         console.log(
           `[AutoMatch] ${item.id} - 조건 불충족으로 매칭 스킵 (reportType: ${
@@ -6186,7 +6309,9 @@ export async function registerRoutes(
     try {
       const itemId = positiveIdSchema.parse(req.params.id);
       const input = api.items.update.input.parse(req.body);
-      const normalizedInput = normalizeItemMetadata(input);
+      const normalizedInput = await attachPrimaryImageThumbnail(
+        normalizeItemMetadata(input)
+      );
       const item = await storage.updateOwnedItem(
         req.user!.id,
         itemId,
@@ -6794,10 +6919,18 @@ export async function registerRoutes(
           })
           .slice(0, FINAL_RESULT_COUNT);
 
-        return res.json(rescaleAiSearchScores(fallbackResults, queryText));
+        return res.json(
+          compactAiSearchResultsForList(
+            rescaleAiSearchScores(fallbackResults, queryText)
+          )
+        );
       }
 
-      res.json(rescaleAiSearchScores(searchResults, queryText));
+      res.json(
+        compactAiSearchResultsForList(
+          rescaleAiSearchScores(searchResults, queryText)
+        )
+      );
     } catch (err) {
       console.error(err);
       if (err instanceof z.ZodError) {
