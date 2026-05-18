@@ -546,6 +546,23 @@ function isAiSearchServiceUnavailableError(
   );
 }
 
+class AiSearchTimeoutError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AiSearchTimeoutError";
+    Object.setPrototypeOf(this, AiSearchTimeoutError.prototype);
+  }
+}
+
+function isAiSearchTimeoutError(
+  error: unknown
+): error is AiSearchTimeoutError {
+  return (
+    error instanceof AiSearchTimeoutError ||
+    (error instanceof Error && error.name === "AiSearchTimeoutError")
+  );
+}
+
 type Lost112NormalizedItem = {
   atcId?: string;
   fdSn?: string;
@@ -2351,6 +2368,7 @@ function createScopedTimeoutSignal(
   const abortFromParent = () => {
     abortController.abort();
   };
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
   if (parentSignal?.aborted) {
     abortFromParent();
@@ -2358,16 +2376,54 @@ function createScopedTimeoutSignal(
     parentSignal?.addEventListener("abort", abortFromParent, { once: true });
   }
 
-  const timeoutId = setTimeout(() => {
-    console.warn(`${label} exceeded timeout of ${timeoutMs}ms`);
-    abortController.abort();
-  }, timeoutMs);
+  if (!abortController.signal.aborted) {
+    timeoutId = setTimeout(() => {
+      console.warn(`${label} exceeded timeout of ${timeoutMs}ms`);
+      abortController.abort();
+    }, timeoutMs);
+  }
 
   return {
     signal: abortController.signal,
     cleanup: () => {
-      clearTimeout(timeoutId);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       parentSignal?.removeEventListener("abort", abortFromParent);
+    },
+  };
+}
+
+function createAiSearchTimeoutGuard(
+  timeoutMs: number,
+  label: string
+): {
+  signal: AbortSignal;
+  race: <T>(promise: Promise<T>) => Promise<T>;
+  cleanup: () => void;
+} {
+  const abortController = new AbortController();
+  const timeoutError = new AiSearchTimeoutError(
+    "AI 검색 요청 시간이 초과되었습니다."
+  );
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      console.warn(`${label} exceeded timeout of ${timeoutMs}ms`);
+      abortController.abort(timeoutError);
+      reject(timeoutError);
+    }, timeoutMs);
+  });
+  timeoutPromise.catch(() => undefined);
+
+  return {
+    signal: abortController.signal,
+    race: <T>(promise: Promise<T>) => Promise.race([promise, timeoutPromise]),
+    cleanup: () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     },
   };
 }
@@ -4680,84 +4736,84 @@ async function createEmbedding(
     signal
   );
   const requestSignal = timeoutSignal.signal;
-  abortIfNeeded(requestSignal);
   try {
-  if (EMBEDDING_PROVIDER === "local") {
-    let response: Response;
+    abortIfNeeded(requestSignal);
+    if (EMBEDDING_PROVIDER === "local") {
+      let response: Response;
+      try {
+        response = await fetch(LOCAL_EMBEDDING_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ input }),
+          signal: requestSignal,
+        });
+      } catch (error) {
+        const message = isAbortError(error)
+          ? "로컬 임베딩 서버 요청 시간이 초과되었습니다."
+          : "로컬 임베딩 서버에 연결할 수 없습니다.";
+        throw new EmbeddingServiceUnavailableError(
+          message,
+          { cause: error }
+        );
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new EmbeddingServiceUnavailableError(
+          `로컬 임베딩 생성에 실패했습니다 (${response.status}): ${errorText}`
+        );
+      }
+      const payload = (await response.json()) as {
+        model?: string;
+        dimensions?: number;
+        data?: unknown;
+      };
+      const embedding = Array.isArray(payload.data)
+        ? Array.isArray(payload.data[0])
+          ? payload.data[0]
+          : payload.data
+        : undefined;
+      if (
+        !Array.isArray(embedding) ||
+        !embedding.every((value) => typeof value === "number")
+      ) {
+        throw new Error("로컬 임베딩 서버 응답 형식이 올바르지 않습니다");
+      }
+      if (embedding.length !== EMBEDDING_DIMENSIONS) {
+        throw new Error(
+          `로컬 임베딩 차원이 맞지 않습니다: expected ${EMBEDDING_DIMENSIONS}, got ${embedding.length}`
+        );
+      }
+      return embedding;
+    }
+
+    if (EMBEDDING_PROVIDER !== "openai") {
+      throw new Error(`지원하지 않는 임베딩 provider입니다: ${EMBEDDING_PROVIDER}`);
+    }
+    let response: Awaited<ReturnType<typeof openai.embeddings.create>>;
     try {
-      response = await fetch(LOCAL_EMBEDDING_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input }),
-        signal: requestSignal,
-      });
+      response = await openai.embeddings.create(
+        {
+          model: OPENAI_EMBEDDING_MODEL,
+          input,
+          dimensions: EMBEDDING_DIMENSIONS,
+        },
+        {
+          signal: requestSignal,
+        }
+      );
     } catch (error) {
       const message = isAbortError(error)
-        ? "로컬 임베딩 서버 요청 시간이 초과되었습니다."
-        : "로컬 임베딩 서버에 연결할 수 없습니다.";
-      throw new EmbeddingServiceUnavailableError(
-        message,
-        { cause: error }
-      );
+        ? "OpenAI 임베딩 요청 시간이 초과되었습니다."
+        : "OpenAI 임베딩 생성에 실패했습니다.";
+      throw new EmbeddingServiceUnavailableError(message, { cause: error });
     }
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      throw new EmbeddingServiceUnavailableError(
-        `로컬 임베딩 생성에 실패했습니다 (${response.status}): ${errorText}`
-      );
-    }
-    const payload = (await response.json()) as {
-      model?: string;
-      dimensions?: number;
-      data?: unknown;
-    };
-    const embedding = Array.isArray(payload.data)
-      ? Array.isArray(payload.data[0])
-        ? payload.data[0]
-        : payload.data
-      : undefined;
-    if (
-      !Array.isArray(embedding) ||
-      !embedding.every((value) => typeof value === "number")
-    ) {
-      throw new Error("로컬 임베딩 서버 응답 형식이 올바르지 않습니다");
-    }
-    if (embedding.length !== EMBEDDING_DIMENSIONS) {
-      throw new Error(
-        `로컬 임베딩 차원이 맞지 않습니다: expected ${EMBEDDING_DIMENSIONS}, got ${embedding.length}`
-      );
+    const embedding = response.data[0]?.embedding;
+    if (!embedding) {
+      throw new Error("임베딩 생성에 실패했습니다");
     }
     return embedding;
-  }
-
-  if (EMBEDDING_PROVIDER !== "openai") {
-    throw new Error(`지원하지 않는 임베딩 provider입니다: ${EMBEDDING_PROVIDER}`);
-  }
-  let response: Awaited<ReturnType<typeof openai.embeddings.create>>;
-  try {
-    response = await openai.embeddings.create(
-      {
-        model: OPENAI_EMBEDDING_MODEL,
-        input,
-        dimensions: EMBEDDING_DIMENSIONS,
-      },
-      {
-        signal: requestSignal,
-      }
-    );
-  } catch (error) {
-    const message = isAbortError(error)
-      ? "OpenAI 임베딩 요청 시간이 초과되었습니다."
-      : "OpenAI 임베딩 생성에 실패했습니다.";
-    throw new EmbeddingServiceUnavailableError(message, { cause: error });
-  }
-
-  const embedding = response.data[0]?.embedding;
-  if (!embedding) {
-    throw new Error("임베딩 생성에 실패했습니다");
-  }
-  return embedding;
   } finally {
     timeoutSignal.cleanup();
   }
@@ -4773,9 +4829,9 @@ async function createImageSearchText(
     signal
   );
   const requestSignal = timeoutSignal.signal;
-  abortIfNeeded(requestSignal);
   let response: Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>;
   try {
+    abortIfNeeded(requestSignal);
     response = await getQwenClient().chat.completions.create(
       {
         model: QWEN_VISION_MODEL,
@@ -5589,95 +5645,94 @@ async function rerankCandidates(params: {
   );
   const requestSignal = timeoutSignal.signal;
 
-  abortIfNeeded(requestSignal);
-
-  const userContent: Array<
-    | { type: "text"; text: string }
-    | { type: "image_url"; image_url: { url: string } }
-  > = [
-    {
-      type: "text",
-      text: [
-        "다음은 벡터 검색으로 먼저 추린 습득물 후보 목록이다.",
-        "사용자 분실물 정보와 각 후보를 비교해서 실제로 같은 물건일 가능성을 다시 평가해라.",
-        '반드시 JSON 객체만 반환하고 형식은 {"matches": [{"itemId": 1, "score": 0.91, "reasoning": "한국어 설명"}]} 이어야 한다.',
-        "score는 0부터 1 사이 숫자여야 하고, reasoning은 자연스러운 한국어 한두 문장이어야 한다.",
-        `사용자 검색 텍스트:\n${queryText}`,
-        prompt ? `사용자 원문 설명:\n${prompt}` : null,
-        `후보 목록:\n${JSON.stringify(
-          candidates.map((candidate) => ({
-            itemId: candidate.item.id,
-            vectorScore: Number(candidate.score.toFixed(4)),
-            title: candidate.item.title,
-            description: candidate.item.description,
-            itemCategory: candidate.item.itemCategory,
-            color: candidate.item.color,
-            size: candidate.item.size,
-            tags: candidate.item.tags,
-            location: candidate.item.location,
-          }))
-        )}`,
-      ]
-        .filter((value): value is string => Boolean(value))
-        .join("\n\n"),
-    },
-  ];
-
-  if (imageUrl) {
-    userContent.push({ type: "image_url", image_url: { url: imageUrl } });
-  }
-
-  let response: Awaited<ReturnType<OpenAI["chat"]["completions"]["create"]>>;
   try {
-    response = await aiClient.chat.completions.create(
-    {
-      model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "너는 분실물-습득물 매칭 재랭킹 도우미다. 벡터 검색 후보 중에서 실제로 일치할 가능성이 높은 항목만 골라 다시 점수화해라. 반드시 JSON 객체만 반환하고, reasoning은 모두 한국어로 작성해라.",
-        },
-        {
-          role: "user",
-          content: userContent,
-        },
-      ],
-      response_format: { type: "json_object" },
-    },
-    {
-      signal: requestSignal,
+    abortIfNeeded(requestSignal);
+
+    const userContent: Array<
+      | { type: "text"; text: string }
+      | { type: "image_url"; image_url: { url: string } }
+    > = [
+      {
+        type: "text",
+        text: [
+          "다음은 벡터 검색으로 먼저 추린 습득물 후보 목록이다.",
+          "사용자 분실물 정보와 각 후보를 비교해서 실제로 같은 물건일 가능성을 다시 평가해라.",
+          '반드시 JSON 객체만 반환하고 형식은 {"matches": [{"itemId": 1, "score": 0.91, "reasoning": "한국어 설명"}]} 이어야 한다.',
+          "score는 0부터 1 사이 숫자여야 하고, reasoning은 자연스러운 한국어 한두 문장이어야 한다.",
+          `사용자 검색 텍스트:\n${queryText}`,
+          prompt ? `사용자 원문 설명:\n${prompt}` : null,
+          `후보 목록:\n${JSON.stringify(
+            candidates.map((candidate) => ({
+              itemId: candidate.item.id,
+              vectorScore: Number(candidate.score.toFixed(4)),
+              title: candidate.item.title,
+              description: candidate.item.description,
+              itemCategory: candidate.item.itemCategory,
+              color: candidate.item.color,
+              size: candidate.item.size,
+              tags: candidate.item.tags,
+              location: candidate.item.location,
+            }))
+          )}`,
+        ]
+          .filter((value): value is string => Boolean(value))
+          .join("\n\n"),
+      },
+    ];
+
+    if (imageUrl) {
+      userContent.push({ type: "image_url", image_url: { url: imageUrl } });
     }
+
+    const response = await aiClient.chat.completions.create(
+      {
+        model,
+        messages: [
+          {
+            role: "system",
+            content:
+              "너는 분실물-습득물 매칭 재랭킹 도우미다. 벡터 검색 후보 중에서 실제로 일치할 가능성이 높은 항목만 골라 다시 점수화해라. 반드시 JSON 객체만 반환하고, reasoning은 모두 한국어로 작성해라.",
+          },
+          {
+            role: "user",
+            content: userContent,
+          },
+        ],
+        response_format: { type: "json_object" },
+      },
+      {
+        signal: requestSignal,
+      }
     );
+
+    const content = getCompletionText(response, "재랭킹 응답을 받지 못했습니다");
+
+    const parsed = JSON.parse(content);
+    const matches: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsed.matches)
+      ? parsed.matches
+      : [];
+
+    return matches
+      .map((match: unknown) => {
+        const result = z
+          .object({
+            itemId: z.number(),
+            score: z.number(),
+            reasoning: z.string(),
+          })
+          .safeParse(match);
+
+        return result.success ? result.data : null;
+      })
+      .filter(
+        (match): match is { itemId: number; score: number; reasoning: string } =>
+          Boolean(match)
+      );
   } finally {
     timeoutSignal.cleanup();
   }
-
-  const content = getCompletionText(response, "재랭킹 응답을 받지 못했습니다");
-
-  const parsed = JSON.parse(content);
-  const matches: unknown[] = Array.isArray(parsed)
-    ? parsed
-    : Array.isArray(parsed.matches)
-    ? parsed.matches
-    : [];
-
-  return matches
-    .map((match: unknown) => {
-      const result = z
-        .object({
-          itemId: z.number(),
-          score: z.number(),
-          reasoning: z.string(),
-        })
-        .safeParse(match);
-
-      return result.success ? result.data : null;
-    })
-    .filter(
-      (match): match is { itemId: number; score: number; reasoning: string } =>
-        Boolean(match)
-    );
 }
 
 type OAuthProfile = {
@@ -6653,7 +6708,7 @@ export async function registerRoutes(
       const searchId = `${searchStartedAt.toString(36)}-${Math.random()
         .toString(36)
         .slice(2, 8)}`;
-      const searchTimeout = createScopedTimeoutSignal(
+      const searchTimeout = createAiSearchTimeoutGuard(
         AI_SEARCH_TOTAL_TIMEOUT_MS,
         `[AI Search:${searchId}] total request`
       );
@@ -6673,7 +6728,9 @@ export async function registerRoutes(
         .join(" ");
       const inferredLocationQuery = getRequestedLocationQuery(promptAndLocationText);
       const inferredLocation = !explicitSearchCoordinates
-        ? await geocodeSearchLocationQuery(inferredLocationQuery ?? "")
+        ? await searchTimeout.race(
+            geocodeSearchLocationQuery(inferredLocationQuery ?? "")
+          )
         : null;
       const searchCoordinates = explicitSearchCoordinates
         ? explicitSearchCoordinates
@@ -6707,10 +6764,12 @@ export async function registerRoutes(
         : MIN_VECTOR_MATCH_SCORE;
       if (AI_SEARCH_BACKFILL_LIMIT > 0) {
         const phaseStartedAt = Date.now();
-        await backfillItemEmbeddings(
-          "found",
-          AI_SEARCH_BACKFILL_LIMIT,
-          searchSignal
+        await searchTimeout.race(
+          backfillItemEmbeddings(
+            "found",
+            AI_SEARCH_BACKFILL_LIMIT,
+            searchSignal
+          )
         );
         logAiSearchPhase(searchId, "embedding backfill", phaseStartedAt);
       }
@@ -6742,21 +6801,23 @@ export async function registerRoutes(
 
       if (input.imageUrl) {
         const phaseStartedAt = Date.now();
-        const imageSearchText = await createImageSearchText(
-          input.imageUrl,
-          searchSignal
-        ).catch(
-          (imageSearchError) => {
-            if (trimmedPrompt && isAiSearchServiceUnavailableError(imageSearchError)) {
-              console.warn(
-                "[AI Search] image analysis failed; falling back to prompt-only search:",
-                imageSearchError
-              );
-              return "";
-            }
+        const imageSearchText = await searchTimeout.race(
+          createImageSearchText(input.imageUrl, searchSignal).catch(
+            (imageSearchError) => {
+              if (isAiSearchTimeoutError(imageSearchError)) {
+                throw imageSearchError;
+              }
+              if (trimmedPrompt && isAiSearchServiceUnavailableError(imageSearchError)) {
+                console.warn(
+                  "[AI Search] image analysis failed; falling back to prompt-only search:",
+                  imageSearchError
+                );
+                return "";
+              }
 
-            throw imageSearchError;
-          }
+              throw imageSearchError;
+            }
+          )
         );
         logAiSearchPhase(searchId, "image analysis", phaseStartedAt, {
           usedFallback: !imageSearchText,
@@ -6768,49 +6829,56 @@ export async function registerRoutes(
 
       const queryText = queryParts.join("\n\n").trim();
       const embeddingStartedAt = Date.now();
-      const queryEmbedding = await createEmbedding(queryText, "query", searchSignal);
+      const queryEmbedding = await searchTimeout.race(
+        createEmbedding(queryText, "query", searchSignal)
+      );
       logAiSearchPhase(searchId, "query embedding", embeddingStartedAt);
       const locationScopedItems =
         searchCoordinates && effectiveRadiusKm !== undefined
-          ? await storage.getItemsWithinRadius(
-              "found",
-              searchCoordinates.latitude,
-              searchCoordinates.longitude,
-              effectiveRadiusKm,
-              LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT
+          ? await searchTimeout.race(
+              storage.getItemsWithinRadius(
+                "found",
+                searchCoordinates.latitude,
+                searchCoordinates.longitude,
+                effectiveRadiusKm,
+                LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT
+              )
             )
           : [];
       const locationDistanceByItemId = new Map(
         locationScopedItems.map((result) => [result.item.id, result.distanceKm])
       );
       const candidateStartedAt = Date.now();
-      const [vectorMatches, lexicalMatches, dateMatches] = await Promise.all([
-        locationScopedItems.length > 0
-          ? storage.searchItemsByEmbeddingWithinItemIds(
-              "found",
-              queryEmbedding,
-              locationScopedItems.map((result) => result.item.id),
-              vectorCandidateCount
-            )
-          : storage.searchItemsByEmbedding(
-              "found",
-              queryEmbedding,
-              vectorCandidateCount
-            ),
-        searchLexicalAiCandidates({
-          queryText,
-          searchCoordinates,
-          radiusKm: effectiveRadiusKm,
-          limit: vectorCandidateCount,
-        }),
-        searchDateAiCandidates({
-          range: lostDateRange,
-          queryText,
-          searchCoordinates,
-          radiusKm: effectiveRadiusKm,
-          limit: vectorCandidateCount,
-        }),
-      ]);
+      const [vectorMatches, lexicalMatches, dateMatches] =
+        await searchTimeout.race(
+          Promise.all([
+            locationScopedItems.length > 0
+              ? storage.searchItemsByEmbeddingWithinItemIds(
+                  "found",
+                  queryEmbedding,
+                  locationScopedItems.map((result) => result.item.id),
+                  vectorCandidateCount
+                )
+              : storage.searchItemsByEmbedding(
+                  "found",
+                  queryEmbedding,
+                  vectorCandidateCount
+                ),
+            searchLexicalAiCandidates({
+              queryText,
+              searchCoordinates,
+              radiusKm: effectiveRadiusKm,
+              limit: vectorCandidateCount,
+            }),
+            searchDateAiCandidates({
+              range: lostDateRange,
+              queryText,
+              searchCoordinates,
+              radiusKm: effectiveRadiusKm,
+              limit: vectorCandidateCount,
+            }),
+          ])
+        );
       logAiSearchPhase(searchId, "candidate search", candidateStartedAt, {
         vectorMatches: vectorMatches.length,
         lexicalMatches: lexicalMatches.length,
@@ -6872,6 +6940,8 @@ export async function registerRoutes(
           }).keep
         );
 
+      abortIfNeeded(searchSignal);
+
       if (filteredVectorMatches.length === 0) {
         return res.json([]);
       }
@@ -6895,19 +6965,24 @@ export async function registerRoutes(
           : undefined;
       const rerankStartedAt = Date.now();
       const rerankedMatches = AI_RERANK_ENABLED
-        ? await rerankCandidates({
-            prompt: input.prompt,
-            imageUrl: rerankImageUrl,
-            queryText,
-            candidates: filteredVectorMatches.slice(0, AI_RERANK_MAX_CANDIDATES),
-            signal: searchSignal,
-          }).catch((rerankError) => {
-            console.error(
-              "[AI Search] rerank failed; using vector fallback:",
-              rerankError
-            );
-            return [];
-          })
+        ? await searchTimeout.race(
+            rerankCandidates({
+              prompt: input.prompt,
+              imageUrl: rerankImageUrl,
+              queryText,
+              candidates: filteredVectorMatches.slice(0, AI_RERANK_MAX_CANDIDATES),
+              signal: searchSignal,
+            }).catch((rerankError) => {
+              if (isAiSearchTimeoutError(rerankError) || searchSignal.aborted) {
+                throw rerankError;
+              }
+              console.error(
+                "[AI Search] rerank failed; using vector fallback:",
+                rerankError
+              );
+              return [];
+            })
+          )
         : [];
       if (AI_RERANK_ENABLED) {
         logAiSearchPhase(searchId, "rerank", rerankStartedAt, {
@@ -6981,6 +7056,8 @@ export async function registerRoutes(
         })
         .slice(0, FINAL_RESULT_COUNT);
 
+      abortIfNeeded(searchSignal);
+
       if (searchResults.length === 0) {
         const fallbackResults: AiSearchResult[] = filteredVectorMatches
           .map((result) => {
@@ -7033,12 +7110,16 @@ export async function registerRoutes(
           })
           .slice(0, FINAL_RESULT_COUNT);
 
+        abortIfNeeded(searchSignal);
+
         return res.json(
           compactAiSearchResultsForList(
             rescaleAiSearchScores(fallbackResults, queryText)
           )
         );
       }
+
+      abortIfNeeded(searchSignal);
 
       res.json(
         compactAiSearchResultsForList(
@@ -7053,16 +7134,16 @@ export async function registerRoutes(
           field: err.errors[0].path.join("."),
         });
       }
+      if (isAiSearchTimeoutError(err) || isAbortError(err)) {
+        return res.status(504).json({
+          message: "AI 검색 요청 시간이 초과되었습니다.",
+        });
+      }
       if (isEmbeddingServiceUnavailableError(err)) {
         return res.status(503).json({ message: getErrorMessage(err) });
       }
       if (isAiSearchServiceUnavailableError(err)) {
         return res.status(503).json({ message: getErrorMessage(err) });
-      }
-      if (isAbortError(err)) {
-        return res.status(504).json({
-          message: "AI search exceeded the request time limit.",
-        });
       }
       res.status(500).json({ message: getErrorMessage(err) });
     } finally {
