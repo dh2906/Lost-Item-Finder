@@ -2463,7 +2463,7 @@ function getRemainingTimeoutMs(startedAt: number, timeoutMs: number): number {
 
 async function withAiSearchDbTimeout<T>(
   timeoutMs: number,
-  callback: (database: AppDb) => Promise<T>
+  callback: (database: AiSearchDatabase) => Promise<T>
 ): Promise<T> {
   const statementTimeoutMs = Math.max(
     1,
@@ -2474,7 +2474,7 @@ async function withAiSearchDbTimeout<T>(
     await transaction.execute(
       sql.raw(`SET LOCAL statement_timeout = ${statementTimeoutMs}`)
     );
-    return callback(transaction as AppDb);
+    return callback(transaction);
   });
 }
 
@@ -3609,7 +3609,7 @@ type SearchCoordinates = {
   longitude: number;
 };
 
-type AppDb = typeof db;
+type AiSearchDatabase = Pick<typeof db, "execute" | "select">;
 
 const AMBIGUOUS_STANDALONE_LOCATION_SUFFIXES = [
   "백화점",
@@ -4055,7 +4055,7 @@ async function searchDateAiCandidates(params: {
   searchCoordinates: SearchCoordinates | null;
   radiusKm?: number;
   limit: number;
-  database?: AppDb;
+  database?: AiSearchDatabase;
 }): Promise<RankedVectorCandidate[]> {
   const {
     range,
@@ -4118,7 +4118,7 @@ async function searchLexicalAiCandidates(params: {
   searchCoordinates: SearchCoordinates | null;
   radiusKm?: number;
   limit: number;
-  database?: AppDb;
+  database?: AiSearchDatabase;
 }): Promise<RankedVectorCandidate[]> {
   const {
     queryText,
@@ -4217,7 +4217,7 @@ async function searchLexicalAiCandidates(params: {
 }
 
 async function searchAiItemsByEmbedding(
-  database: AppDb,
+  database: AiSearchDatabase,
   reportType: "lost" | "found",
   embedding: number[],
   limit = 12
@@ -4241,7 +4241,7 @@ async function searchAiItemsByEmbedding(
 }
 
 async function searchAiItemsByEmbeddingWithinItemIds(
-  database: AppDb,
+  database: AiSearchDatabase,
   reportType: "lost" | "found",
   embedding: number[],
   itemIds: number[],
@@ -4276,7 +4276,7 @@ async function searchAiItemsByEmbeddingWithinItemIds(
 }
 
 async function getAiItemsWithinRadius(
-  database: AppDb,
+  database: AiSearchDatabase,
   reportType: "lost" | "found",
   latitude: number,
   longitude: number,
