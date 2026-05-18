@@ -2480,6 +2480,28 @@ function logAiSearchEvent(
   console.info(`[AI Search:${searchId ?? "unknown"}] ${event}${detailText}`);
 }
 
+function logAnalyzeImagePhase(
+  requestId: string | undefined,
+  phase: string,
+  startedAt: number,
+  details?: Record<string, unknown>
+): void {
+  const durationMs = Date.now() - startedAt;
+  const detailText = details ? ` ${JSON.stringify(details)}` : "";
+  console.info(
+    `[Analyze Image:${requestId ?? "unknown"}] ${phase} in ${durationMs}ms${detailText}`
+  );
+}
+
+function logAnalyzeImageEvent(
+  requestId: string | undefined,
+  event: string,
+  details?: Record<string, unknown>
+): void {
+  const detailText = details ? ` ${JSON.stringify(details)}` : "";
+  console.info(`[Analyze Image:${requestId ?? "unknown"}] ${event}${detailText}`);
+}
+
 function getRemainingTimeoutMs(startedAt: number, timeoutMs: number): number {
   return Math.max(1, timeoutMs - (Date.now() - startedAt));
 }
@@ -6833,9 +6855,19 @@ export async function registerRoutes(
     isAuthenticated,
     aiImageAnalysisRateLimit,
     async (req, res) => {
+      let analyzeRequestId: string | undefined;
       try {
+        const analyzeStartedAt = Date.now();
+        analyzeRequestId = `${analyzeStartedAt.toString(36)}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
         const input = api.ai.analyzeImage.input.parse(req.body);
+        logAnalyzeImageEvent(analyzeRequestId, "request start", {
+          hasImage: Boolean(input.imageUrl),
+          normalizeEnabled: OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED,
+        });
 
+        const qwenStartedAt = Date.now();
         const response = await getQwenClient().chat.completions.create({
           model: QWEN_VISION_MODEL,
           messages: [
@@ -6857,13 +6889,21 @@ export async function registerRoutes(
           ],
           response_format: { type: "json_object" },
         });
+        logAnalyzeImagePhase(analyzeRequestId, "qwen vision call", qwenStartedAt, {
+          model: QWEN_VISION_MODEL,
+        });
 
+        const parseStartedAt = Date.now();
         const content = getCompletionText(
           response,
           "Failed to get response from AI"
         );
 
         const rawResult = rawAnalyzeImageSchema.parse(JSON.parse(content));
+        logAnalyzeImagePhase(analyzeRequestId, "parse qwen response", parseStartedAt, {
+          requiresMasking: rawResult.requiresMasking === true,
+        });
+        const normalizeStartedAt = Date.now();
         const normalizedResult = OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED
           ? await normalizeAnalyzeImageMetadata(rawResult).catch(
               (normalizationError) => {
@@ -6875,9 +6915,13 @@ export async function registerRoutes(
               }
             )
           : buildLocalAnalyzeImageResult(rawResult);
+        logAnalyzeImagePhase(analyzeRequestId, "metadata normalize", normalizeStartedAt, {
+          mode: OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED ? "openai" : "local",
+        });
 
         let finalImageBase64 = input.imageUrl;
 
+        const maskingStartedAt = Date.now();
         if (rawResult.requiresMasking === true) {
           console.log("🔒 [보안] 개인정보 감지! 마스킹 처리를 시작합니다.");
           const base64Data = input.imageUrl.replace(
@@ -6891,18 +6935,38 @@ export async function registerRoutes(
           console.log("✅ [안전] 일반 사물입니다. 마스킹을 건너뜁니다.");
         }
 
+        logAnalyzeImagePhase(analyzeRequestId, "masking", maskingStartedAt, {
+          enabled: rawResult.requiresMasking === true,
+        });
+
+        logAnalyzeImageEvent(analyzeRequestId, "response send", {
+          status: 200,
+        });
         res.json({
           ...normalizedResult,
           maskedImage: finalImageBase64,
         });
+        logAnalyzeImagePhase(analyzeRequestId, "total request", analyzeStartedAt);
       } catch (err) {
+        logAnalyzeImageEvent(analyzeRequestId, "catch error", {
+          name: err instanceof Error ? err.name : typeof err,
+          message: getErrorMessage(err),
+        });
         console.error(err);
         if (err instanceof z.ZodError) {
+          logAnalyzeImageEvent(analyzeRequestId, "response send", {
+            status: 400,
+            reason: "validation error",
+          });
           return res.status(400).json({
             message: err.errors[0].message,
             field: err.errors[0].path.join("."),
           });
         }
+        logAnalyzeImageEvent(analyzeRequestId, "response send", {
+          status: 500,
+          reason: "unexpected error",
+        });
         res.status(500).json({ message: getErrorMessage(err) });
       }
     }
