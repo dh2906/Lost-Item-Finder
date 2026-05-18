@@ -2459,14 +2459,16 @@ function createAiSearchTimeoutGuard(
 }
 
 function logAiSearchPhase(
-  searchId: string,
+  searchId: string | undefined,
   phase: string,
   startedAt: number,
   details?: Record<string, unknown>
 ): void {
   const durationMs = Date.now() - startedAt;
   const detailText = details ? ` ${JSON.stringify(details)}` : "";
-  console.info(`[AI Search:${searchId}] ${phase} in ${durationMs}ms${detailText}`);
+  console.info(
+    `[AI Search:${searchId ?? "unknown"}] ${phase} in ${durationMs}ms${detailText}`
+  );
 }
 
 function logAiSearchEvent(
@@ -7071,6 +7073,7 @@ export async function registerRoutes(
           withAiSearchDbTimeout(
             getRemainingTimeoutMs(searchStartedAt, AI_SEARCH_TOTAL_TIMEOUT_MS),
             async (database) => {
+              const locationScopeStartedAt = Date.now();
               const locationScopedItems =
                 searchCoordinates && effectiveRadiusKm !== undefined
                   ? await getAiItemsWithinRadius(
@@ -7082,6 +7085,11 @@ export async function registerRoutes(
                       locationScopeLimit
                     )
                   : [];
+              logAiSearchPhase(searchId, "candidate search: location scope", locationScopeStartedAt, {
+                enabled: Boolean(searchCoordinates && effectiveRadiusKm !== undefined),
+                results: locationScopedItems.length,
+                limit: locationScopeLimit,
+              });
               const locationDistanceByItemId = new Map(
                 locationScopedItems.map((result) => [
                   result.item.id,
@@ -7090,35 +7098,62 @@ export async function registerRoutes(
               );
               const [vectorMatches, lexicalMatches, dateMatches] =
                 await Promise.all([
-                  locationScopedItems.length > 0
-                    ? searchAiItemsByEmbeddingWithinItemIds(
-                        database,
-                        "found",
-                        queryEmbedding,
-                        locationScopedItems.map((result) => result.item.id),
-                        vectorCandidateCount
-                      )
-                    : searchAiItemsByEmbedding(
-                        database,
-                        "found",
-                        queryEmbedding,
-                        vectorCandidateCount
-                      ),
-                  searchLexicalAiCandidates({
-                    queryText,
-                    searchCoordinates,
-                    radiusKm: effectiveRadiusKm,
-                    limit: vectorCandidateCount,
-                    database,
-                  }),
-                  searchDateAiCandidates({
-                    range: lostDateRange,
-                    queryText,
-                    searchCoordinates,
-                    radiusKm: effectiveRadiusKm,
-                    limit: vectorCandidateCount,
-                    database,
-                  }),
+                  (async () => {
+                    const vectorStartedAt = Date.now();
+                    const matches =
+                      locationScopedItems.length > 0
+                        ? await searchAiItemsByEmbeddingWithinItemIds(
+                            database,
+                            "found",
+                            queryEmbedding,
+                            locationScopedItems.map((result) => result.item.id),
+                            vectorCandidateCount
+                          )
+                        : await searchAiItemsByEmbedding(
+                            database,
+                            "found",
+                            queryEmbedding,
+                            vectorCandidateCount
+                          );
+                    logAiSearchPhase(searchId, "candidate search: vector", vectorStartedAt, {
+                      scopedByLocation: locationScopedItems.length > 0,
+                      results: matches.length,
+                      limit: vectorCandidateCount,
+                    });
+                    return matches;
+                  })(),
+                  (async () => {
+                    const lexicalStartedAt = Date.now();
+                    const matches = await searchLexicalAiCandidates({
+                      queryText,
+                      searchCoordinates,
+                      radiusKm: effectiveRadiusKm,
+                      limit: vectorCandidateCount,
+                      database,
+                    });
+                    logAiSearchPhase(searchId, "candidate search: lexical", lexicalStartedAt, {
+                      results: matches.length,
+                      limit: vectorCandidateCount,
+                    });
+                    return matches;
+                  })(),
+                  (async () => {
+                    const dateStartedAt = Date.now();
+                    const matches = await searchDateAiCandidates({
+                      range: lostDateRange,
+                      queryText,
+                      searchCoordinates,
+                      radiusKm: effectiveRadiusKm,
+                      limit: vectorCandidateCount,
+                      database,
+                    });
+                    logAiSearchPhase(searchId, "candidate search: date", dateStartedAt, {
+                      enabled: Boolean(lostDateRange),
+                      results: matches.length,
+                      limit: vectorCandidateCount,
+                    });
+                    return matches;
+                  })(),
                 ]);
 
               return {
@@ -7163,13 +7198,19 @@ export async function registerRoutes(
         lexicalMatches: lexicalMatches.length,
         dateMatches: dateMatches.length,
       });
-      const candidateEvaluationById = new Map<number, AiCandidateEvaluation>();
-      const filteredVectorMatches: RankedVectorCandidate[] = [];
-      for (const result of mergeRankedCandidates([
+      const mergeStartedAt = Date.now();
+      const mergedCandidates = mergeRankedCandidates([
         ...rankedVectorMatches,
         ...lexicalMatches,
         ...dateMatches,
-      ])) {
+      ]);
+      logAiSearchPhase(searchId, "candidate filtering: merge", mergeStartedAt, {
+        mergedCandidates: mergedCandidates.length,
+      });
+
+      const locationFilterStartedAt = Date.now();
+      const locationFilteredCandidates: RankedVectorCandidate[] = [];
+      for (const result of mergedCandidates) {
         if (
           searchLocationTextFilter &&
           !itemMatchesLocationText(result.item, searchLocationTextFilter)
@@ -7188,6 +7229,23 @@ export async function registerRoutes(
           }
         }
 
+        locationFilteredCandidates.push(result);
+      }
+      logAiSearchPhase(
+        searchId,
+        "candidate filtering: location filters",
+        locationFilterStartedAt,
+        {
+          candidates: locationFilteredCandidates.length,
+          hasLocationTextFilter: Boolean(searchLocationTextFilter),
+          hasCoordinates: Boolean(searchCoordinates && effectiveRadiusKm !== undefined),
+        }
+      );
+
+      const evaluationStartedAt = Date.now();
+      const candidateEvaluationById = new Map<number, AiCandidateEvaluation>();
+      const filteredVectorMatches: RankedVectorCandidate[] = [];
+      for (const result of locationFilteredCandidates) {
         const evaluation = evaluateAiSearchCandidate({
           queryText,
           candidate: result,
@@ -7201,6 +7259,10 @@ export async function registerRoutes(
         candidateEvaluationById.set(result.item.id, evaluation);
         filteredVectorMatches.push(result);
       }
+      logAiSearchPhase(searchId, "candidate filtering: evaluate", evaluationStartedAt, {
+        candidates: locationFilteredCandidates.length,
+        kept: filteredVectorMatches.length,
+      });
       logAiSearchPhase(searchId, "candidate filtering", filteringStartedAt, {
         filteredMatches: filteredVectorMatches.length,
       });
@@ -7326,7 +7388,8 @@ export async function registerRoutes(
         logAiSearchEvent(searchId, "fallback result build start", {
           candidates: filteredVectorMatches.length,
         });
-        const fallbackCandidates = filteredVectorMatches
+        const fallbackScoringStartedAt = Date.now();
+        const fallbackScoredCandidates = filteredVectorMatches
           .map((result) => {
             const score = blendAiSearchFallbackScore(
               result.score,
@@ -7359,7 +7422,14 @@ export async function registerRoutes(
               dateSummary,
             };
           })
-          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE)
+          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE);
+        logAiSearchPhase(searchId, "fallback result build: scoring", fallbackScoringStartedAt, {
+          candidates: filteredVectorMatches.length,
+          kept: fallbackScoredCandidates.length,
+        });
+
+        const fallbackSortingStartedAt = Date.now();
+        const fallbackCandidates = fallbackScoredCandidates
           .sort((a, b) => {
             if (b.score !== a.score) {
               return b.score - a.score;
@@ -7369,6 +7439,12 @@ export async function registerRoutes(
             return a.distanceKm - b.distanceKm;
           })
           .slice(0, FINAL_RESULT_COUNT);
+        logAiSearchPhase(searchId, "fallback result build: sorting", fallbackSortingStartedAt, {
+          candidates: fallbackScoredCandidates.length,
+          selected: fallbackCandidates.length,
+        });
+
+        const fallbackReasoningStartedAt = Date.now();
         const fallbackResults: AiSearchResult[] = fallbackCandidates.map((result) => ({
           ...result,
           reasoning: buildReasoningFromEvidence({
@@ -7379,6 +7455,9 @@ export async function registerRoutes(
             dateSummary: result.dateSummary,
           }),
         }));
+        logAiSearchPhase(searchId, "fallback result build: reasoning", fallbackReasoningStartedAt, {
+          results: fallbackResults.length,
+        });
         logAiSearchPhase(searchId, "fallback result build", fallbackStartedAt, {
           results: fallbackResults.length,
         });
@@ -7389,11 +7468,14 @@ export async function registerRoutes(
           mode: "fallback",
           results: fallbackResults.length,
         });
-        return res.json(
-          compactAiSearchResultsForList(
-            rescaleAiSearchScores(fallbackResults, queryText)
-          )
+        const fallbackCompactStartedAt = Date.now();
+        const fallbackResponse = compactAiSearchResultsForList(
+          rescaleAiSearchScores(fallbackResults, queryText)
         );
+        logAiSearchPhase(searchId, "fallback response compact", fallbackCompactStartedAt, {
+          results: fallbackResponse.length,
+        });
+        return res.json(fallbackResponse);
       }
 
       abortIfNeeded(searchSignal);
@@ -7402,11 +7484,14 @@ export async function registerRoutes(
         mode: "rerank",
         results: searchResults.length,
       });
-      res.json(
-        compactAiSearchResultsForList(
-          rescaleAiSearchScores(searchResults, queryText)
-        )
+      const rerankCompactStartedAt = Date.now();
+      const rerankResponse = compactAiSearchResultsForList(
+        rescaleAiSearchScores(searchResults, queryText)
       );
+      logAiSearchPhase(searchId, "rerank response compact", rerankCompactStartedAt, {
+        results: rerankResponse.length,
+      });
+      res.json(rerankResponse);
     } catch (err) {
       logAiSearchEvent(searchId, "catch error", {
         name: err instanceof Error ? err.name : typeof err,
