@@ -105,6 +105,18 @@ const VECTOR_CANDIDATE_COUNT = Number(process.env.VECTOR_CANDIDATE_COUNT ?? 20);
 const LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT = Number(
   process.env.LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT ?? 500
 );
+const AI_SEARCH_CANDIDATE_POOL_LIMIT = Number(
+  process.env.AI_SEARCH_CANDIDATE_POOL_LIMIT ?? 24
+);
+const AI_SEARCH_LOCATION_SCOPE_LIMIT = Number(
+  process.env.AI_SEARCH_LOCATION_SCOPE_LIMIT ?? 150
+);
+const AI_SEARCH_LEXICAL_TOKEN_LIMIT = Number(
+  process.env.AI_SEARCH_LEXICAL_TOKEN_LIMIT ?? 4
+);
+const AI_SEARCH_LEXICAL_PER_TOKEN_LIMIT = Number(
+  process.env.AI_SEARCH_LEXICAL_PER_TOKEN_LIMIT ?? 15
+);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 24);
 const AUTO_MATCH_RESULT_COUNT = Number(
   process.env.AUTO_MATCH_RESULT_COUNT ?? 5
@@ -4142,10 +4154,17 @@ async function searchLexicalAiCandidates(params: {
       !findKnownPlaceAlias(token) &&
       !isLikelyLocationToken(token)
   );
-  const uniqueTokens = Array.from(new Set(queryTokens)).slice(0, 8);
+  const uniqueTokens = Array.from(new Set(queryTokens)).slice(
+    0,
+    Math.max(1, AI_SEARCH_LEXICAL_TOKEN_LIMIT)
+  );
   if (uniqueTokens.length === 0) {
     return [];
   }
+  const perTokenLimit = Math.max(
+    1,
+    Math.min(limit, AI_SEARCH_LEXICAL_PER_TOKEN_LIMIT)
+  );
 
   const rows = await Promise.all(
     uniqueTokens.map((token) => {
@@ -4172,7 +4191,7 @@ async function searchLexicalAiCandidates(params: {
           )
         )
         .orderBy(desc(items.date), desc(items.id))
-        .limit(30);
+        .limit(perTokenLimit);
     })
   );
   const candidatesById = new Map<number, RankedVectorCandidate>();
@@ -6953,9 +6972,20 @@ export async function registerRoutes(
         ? radiusKm ?? DEFAULT_AI_SEARCH_RADIUS_KM
         : undefined;
       const hasLocationConstraint = Boolean(searchLocation || searchCoordinates);
-      const vectorCandidateCount = searchCoordinates
-        ? Math.max(VECTOR_CANDIDATE_COUNT, LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT)
+      const locationScopeLimit = Math.max(
+        1,
+        Math.min(
+          LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT,
+          AI_SEARCH_LOCATION_SCOPE_LIMIT
+        )
+      );
+      const requestedVectorCandidateCount = searchCoordinates
+        ? Math.max(VECTOR_CANDIDATE_COUNT, locationScopeLimit)
         : VECTOR_CANDIDATE_COUNT;
+      const vectorCandidateCount = Math.max(
+        1,
+        Math.min(requestedVectorCandidateCount, AI_SEARCH_CANDIDATE_POOL_LIMIT)
+      );
       const minVectorMatchScore = searchCoordinates
         ? MIN_LOCATION_VECTOR_MATCH_SCORE
         : MIN_VECTOR_MATCH_SCORE;
@@ -7049,7 +7079,7 @@ export async function registerRoutes(
                       searchCoordinates.latitude,
                       searchCoordinates.longitude,
                       effectiveRadiusKm,
-                      LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT
+                      locationScopeLimit
                     )
                   : [];
               const locationDistanceByItemId = new Map(
@@ -7104,6 +7134,8 @@ export async function registerRoutes(
         vectorMatches: vectorMatches.length,
         lexicalMatches: lexicalMatches.length,
         dateMatches: dateMatches.length,
+        vectorCandidateLimit: vectorCandidateCount,
+        locationScopeLimit,
       });
 
       const rankedVectorMatches: RankedVectorCandidate[] = vectorMatches
@@ -7131,41 +7163,44 @@ export async function registerRoutes(
         lexicalMatches: lexicalMatches.length,
         dateMatches: dateMatches.length,
       });
-      const filteredVectorMatches: RankedVectorCandidate[] = mergeRankedCandidates([
+      const candidateEvaluationById = new Map<number, AiCandidateEvaluation>();
+      const filteredVectorMatches: RankedVectorCandidate[] = [];
+      for (const result of mergeRankedCandidates([
         ...rankedVectorMatches,
         ...lexicalMatches,
         ...dateMatches,
-      ])
-        .filter((result) => {
-          if (
-            searchLocationTextFilter &&
-            !itemMatchesLocationText(result.item, searchLocationTextFilter)
-          ) {
-            return false;
-          }
+      ])) {
+        if (
+          searchLocationTextFilter &&
+          !itemMatchesLocationText(result.item, searchLocationTextFilter)
+        ) {
+          continue;
+        }
 
-          if (searchCoordinates && effectiveRadiusKm !== undefined) {
-            return (
-              (result.distanceKm !== null &&
-                result.distanceKm <= effectiveRadiusKm) ||
-              Boolean(
-                searchLocation &&
-                  itemMatchesLocationText(result.item, searchLocation)
-              )
-            );
+        if (searchCoordinates && effectiveRadiusKm !== undefined) {
+          const isWithinRadius =
+            result.distanceKm !== null && result.distanceKm <= effectiveRadiusKm;
+          const matchesLocationText = Boolean(
+            searchLocation && itemMatchesLocationText(result.item, searchLocation)
+          );
+          if (!isWithinRadius && !matchesLocationText) {
+            continue;
           }
+        }
 
-          return true;
-        })
-        .filter((result) =>
-          evaluateAiSearchCandidate({
-            queryText,
-            candidate: result,
-            hasLocationConstraint,
-            lostDateRange,
-            rerankEnabled: AI_RERANK_ENABLED,
-          }).keep
-        );
+        const evaluation = evaluateAiSearchCandidate({
+          queryText,
+          candidate: result,
+          hasLocationConstraint,
+          lostDateRange,
+          rerankEnabled: AI_RERANK_ENABLED,
+        });
+        if (!evaluation.keep) {
+          continue;
+        }
+        candidateEvaluationById.set(result.item.id, evaluation);
+        filteredVectorMatches.push(result);
+      }
       logAiSearchPhase(searchId, "candidate filtering", filteringStartedAt, {
         filteredMatches: filteredVectorMatches.length,
       });
@@ -7179,19 +7214,6 @@ export async function registerRoutes(
         });
         return res.json([]);
       }
-
-      const candidateEvaluationById = new Map(
-        filteredVectorMatches.map((candidate) => [
-          candidate.item.id,
-          evaluateAiSearchCandidate({
-            queryText,
-            candidate,
-            hasLocationConstraint,
-            lostDateRange,
-            rerankEnabled: AI_RERANK_ENABLED,
-          }),
-        ])
-      );
 
       const rerankImageUrl =
         input.imageUrl && AI_SEARCH_IMAGE_RERANK_ENABLED
@@ -7304,7 +7326,7 @@ export async function registerRoutes(
         logAiSearchEvent(searchId, "fallback result build start", {
           candidates: filteredVectorMatches.length,
         });
-        const fallbackResults: AiSearchResult[] = filteredVectorMatches
+        const fallbackCandidates = filteredVectorMatches
           .map((result) => {
             const score = blendAiSearchFallbackScore(
               result.score,
@@ -7335,13 +7357,6 @@ export async function registerRoutes(
                 ?.evidenceLabels,
               distanceKm: result.distanceKm,
               dateSummary,
-              reasoning: buildReasoningFromEvidence({
-                queryText,
-                item: result.item,
-                matchScore: adjustedScore,
-                distanceKm: result.distanceKm,
-                dateSummary,
-              }),
             };
           })
           .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE)
@@ -7354,6 +7369,16 @@ export async function registerRoutes(
             return a.distanceKm - b.distanceKm;
           })
           .slice(0, FINAL_RESULT_COUNT);
+        const fallbackResults: AiSearchResult[] = fallbackCandidates.map((result) => ({
+          ...result,
+          reasoning: buildReasoningFromEvidence({
+            queryText,
+            item: result.item,
+            matchScore: result.score,
+            distanceKm: result.distanceKm,
+            dateSummary: result.dateSummary,
+          }),
+        }));
         logAiSearchPhase(searchId, "fallback result build", fallbackStartedAt, {
           results: fallbackResults.length,
         });
