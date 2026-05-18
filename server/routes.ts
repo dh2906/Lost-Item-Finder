@@ -2457,6 +2457,15 @@ function logAiSearchPhase(
   console.info(`[AI Search:${searchId}] ${phase} in ${durationMs}ms${detailText}`);
 }
 
+function logAiSearchEvent(
+  searchId: string | undefined,
+  event: string,
+  details?: Record<string, unknown>
+): void {
+  const detailText = details ? ` ${JSON.stringify(details)}` : "";
+  console.info(`[AI Search:${searchId ?? "unknown"}] ${event}${detailText}`);
+}
+
 function getRemainingTimeoutMs(startedAt: number, timeoutMs: number): number {
   return Math.max(1, timeoutMs - (Date.now() - startedAt));
 }
@@ -6880,9 +6889,10 @@ export async function registerRoutes(
 
   app.post(api.ai.searchSimilar.path, aiSearchRateLimit, async (req, res) => {
     let cleanupSearchTimeout: (() => void) | undefined;
+    let searchId: string | undefined;
     try {
       const searchStartedAt = Date.now();
-      const searchId = `${searchStartedAt.toString(36)}-${Math.random()
+      searchId = `${searchStartedAt.toString(36)}-${Math.random()
         .toString(36)
         .slice(2, 8)}`;
       const searchTimeout = createAiSearchTimeoutGuard(
@@ -6892,8 +6902,18 @@ export async function registerRoutes(
       cleanupSearchTimeout = searchTimeout.cleanup;
       const searchSignal = searchTimeout.signal;
       const input = api.ai.searchSimilar.input.parse(req.body);
+      logAiSearchEvent(searchId, "request start", {
+        hasPrompt: Boolean(input.prompt?.trim()),
+        hasImage: Boolean(input.imageUrl),
+        rerankEnabled: AI_RERANK_ENABLED,
+        imageRerankEnabled: AI_SEARCH_IMAGE_RERANK_ENABLED,
+      });
 
       if (!input.prompt && !input.imageUrl) {
+        logAiSearchEvent(searchId, "response send", {
+          status: 400,
+          reason: "missing query",
+        });
         return res
           .status(400)
           .json({ message: "Either prompt or imageUrl must be provided" });
@@ -7105,6 +7125,12 @@ export async function registerRoutes(
             distanceKm,
           };
         });
+      const filteringStartedAt = Date.now();
+      logAiSearchEvent(searchId, "candidate filtering start", {
+        rankedVectorMatches: rankedVectorMatches.length,
+        lexicalMatches: lexicalMatches.length,
+        dateMatches: dateMatches.length,
+      });
       const filteredVectorMatches: RankedVectorCandidate[] = mergeRankedCandidates([
         ...rankedVectorMatches,
         ...lexicalMatches,
@@ -7140,10 +7166,17 @@ export async function registerRoutes(
             rerankEnabled: AI_RERANK_ENABLED,
           }).keep
         );
+      logAiSearchPhase(searchId, "candidate filtering", filteringStartedAt, {
+        filteredMatches: filteredVectorMatches.length,
+      });
 
       abortIfNeeded(searchSignal);
 
       if (filteredVectorMatches.length === 0) {
+        logAiSearchEvent(searchId, "response send", {
+          mode: "empty",
+          results: 0,
+        });
         return res.json([]);
       }
 
@@ -7165,6 +7198,14 @@ export async function registerRoutes(
           ? input.imageUrl
           : undefined;
       const rerankStartedAt = Date.now();
+      logAiSearchEvent(searchId, "rerank start", {
+        enabled: AI_RERANK_ENABLED,
+        imageRerankEnabled: Boolean(rerankImageUrl),
+        candidates: Math.min(
+          filteredVectorMatches.length,
+          AI_RERANK_MAX_CANDIDATES
+        ),
+      });
       const rerankedMatches = AI_RERANK_ENABLED
         ? await searchTimeout.race(
             rerankCandidates({
@@ -7185,12 +7226,11 @@ export async function registerRoutes(
             })
           )
         : [];
-      if (AI_RERANK_ENABLED) {
-        logAiSearchPhase(searchId, "rerank", rerankStartedAt, {
-          imageRerankEnabled: Boolean(rerankImageUrl),
-          rerankedMatches: rerankedMatches.length,
-        });
-      }
+      logAiSearchPhase(searchId, "rerank", rerankStartedAt, {
+        enabled: AI_RERANK_ENABLED,
+        imageRerankEnabled: Boolean(rerankImageUrl),
+        rerankedMatches: rerankedMatches.length,
+      });
 
       const vectorMatchById = new Map(
         filteredVectorMatches.map((candidate) => [candidate.item.id, candidate])
@@ -7260,6 +7300,10 @@ export async function registerRoutes(
       abortIfNeeded(searchSignal);
 
       if (searchResults.length === 0) {
+        const fallbackStartedAt = Date.now();
+        logAiSearchEvent(searchId, "fallback result build start", {
+          candidates: filteredVectorMatches.length,
+        });
         const fallbackResults: AiSearchResult[] = filteredVectorMatches
           .map((result) => {
             const score = blendAiSearchFallbackScore(
@@ -7310,9 +7354,16 @@ export async function registerRoutes(
             return a.distanceKm - b.distanceKm;
           })
           .slice(0, FINAL_RESULT_COUNT);
+        logAiSearchPhase(searchId, "fallback result build", fallbackStartedAt, {
+          results: fallbackResults.length,
+        });
 
         abortIfNeeded(searchSignal);
 
+        logAiSearchEvent(searchId, "response send", {
+          mode: "fallback",
+          results: fallbackResults.length,
+        });
         return res.json(
           compactAiSearchResultsForList(
             rescaleAiSearchScores(fallbackResults, queryText)
@@ -7322,33 +7373,66 @@ export async function registerRoutes(
 
       abortIfNeeded(searchSignal);
 
+      logAiSearchEvent(searchId, "response send", {
+        mode: "rerank",
+        results: searchResults.length,
+      });
       res.json(
         compactAiSearchResultsForList(
           rescaleAiSearchScores(searchResults, queryText)
         )
       );
     } catch (err) {
+      logAiSearchEvent(searchId, "catch error", {
+        name: err instanceof Error ? err.name : typeof err,
+        message: getErrorMessage(err),
+        aborted:
+          err instanceof Error && "name" in err
+            ? err.name === "AbortError"
+            : false,
+      });
       console.error(err);
       if (err instanceof z.ZodError) {
+        logAiSearchEvent(searchId, "response send", {
+          status: 400,
+          reason: "validation error",
+        });
         return res.status(400).json({
           message: err.errors[0].message,
           field: err.errors[0].path.join("."),
         });
       }
       if (isAiSearchTimeoutError(err) || isAbortError(err)) {
+        logAiSearchEvent(searchId, "response send", {
+          status: 504,
+          reason: "timeout",
+        });
         return res.status(504).json({
           message: "AI 검색 요청 시간이 초과되었습니다.",
         });
       }
       if (isEmbeddingServiceUnavailableError(err)) {
+        logAiSearchEvent(searchId, "response send", {
+          status: 503,
+          reason: "embedding unavailable",
+        });
         return res.status(503).json({ message: getErrorMessage(err) });
       }
       if (isAiSearchServiceUnavailableError(err)) {
+        logAiSearchEvent(searchId, "response send", {
+          status: 503,
+          reason: "ai search unavailable",
+        });
         return res.status(503).json({ message: getErrorMessage(err) });
       }
+      logAiSearchEvent(searchId, "response send", {
+        status: 500,
+        reason: "unexpected error",
+      });
       res.status(500).json({ message: getErrorMessage(err) });
     } finally {
       cleanupSearchTimeout?.();
+      logAiSearchEvent(searchId, "finally cleanup");
     }
   });
 
