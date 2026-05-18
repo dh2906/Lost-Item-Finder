@@ -119,9 +119,14 @@ const AI_SEARCH_LEXICAL_PER_TOKEN_LIMIT = Number(
 );
 const AI_SEARCH_IMAGE_LEXICAL_ENABLED =
   process.env.AI_SEARCH_IMAGE_LEXICAL_ENABLED === "true";
-const AI_SEARCH_FALLBACK_SCORING_LIMIT = Number(
+const rawAiSearchFallbackScoringLimit = Number(
   process.env.AI_SEARCH_FALLBACK_SCORING_LIMIT ?? 24
 );
+const AI_SEARCH_FALLBACK_SCORING_LIMIT =
+  Number.isFinite(rawAiSearchFallbackScoringLimit) &&
+  rawAiSearchFallbackScoringLimit > 0
+    ? rawAiSearchFallbackScoringLimit
+    : 24;
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 24);
 const AUTO_MATCH_RESULT_COUNT = Number(
   process.env.AUTO_MATCH_RESULT_COUNT ?? 5
@@ -3324,7 +3329,9 @@ function applyAiSearchConditionAdjustment(params: {
   evaluation?: AiCandidateEvaluation;
 }): number {
   const conditionScore =
-    params.evaluation?.conditionScore ?? calculateAiSearchConditionScore(params);
+    params.evaluation !== undefined
+      ? params.evaluation.conditionScore
+      : calculateAiSearchConditionScore(params);
   if (conditionScore === null) {
     return Number(params.baseScore.toFixed(4));
   }
@@ -7288,7 +7295,11 @@ export async function registerRoutes(
 
       const queryText = queryParts.join("\n\n").trim();
       const scoringContext = createAiSearchScoringContext(queryText);
-      const isImageOnlySearch = Boolean(input.imageUrl) && !trimmedPrompt;
+      const hasNonImageSearchContext = Boolean(
+        trimmedPrompt || searchLocation || lostDateRange
+      );
+      const isImageOnlySearch =
+        Boolean(input.imageUrl) && !hasNonImageSearchContext;
       const embeddingStartedAt = Date.now();
       const queryEmbedding = await searchTimeout.race(
         createEmbedding(queryText, "query", searchSignal)
@@ -7633,18 +7644,7 @@ export async function registerRoutes(
           FINAL_RESULT_COUNT,
           AI_SEARCH_FALLBACK_SCORING_LIMIT
         );
-        const fallbackScoringCandidates = filteredVectorMatches
-          .slice()
-          .sort((a, b) => {
-            if (b.score !== a.score) {
-              return b.score - a.score;
-            }
-            if (a.distanceKm === null) return 1;
-            if (b.distanceKm === null) return -1;
-            return a.distanceKm - b.distanceKm;
-          })
-          .slice(0, fallbackScoringLimit);
-        const fallbackScoredCandidates = fallbackScoringCandidates
+        const fallbackAdjustedCandidates = filteredVectorMatches
           .map((result) => {
             const score = blendAiSearchFallbackScore(
               result.score,
@@ -7679,10 +7679,20 @@ export async function registerRoutes(
               dateSummary,
             };
           })
-          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE);
+          .sort((a, b) => {
+            if (b.score !== a.score) {
+              return b.score - a.score;
+            }
+            if (a.distanceKm === null) return 1;
+            if (b.distanceKm === null) return -1;
+            return a.distanceKm - b.distanceKm;
+          });
+        const fallbackScoredCandidates = fallbackAdjustedCandidates
+          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE)
+          .slice(0, fallbackScoringLimit);
         logAiSearchPhase(searchId, "fallback result build: scoring", fallbackScoringStartedAt, {
           candidates: filteredVectorMatches.length,
-          scoredCandidates: fallbackScoringCandidates.length,
+          scoredCandidates: fallbackAdjustedCandidates.length,
           limit: fallbackScoringLimit,
           kept: fallbackScoredCandidates.length,
         });
