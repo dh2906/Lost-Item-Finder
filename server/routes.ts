@@ -20,7 +20,21 @@ import { z } from "zod";
 import OpenAI from "openai";
 import sharp from "sharp";
 import { db } from "./db";
-import { and, eq, ne, or, desc, asc, isNull, gte, lte, ilike } from "drizzle-orm";
+import {
+  and,
+  eq,
+  ne,
+  or,
+  desc,
+  asc,
+  isNull,
+  gte,
+  lte,
+  ilike,
+  cosineDistance,
+  inArray,
+  sql,
+} from "drizzle-orm";
 import {
   chatRooms,
   chatMessages,
@@ -115,6 +129,10 @@ const AI_SEARCH_RERANK_TIMEOUT_MS = Number(
 );
 const AI_SEARCH_TOTAL_TIMEOUT_MS = Number(
   process.env.AI_SEARCH_TOTAL_TIMEOUT_MS ?? 45_000
+);
+const AI_SEARCH_DB_STATEMENT_TIMEOUT_MS = Number(
+  process.env.AI_SEARCH_DB_STATEMENT_TIMEOUT_MS ??
+    Math.min(AI_SEARCH_TOTAL_TIMEOUT_MS, 30_000)
 );
 const AUTO_MATCH_JOB_TIMEOUT_MS = Number(
   process.env.AUTO_MATCH_JOB_TIMEOUT_MS ?? 15000
@@ -2439,6 +2457,27 @@ function logAiSearchPhase(
   console.info(`[AI Search:${searchId}] ${phase} in ${durationMs}ms${detailText}`);
 }
 
+function getRemainingTimeoutMs(startedAt: number, timeoutMs: number): number {
+  return Math.max(1, timeoutMs - (Date.now() - startedAt));
+}
+
+async function withAiSearchDbTimeout<T>(
+  timeoutMs: number,
+  callback: (database: AppDb) => Promise<T>
+): Promise<T> {
+  const statementTimeoutMs = Math.max(
+    1,
+    Math.floor(Math.min(timeoutMs, AI_SEARCH_DB_STATEMENT_TIMEOUT_MS))
+  );
+
+  return db.transaction(async (transaction) => {
+    await transaction.execute(
+      sql.raw(`SET LOCAL statement_timeout = ${statementTimeoutMs}`)
+    );
+    return callback(transaction as AppDb);
+  });
+}
+
 function isAbortError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -3570,6 +3609,8 @@ type SearchCoordinates = {
   longitude: number;
 };
 
+type AppDb = typeof db;
+
 const AMBIGUOUS_STANDALONE_LOCATION_SUFFIXES = [
   "백화점",
   "마트",
@@ -4014,13 +4055,21 @@ async function searchDateAiCandidates(params: {
   searchCoordinates: SearchCoordinates | null;
   radiusKm?: number;
   limit: number;
+  database?: AppDb;
 }): Promise<RankedVectorCandidate[]> {
-  const { range, queryText, searchCoordinates, radiusKm, limit } = params;
+  const {
+    range,
+    queryText,
+    searchCoordinates,
+    radiusKm,
+    limit,
+    database = db,
+  } = params;
   if (!range) {
     return [];
   }
 
-  const rows = await db
+  const rows = await database
     .select()
     .from(items)
     .where(
@@ -4069,8 +4118,15 @@ async function searchLexicalAiCandidates(params: {
   searchCoordinates: SearchCoordinates | null;
   radiusKm?: number;
   limit: number;
+  database?: AppDb;
 }): Promise<RankedVectorCandidate[]> {
-  const { queryText, searchCoordinates, radiusKm, limit } = params;
+  const {
+    queryText,
+    searchCoordinates,
+    radiusKm,
+    limit,
+    database = db,
+  } = params;
   const queryTokens = extractQueryKeywords(queryText).filter(
     (token) =>
       token.length >= 2 &&
@@ -4085,7 +4141,7 @@ async function searchLexicalAiCandidates(params: {
   const rows = await Promise.all(
     uniqueTokens.map((token) => {
       const searchPattern = `%${token}%`;
-      return db
+      return database
         .select()
         .from(items)
         .where(
@@ -4158,6 +4214,127 @@ async function searchLexicalAiCandidates(params: {
   return Array.from(candidatesById.values())
     .sort((left, right) => right.score - left.score)
     .slice(0, limit);
+}
+
+async function searchAiItemsByEmbedding(
+  database: AppDb,
+  reportType: "lost" | "found",
+  embedding: number[],
+  limit = 12
+): Promise<Array<{ item: Item; score: number }>> {
+  const distance = cosineDistance(itemEmbeddings.embedding, embedding);
+  const rows = await database
+    .select({
+      item: items,
+      distance,
+    })
+    .from(itemEmbeddings)
+    .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
+    .where(and(eq(items.reportType, reportType), eq(items.status, "active")))
+    .orderBy(distance)
+    .limit(limit);
+
+  return rows.map((row) => ({
+    item: row.item,
+    score: Math.max(0, 1 - Number(row.distance ?? 1)),
+  }));
+}
+
+async function searchAiItemsByEmbeddingWithinItemIds(
+  database: AppDb,
+  reportType: "lost" | "found",
+  embedding: number[],
+  itemIds: number[],
+  limit = 12
+): Promise<Array<{ item: Item; score: number }>> {
+  if (itemIds.length === 0) {
+    return [];
+  }
+
+  const distance = cosineDistance(itemEmbeddings.embedding, embedding);
+  const rows = await database
+    .select({
+      item: items,
+      distance,
+    })
+    .from(itemEmbeddings)
+    .innerJoin(items, eq(itemEmbeddings.itemId, items.id))
+    .where(
+      and(
+        eq(items.reportType, reportType),
+        eq(items.status, "active"),
+        inArray(items.id, itemIds)
+      )
+    )
+    .orderBy(distance)
+    .limit(limit);
+
+  return rows.map((row) => ({
+    item: row.item,
+    score: Math.max(0, 1 - Number(row.distance ?? 1)),
+  }));
+}
+
+async function getAiItemsWithinRadius(
+  database: AppDb,
+  reportType: "lost" | "found",
+  latitude: number,
+  longitude: number,
+  radiusKm: number,
+  limit = 500
+): Promise<Array<{ item: Item; distanceKm: number }>> {
+  const latitudeValue = sql<number | null>`
+    case
+      when ${items.latitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+        then ${items.latitude}::double precision
+      else null
+    end
+  `;
+  const longitudeValue = sql<number | null>`
+    case
+      when ${items.longitude} ~ '^-?[0-9]+(\.[0-9]+)?$'
+        then ${items.longitude}::double precision
+      else null
+    end
+  `;
+  const distanceKm = sql<number>`
+    6371 * acos(
+      least(
+        1,
+        greatest(
+          -1,
+          cos(radians(${latitude})) *
+          cos(radians(${latitudeValue})) *
+          cos(radians(${longitudeValue}) - radians(${longitude})) +
+          sin(radians(${latitude})) *
+          sin(radians(${latitudeValue}))
+        )
+      )
+    )
+  `;
+
+  const rows = await database
+    .select({
+      item: items,
+      distanceKm,
+    })
+    .from(items)
+    .where(
+      and(
+        eq(items.reportType, reportType),
+        eq(items.status, "active"),
+        sql<boolean>`${latitudeValue} is not null`,
+        sql<boolean>`${longitudeValue} is not null`,
+        sql<boolean>`${distanceKm} <= ${radiusKm}`
+      )
+    )
+    .orderBy(distanceKm, desc(items.date))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    item: row.item,
+    distanceKm: Number(row.distanceKm),
+  }));
 }
 
 function mergeRankedCandidates(
@@ -6833,51 +7010,75 @@ export async function registerRoutes(
         createEmbedding(queryText, "query", searchSignal)
       );
       logAiSearchPhase(searchId, "query embedding", embeddingStartedAt);
-      const locationScopedItems =
-        searchCoordinates && effectiveRadiusKm !== undefined
-          ? await searchTimeout.race(
-              storage.getItemsWithinRadius(
-                "found",
-                searchCoordinates.latitude,
-                searchCoordinates.longitude,
-                effectiveRadiusKm,
-                LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT
-              )
-            )
-          : [];
-      const locationDistanceByItemId = new Map(
-        locationScopedItems.map((result) => [result.item.id, result.distanceKm])
-      );
       const candidateStartedAt = Date.now();
-      const [vectorMatches, lexicalMatches, dateMatches] =
+      const {
+        locationDistanceByItemId,
+        vectorMatches,
+        lexicalMatches,
+        dateMatches,
+      } =
         await searchTimeout.race(
-          Promise.all([
-            locationScopedItems.length > 0
-              ? storage.searchItemsByEmbeddingWithinItemIds(
-                  "found",
-                  queryEmbedding,
-                  locationScopedItems.map((result) => result.item.id),
-                  vectorCandidateCount
-                )
-              : storage.searchItemsByEmbedding(
-                  "found",
-                  queryEmbedding,
-                  vectorCandidateCount
-                ),
-            searchLexicalAiCandidates({
-              queryText,
-              searchCoordinates,
-              radiusKm: effectiveRadiusKm,
-              limit: vectorCandidateCount,
-            }),
-            searchDateAiCandidates({
-              range: lostDateRange,
-              queryText,
-              searchCoordinates,
-              radiusKm: effectiveRadiusKm,
-              limit: vectorCandidateCount,
-            }),
-          ])
+          withAiSearchDbTimeout(
+            getRemainingTimeoutMs(searchStartedAt, AI_SEARCH_TOTAL_TIMEOUT_MS),
+            async (database) => {
+              const locationScopedItems =
+                searchCoordinates && effectiveRadiusKm !== undefined
+                  ? await getAiItemsWithinRadius(
+                      database,
+                      "found",
+                      searchCoordinates.latitude,
+                      searchCoordinates.longitude,
+                      effectiveRadiusKm,
+                      LOCATION_SEARCH_VECTOR_CANDIDATE_COUNT
+                    )
+                  : [];
+              const locationDistanceByItemId = new Map(
+                locationScopedItems.map((result) => [
+                  result.item.id,
+                  result.distanceKm,
+                ])
+              );
+              const [vectorMatches, lexicalMatches, dateMatches] =
+                await Promise.all([
+                  locationScopedItems.length > 0
+                    ? searchAiItemsByEmbeddingWithinItemIds(
+                        database,
+                        "found",
+                        queryEmbedding,
+                        locationScopedItems.map((result) => result.item.id),
+                        vectorCandidateCount
+                      )
+                    : searchAiItemsByEmbedding(
+                        database,
+                        "found",
+                        queryEmbedding,
+                        vectorCandidateCount
+                      ),
+                  searchLexicalAiCandidates({
+                    queryText,
+                    searchCoordinates,
+                    radiusKm: effectiveRadiusKm,
+                    limit: vectorCandidateCount,
+                    database,
+                  }),
+                  searchDateAiCandidates({
+                    range: lostDateRange,
+                    queryText,
+                    searchCoordinates,
+                    radiusKm: effectiveRadiusKm,
+                    limit: vectorCandidateCount,
+                    database,
+                  }),
+                ]);
+
+              return {
+                locationDistanceByItemId,
+                vectorMatches,
+                lexicalMatches,
+                dateMatches,
+              };
+            }
+          )
         );
       logAiSearchPhase(searchId, "candidate search", candidateStartedAt, {
         vectorMatches: vectorMatches.length,

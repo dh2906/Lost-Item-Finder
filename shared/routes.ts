@@ -642,6 +642,7 @@ export const api = {
         }),
         400: errorSchemas.validation,
         401: errorSchemas.validation,
+        504: errorSchemas.internal,
         500: errorSchemas.internal,
       },
     },
