@@ -117,6 +117,11 @@ const AI_SEARCH_LEXICAL_TOKEN_LIMIT = Number(
 const AI_SEARCH_LEXICAL_PER_TOKEN_LIMIT = Number(
   process.env.AI_SEARCH_LEXICAL_PER_TOKEN_LIMIT ?? 15
 );
+const AI_SEARCH_IMAGE_LEXICAL_ENABLED =
+  process.env.AI_SEARCH_IMAGE_LEXICAL_ENABLED === "true";
+const AI_SEARCH_FALLBACK_SCORING_LIMIT = Number(
+  process.env.AI_SEARCH_FALLBACK_SCORING_LIMIT ?? 24
+);
 const FINAL_RESULT_COUNT = Number(process.env.FINAL_RESULT_COUNT ?? 24);
 const AUTO_MATCH_RESULT_COUNT = Number(
   process.env.AUTO_MATCH_RESULT_COUNT ?? 5
@@ -3259,31 +3264,32 @@ function calculateAiSearchConditionScore(params: {
   item: VectorCandidate["item"];
   distanceKm: number | null;
   lostDateRange?: SearchDateRange | null;
+  context?: AiSearchScoringContext;
 }): number | null {
-  const { queryText, item, distanceKm, lostDateRange } = params;
+  const { queryText, item, distanceKm, lostDateRange, context } = params;
   const weightedScores: Array<{ score: number; weight: number }> = [];
 
-  if (hasRequestedCategory(queryText)) {
+  if (hasRequestedCategory(queryText, context)) {
     weightedScores.push({
-      score: getRequestedCategoryScore(queryText, item),
+      score: getRequestedCategoryScore(queryText, item, context),
       weight: 0.32,
     });
   }
-  if (hasRequestedColor(queryText)) {
+  if (hasRequestedColor(queryText, context)) {
     weightedScores.push({
-      score: getRequestedColorScore(queryText, item),
+      score: getRequestedColorScore(queryText, item, context),
       weight: 0.24,
     });
   }
-  if (hasRequestedLocation(queryText) || distanceKm !== null) {
+  if (hasRequestedLocation(queryText, context) || distanceKm !== null) {
     weightedScores.push({
       score:
         distanceKm !== null
           ? Math.max(
-              getRequestedLocationScore(queryText, item),
+              getRequestedLocationScore(queryText, item, context),
               calculateSearchDistanceScore(distanceKm, DEFAULT_AI_SEARCH_RADIUS_KM)
             )
-          : getRequestedLocationScore(queryText, item),
+          : getRequestedLocationScore(queryText, item, context),
       weight: 0.26,
     });
   }
@@ -3314,8 +3320,11 @@ function applyAiSearchConditionAdjustment(params: {
   item: VectorCandidate["item"];
   distanceKm: number | null;
   lostDateRange?: SearchDateRange | null;
+  context?: AiSearchScoringContext;
+  evaluation?: AiCandidateEvaluation;
 }): number {
-  const conditionScore = calculateAiSearchConditionScore(params);
+  const conditionScore =
+    params.evaluation?.conditionScore ?? calculateAiSearchConditionScore(params);
   if (conditionScore === null) {
     return Number(params.baseScore.toFixed(4));
   }
@@ -3352,11 +3361,13 @@ function buildAiSearchDateSummary(
   return `입력한 분실 시점 '${lostDateRange.label}'과 후보 등록 날짜 차이가 큰 편입니다.`;
 }
 
-function getMatchedQueryKeywords(queryText: string, item: VectorCandidate["item"]) {
-  const queryKeywords = extractQueryKeywords(queryText);
-  const itemKeywords = extractQueryKeywords(getItemEvidenceText(item)).concat(
-    (item.tags ?? []).map((tag) => normalizeComparableText(tag)).filter(Boolean)
-  );
+function getMatchedQueryKeywords(
+  queryText: string,
+  item: VectorCandidate["item"],
+  context?: AiSearchScoringContext
+) {
+  const queryKeywords = context?.query.queryKeywords ?? extractQueryKeywords(queryText);
+  const itemKeywords = getAiSearchItemTokenAnalysis(item, context).evidenceKeywords;
   const matchedKeywords = queryKeywords.filter((queryKeyword) =>
     itemKeywords.some(
       (itemKeyword) =>
@@ -3377,25 +3388,15 @@ function getMatchedQueryKeywords(queryText: string, item: VectorCandidate["item"
   };
 }
 
-function getRequestedCategoryScore(queryText: string, item: VectorCandidate["item"]) {
-  const queryKeywords = extractQueryKeywords(queryText);
-  const itemCategoryTokens = extractQueryKeywords(
-    [item.title, item.itemCategory, item.description, item.tags?.join(" ")]
-      .filter(Boolean)
-      .join(" ")
-  );
-  const requestedCategoryTokens = queryKeywords.filter((keyword) =>
-    CATEGORY_SYNONYM_GROUPS.some((group) =>
-      group.some(
-        (term) =>
-          calculateTokenSimilarity(
-            keyword,
-            normalizeComparableText(term),
-            CATEGORY_SYNONYM_GROUPS
-          ) >= 0.64
-      )
-    )
-  );
+function getRequestedCategoryScore(
+  queryText: string,
+  item: VectorCandidate["item"],
+  context?: AiSearchScoringContext
+) {
+  const itemCategoryTokens = getAiSearchItemTokenAnalysis(item, context).categoryTokens;
+  const requestedCategoryTokens =
+    context?.query.requestedCategoryTokens ??
+    createAiSearchQueryAnalysis(queryText).requestedCategoryTokens;
 
   if (requestedCategoryTokens.length === 0) {
     return 1;
@@ -3412,18 +3413,13 @@ function getRequestedCategoryScore(queryText: string, item: VectorCandidate["ite
   return matchedCategoryCount / requestedCategoryTokens.length;
 }
 
-function hasRequestedCategory(queryText: string): boolean {
-  return extractQueryKeywords(queryText).some((keyword) =>
-    CATEGORY_SYNONYM_GROUPS.some((group) =>
-      group.some(
-        (term) =>
-          calculateTokenSimilarity(
-            keyword,
-            normalizeComparableText(term),
-            CATEGORY_SYNONYM_GROUPS
-          ) >= 0.64
-      )
-    )
+function hasRequestedCategory(
+  queryText: string,
+  context?: AiSearchScoringContext
+): boolean {
+  return (
+    context?.query.hasRequestedCategory ??
+    createAiSearchQueryAnalysis(queryText).hasRequestedCategory
   );
 }
 
@@ -3551,13 +3547,14 @@ function extractRequestedLocationTokens(queryText: string): string[] {
   return Array.from(expandedTokens).slice(0, 10);
 }
 
-function getRequestedColorScore(queryText: string, item: VectorCandidate["item"]) {
-  const requestedColorTokens = extractRequestedColorTokens(queryText);
-  const itemColorTokens = extractQueryKeywords(
-    [item.title, item.color, item.description, item.tags?.join(" ")]
-      .filter(Boolean)
-      .join(" ")
-  );
+function getRequestedColorScore(
+  queryText: string,
+  item: VectorCandidate["item"],
+  context?: AiSearchScoringContext
+) {
+  const requestedColorTokens =
+    context?.query.requestedColorTokens ?? extractRequestedColorTokens(queryText);
+  const itemColorTokens = getAiSearchItemTokenAnalysis(item, context).colorTokens;
 
   if (requestedColorTokens.length === 0) {
     return 1;
@@ -3573,27 +3570,25 @@ function getRequestedColorScore(queryText: string, item: VectorCandidate["item"]
   return matchedColorCount / requestedColorTokens.length;
 }
 
-function hasRequestedColor(queryText: string): boolean {
-  return extractRequestedColorTokens(queryText).length > 0;
+function hasRequestedColor(
+  queryText: string,
+  context?: AiSearchScoringContext
+): boolean {
+  return (
+    context?.query.hasRequestedColor ??
+    createAiSearchQueryAnalysis(queryText).hasRequestedColor
+  );
 }
 
-function getRequestedLocationScore(queryText: string, item: VectorCandidate["item"]) {
-  const requestedLocationTokens = extractRequestedLocationTokens(queryText);
-  const itemLocationTokens = extractQueryKeywords(
-    [
-      item.location,
-      item.address,
-      item.placeName,
-      item.region1,
-      item.region2,
-      item.region3,
-      item.description,
-      item.title,
-      item.tags?.join(" "),
-    ]
-      .filter(Boolean)
-      .join(" ")
-  );
+function getRequestedLocationScore(
+  queryText: string,
+  item: VectorCandidate["item"],
+  context?: AiSearchScoringContext
+) {
+  const requestedLocationTokens =
+    context?.query.requestedLocationTokens ??
+    extractRequestedLocationTokens(queryText);
+  const itemLocationTokens = getAiSearchItemTokenAnalysis(item, context).locationTokens;
 
   if (requestedLocationTokens.length === 0) {
     return 1;
@@ -3610,8 +3605,14 @@ function getRequestedLocationScore(queryText: string, item: VectorCandidate["ite
   return matchedLocationCount / requestedLocationTokens.length;
 }
 
-function hasRequestedLocation(queryText: string): boolean {
-  return extractRequestedLocationTokens(queryText).length > 0;
+function hasRequestedLocation(
+  queryText: string,
+  context?: AiSearchScoringContext
+): boolean {
+  return (
+    context?.query.hasRequestedLocation ??
+    createAiSearchQueryAnalysis(queryText).hasRequestedLocation
+  );
 }
 
 function getRequestedLocationQuery(promptText?: string | null): string | null {
@@ -3625,11 +3626,133 @@ function getRequestedLocationQuery(promptText?: string | null): string | null {
   return alias?.query ?? requestedLocationTokens.join(" ");
 }
 
+type AiSearchQueryAnalysis = {
+  queryKeywords: string[];
+  requestedCategoryTokens: string[];
+  requestedColorTokens: string[];
+  requestedLocationTokens: string[];
+  hasRequestedCategory: boolean;
+  hasRequestedColor: boolean;
+  hasRequestedLocation: boolean;
+};
+
+type AiSearchItemTokenAnalysis = {
+  evidenceKeywords: string[];
+  categoryTokens: string[];
+  colorTokens: string[];
+  locationTokens: string[];
+};
+
+type AiSearchScoringContext = {
+  query: AiSearchQueryAnalysis;
+  itemTokensById: Map<number, AiSearchItemTokenAnalysis>;
+};
+
+function createAiSearchQueryAnalysis(queryText: string): AiSearchQueryAnalysis {
+  const queryKeywords = extractQueryKeywords(queryText);
+  const requestedCategoryTokens = queryKeywords.filter((keyword) =>
+    CATEGORY_SYNONYM_GROUPS.some((group) =>
+      group.some(
+        (term) =>
+          calculateTokenSimilarity(
+            keyword,
+            normalizeComparableText(term),
+            CATEGORY_SYNONYM_GROUPS
+          ) >= 0.64
+      )
+    )
+  );
+  const requestedColorTokens = extractRequestedColorTokens(queryText);
+  const requestedLocationTokens = extractRequestedLocationTokens(queryText);
+
+  return {
+    queryKeywords,
+    requestedCategoryTokens,
+    requestedColorTokens,
+    requestedLocationTokens,
+    hasRequestedCategory: requestedCategoryTokens.length > 0,
+    hasRequestedColor: requestedColorTokens.length > 0,
+    hasRequestedLocation: requestedLocationTokens.length > 0,
+  };
+}
+
+function createAiSearchScoringContext(queryText: string): AiSearchScoringContext {
+  return {
+    query: createAiSearchQueryAnalysis(queryText),
+    itemTokensById: new Map(),
+  };
+}
+
+function getAiSearchItemTokenAnalysis(
+  item: VectorCandidate["item"],
+  context?: AiSearchScoringContext
+): AiSearchItemTokenAnalysis {
+  const cached = context?.itemTokensById.get(item.id);
+  if (cached) {
+    return cached;
+  }
+
+  const analysis: AiSearchItemTokenAnalysis = {
+    evidenceKeywords: extractQueryKeywords(getItemEvidenceText(item)).concat(
+      (item.tags ?? []).map((tag) => normalizeComparableText(tag)).filter(Boolean)
+    ),
+    categoryTokens: extractQueryKeywords(
+      [item.title, item.itemCategory, item.description, item.tags?.join(" ")]
+        .filter(Boolean)
+        .join(" ")
+    ),
+    colorTokens: extractQueryKeywords(
+      [item.title, item.color, item.description, item.tags?.join(" ")]
+        .filter(Boolean)
+        .join(" ")
+    ),
+    locationTokens: extractQueryKeywords(
+      [
+        item.location,
+        item.address,
+        item.placeName,
+        item.region1,
+        item.region2,
+        item.region3,
+        item.description,
+        item.title,
+        item.tags?.join(" "),
+      ]
+        .filter(Boolean)
+        .join(" ")
+    ),
+  };
+  context?.itemTokensById.set(item.id, analysis);
+  return analysis;
+}
+
 type AiCandidateEvaluation = {
   keep: boolean;
   scoreCap: number;
   evidenceLabels: string[];
+  overlapScore: number;
+  categoryScore: number;
+  colorScore: number;
+  locationScore: number;
+  dateScore: number | null;
+  conditionScore: number | null;
 };
+
+function buildRejectedAiCandidateEvaluation(params: {
+  overlapScore: number;
+  categoryScore: number;
+  colorScore: number;
+  locationScore: number;
+  dateScore: number | null;
+  conditionScore: number | null;
+}): AiCandidateEvaluation {
+  return {
+    keep: false,
+    scoreCap: 0,
+    evidenceLabels: [],
+    ...params,
+  };
+}
 
 type SearchDateRange = {
   label: string;
@@ -4408,6 +4531,7 @@ function evaluateAiSearchCandidate(params: {
   hasLocationConstraint: boolean;
   lostDateRange?: SearchDateRange | null;
   rerankEnabled: boolean;
+  context?: AiSearchScoringContext;
 }): AiCandidateEvaluation {
   const {
     queryText,
@@ -4415,12 +4539,20 @@ function evaluateAiSearchCandidate(params: {
     hasLocationConstraint,
     lostDateRange,
     rerankEnabled,
+    context,
   } = params;
-  const evidence = getMatchedQueryKeywords(queryText, candidate.item);
-  const categoryScore = getRequestedCategoryScore(queryText, candidate.item);
-  const colorScore = getRequestedColorScore(queryText, candidate.item);
-  const locationScore = getRequestedLocationScore(queryText, candidate.item);
+  const evidence = getMatchedQueryKeywords(queryText, candidate.item, context);
+  const categoryScore = getRequestedCategoryScore(queryText, candidate.item, context);
+  const colorScore = getRequestedColorScore(queryText, candidate.item, context);
+  const locationScore = getRequestedLocationScore(queryText, candidate.item, context);
   const dateScore = calculateAiSearchDateScore(candidate.item.date, lostDateRange);
+  const conditionScore = calculateAiSearchConditionScore({
+    queryText,
+    item: candidate.item,
+    distanceKm: candidate.distanceKm,
+    lostDateRange,
+    context,
+  });
   const evidenceLabels: string[] = [];
   const hasDateEvidence =
     lostDateRange !== undefined &&
@@ -4435,21 +4567,49 @@ function evaluateAiSearchCandidate(params: {
 
   if (
     categoryScore === 0 &&
-    hasRequestedCategory(queryText) &&
+    hasRequestedCategory(queryText, context) &&
     evidence.overlapScore < 0.55
   ) {
-    return { keep: false, scoreCap: 0, evidenceLabels: [] };
+    return buildRejectedAiCandidateEvaluation({
+      overlapScore: evidence.overlapScore,
+      categoryScore,
+      colorScore,
+      locationScore,
+      dateScore,
+      conditionScore,
+    });
   }
 
   if (!hasDirectEvidence && weakSemanticMatch) {
-    return { keep: false, scoreCap: 0, evidenceLabels: [] };
+    return buildRejectedAiCandidateEvaluation({
+      overlapScore: evidence.overlapScore,
+      categoryScore,
+      colorScore,
+      locationScore,
+      dateScore,
+      conditionScore,
+    });
   }
 
   if (hasLocationConstraint && !hasDirectEvidence && candidate.score < 0.28) {
-    return { keep: false, scoreCap: 0, evidenceLabels: [] };
+    return buildRejectedAiCandidateEvaluation({
+      overlapScore: evidence.overlapScore,
+      categoryScore,
+      colorScore,
+      locationScore,
+      dateScore,
+      conditionScore,
+    });
   }
   if (lostDateRange && dateScore === 0) {
-    return { keep: false, scoreCap: 0, evidenceLabels: [] };
+    return buildRejectedAiCandidateEvaluation({
+      overlapScore: evidence.overlapScore,
+      categoryScore,
+      colorScore,
+      locationScore,
+      dateScore,
+      conditionScore,
+    });
   }
 
   if (hasDirectEvidence) {
@@ -4457,18 +4617,18 @@ function evaluateAiSearchCandidate(params: {
   }
   if (categoryScore > 0 && categoryScore < 1) {
     evidenceLabels.push("분류 유사");
-  } else if (categoryScore === 1 && hasRequestedCategory(queryText)) {
+  } else if (categoryScore === 1 && hasRequestedCategory(queryText, context)) {
     evidenceLabels.push("분류 유사");
   }
   if (colorScore > 0 && colorScore < 1) {
     evidenceLabels.push("색상 유사");
-  } else if (colorScore === 1 && hasRequestedColor(queryText)) {
+  } else if (colorScore === 1 && hasRequestedColor(queryText, context)) {
     evidenceLabels.push("색상 유사");
   }
   if (
     candidate.distanceKm !== null ||
     (locationScore > 0 && locationScore < 1) ||
-    (locationScore === 1 && hasRequestedLocation(queryText))
+    (locationScore === 1 && hasRequestedLocation(queryText, context))
   ) {
     evidenceLabels.push("지역 일치");
   }
@@ -4497,6 +4657,12 @@ function evaluateAiSearchCandidate(params: {
     keep: true,
     scoreCap,
     evidenceLabels: Array.from(new Set(evidenceLabels)).slice(0, 5),
+    overlapScore: evidence.overlapScore,
+    categoryScore,
+    colorScore,
+    locationScore,
+    dateScore,
+    conditionScore,
   };
 }
 
@@ -7121,6 +7287,8 @@ export async function registerRoutes(
       }
 
       const queryText = queryParts.join("\n\n").trim();
+      const scoringContext = createAiSearchScoringContext(queryText);
+      const isImageOnlySearch = Boolean(input.imageUrl) && !trimmedPrompt;
       const embeddingStartedAt = Date.now();
       const queryEmbedding = await searchTimeout.race(
         createEmbedding(queryText, "query", searchSignal)
@@ -7188,14 +7356,19 @@ export async function registerRoutes(
                   })(),
                   (async () => {
                     const lexicalStartedAt = Date.now();
-                    const matches = await searchLexicalAiCandidates({
-                      queryText,
-                      searchCoordinates,
-                      radiusKm: effectiveRadiusKm,
-                      limit: vectorCandidateCount,
-                      database,
-                    });
+                    const shouldRunLexical =
+                      !isImageOnlySearch || AI_SEARCH_IMAGE_LEXICAL_ENABLED;
+                    const matches = shouldRunLexical
+                      ? await searchLexicalAiCandidates({
+                          queryText,
+                          searchCoordinates,
+                          radiusKm: effectiveRadiusKm,
+                          limit: vectorCandidateCount,
+                          database,
+                        })
+                      : [];
                     logAiSearchPhase(searchId, "candidate search: lexical", lexicalStartedAt, {
+                      enabled: shouldRunLexical,
                       results: matches.length,
                       limit: vectorCandidateCount,
                     });
@@ -7316,6 +7489,7 @@ export async function registerRoutes(
           hasLocationConstraint,
           lostDateRange,
           rerankEnabled: AI_RERANK_ENABLED,
+          context: scoringContext,
         });
         if (!evaluation.keep) {
           continue;
@@ -7392,6 +7566,7 @@ export async function registerRoutes(
           }
 
           const llmScore = Math.max(0, Math.min(1, result.score));
+          const evaluation = candidateEvaluationById.get(vectorMatch.item.id);
           const blendedScore = applyAiSearchConditionAdjustment({
             baseScore: applyAiSearchDateAdjustment(
               blendAiSearchScore({
@@ -7407,6 +7582,8 @@ export async function registerRoutes(
             item: vectorMatch.item,
             distanceKm: vectorMatch.distanceKm,
             lostDateRange,
+            context: scoringContext,
+            evaluation,
           });
           const dateSummary = buildAiSearchDateSummary(
             vectorMatch.item.date,
@@ -7416,9 +7593,8 @@ export async function registerRoutes(
           return [{
             item: vectorMatch.item,
             score: blendedScore,
-            scoreCap: candidateEvaluationById.get(vectorMatch.item.id)?.scoreCap,
-            evidenceLabels: candidateEvaluationById.get(vectorMatch.item.id)
-              ?.evidenceLabels,
+            scoreCap: evaluation?.scoreCap,
+            evidenceLabels: evaluation?.evidenceLabels,
             distanceKm: vectorMatch.distanceKm,
             dateSummary,
             llmReasoning: result.reasoning,
@@ -7453,13 +7629,29 @@ export async function registerRoutes(
           candidates: filteredVectorMatches.length,
         });
         const fallbackScoringStartedAt = Date.now();
-        const fallbackScoredCandidates = filteredVectorMatches
+        const fallbackScoringLimit = Math.max(
+          FINAL_RESULT_COUNT,
+          AI_SEARCH_FALLBACK_SCORING_LIMIT
+        );
+        const fallbackScoringCandidates = filteredVectorMatches
+          .slice()
+          .sort((a, b) => {
+            if (b.score !== a.score) {
+              return b.score - a.score;
+            }
+            if (a.distanceKm === null) return 1;
+            if (b.distanceKm === null) return -1;
+            return a.distanceKm - b.distanceKm;
+          })
+          .slice(0, fallbackScoringLimit);
+        const fallbackScoredCandidates = fallbackScoringCandidates
           .map((result) => {
             const score = blendAiSearchFallbackScore(
               result.score,
               result.distanceKm,
               effectiveRadiusKm
             );
+            const evaluation = candidateEvaluationById.get(result.item.id);
             const adjustedScore = applyAiSearchConditionAdjustment({
               baseScore: applyAiSearchDateAdjustment(
                 score,
@@ -7470,6 +7662,8 @@ export async function registerRoutes(
               item: result.item,
               distanceKm: result.distanceKm,
               lostDateRange,
+              context: scoringContext,
+              evaluation,
             });
             const dateSummary = buildAiSearchDateSummary(
               result.item.date,
@@ -7479,9 +7673,8 @@ export async function registerRoutes(
             return {
               item: result.item,
               score: adjustedScore,
-              scoreCap: candidateEvaluationById.get(result.item.id)?.scoreCap,
-              evidenceLabels: candidateEvaluationById.get(result.item.id)
-                ?.evidenceLabels,
+              scoreCap: evaluation?.scoreCap,
+              evidenceLabels: evaluation?.evidenceLabels,
               distanceKm: result.distanceKm,
               dateSummary,
             };
@@ -7489,6 +7682,8 @@ export async function registerRoutes(
           .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE);
         logAiSearchPhase(searchId, "fallback result build: scoring", fallbackScoringStartedAt, {
           candidates: filteredVectorMatches.length,
+          scoredCandidates: fallbackScoringCandidates.length,
+          limit: fallbackScoringLimit,
           kept: fallbackScoredCandidates.length,
         });
 
