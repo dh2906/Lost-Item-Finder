@@ -119,6 +119,9 @@ const AI_SEARCH_LEXICAL_PER_TOKEN_LIMIT = Number(
 );
 const AI_SEARCH_IMAGE_LEXICAL_ENABLED =
   process.env.AI_SEARCH_IMAGE_LEXICAL_ENABLED === "true";
+const AI_SEARCH_EXACT_BACKFILL_LIMIT = Number(
+  process.env.AI_SEARCH_EXACT_BACKFILL_LIMIT ?? 24
+);
 const rawAiSearchFallbackScoringLimit = Number(
   process.env.AI_SEARCH_FALLBACK_SCORING_LIMIT ?? 24
 );
@@ -4521,6 +4524,123 @@ async function searchLexicalAiCandidates(params: {
     .slice(0, limit);
 }
 
+function getExactBackfillTokens(queryText: string): string[] {
+  return Array.from(new Set(extractQueryKeywords(queryText)))
+    .filter((token) => token.length >= 2 && !findKnownPlaceAlias(token))
+    .slice(0, Math.max(1, AI_SEARCH_LEXICAL_TOKEN_LIMIT));
+}
+
+async function searchExactKeywordAiBackfillCandidates(params: {
+  queryText: string;
+  searchCoordinates: SearchCoordinates | null;
+  radiusKm?: number;
+  excludeItemIds: Set<number>;
+  limit: number;
+  context?: AiSearchScoringContext;
+  database?: AiSearchDatabase;
+}): Promise<RankedVectorCandidate[]> {
+  const {
+    queryText,
+    searchCoordinates,
+    radiusKm,
+    excludeItemIds,
+    limit,
+    context,
+    database = db,
+  } = params;
+  const uniqueTokens = getExactBackfillTokens(queryText);
+  if (uniqueTokens.length === 0 || limit <= 0) {
+    return [];
+  }
+
+  const perTokenLimit = Math.max(
+    1,
+    Math.min(limit, AI_SEARCH_LEXICAL_PER_TOKEN_LIMIT)
+  );
+  const rows = await Promise.all(
+    uniqueTokens.map((token) => {
+      const searchPattern = `%${token}%`;
+      return database
+        .select()
+        .from(items)
+        .where(
+          and(
+            eq(items.reportType, "found"),
+            eq(items.status, "active"),
+            or(
+              ilike(items.title, searchPattern),
+              ilike(items.description, searchPattern),
+              ilike(items.itemCategory, searchPattern),
+              ilike(items.color, searchPattern),
+              ilike(items.size, searchPattern)
+            )!
+          )
+        )
+        .orderBy(desc(items.date), desc(items.id))
+        .limit(perTokenLimit);
+    })
+  );
+
+  const candidatesById = new Map<number, RankedVectorCandidate>();
+  for (const row of rows) {
+    for (const item of row) {
+      if (excludeItemIds.has(item.id)) {
+        continue;
+      }
+
+      const itemLatitude = parseCoordinate(item.latitude);
+      const itemLongitude = parseCoordinate(item.longitude);
+      const distanceKm =
+        searchCoordinates && itemLatitude !== null && itemLongitude !== null
+          ? calculateDistanceKm(searchCoordinates, {
+              latitude: itemLatitude,
+              longitude: itemLongitude,
+            })
+          : null;
+
+      if (
+        searchCoordinates &&
+        radiusKm !== undefined &&
+        (distanceKm === null || distanceKm > radiusKm)
+      ) {
+        continue;
+      }
+
+      const evidence = getMatchedQueryKeywords(queryText, item, context);
+      const exactMatchRatio = calculateExactQueryTokenMatchRatio(
+        uniqueTokens,
+        item
+      );
+      const categoryScore = getRequestedCategoryScore(queryText, item, context);
+      const colorScore = getRequestedColorScore(queryText, item, context);
+      const recencyTieBreakScore = calculateAiSearchRecencyTieBreakScore(
+        item.date
+      );
+      const score = Number(
+        Math.max(
+          0.58,
+          Math.min(
+            0.9,
+            evidence.overlapScore * 0.45 +
+              exactMatchRatio * 0.28 +
+              categoryScore * 0.15 +
+              colorScore * 0.08 +
+              recencyTieBreakScore * 0.04
+          )
+        ).toFixed(4)
+      );
+      const existing = candidatesById.get(item.id);
+      if (!existing || score > existing.score) {
+        candidatesById.set(item.id, { item, score, distanceKm });
+      }
+    }
+  }
+
+  return Array.from(candidatesById.values())
+    .sort((left, right) => compareRankedAiCandidates(left, right))
+    .slice(0, limit);
+}
+
 async function searchAiItemsByEmbedding(
   database: AiSearchDatabase,
   reportType: "lost" | "found",
@@ -4653,6 +4773,25 @@ function mergeRankedCandidates(
     }
   }
   return Array.from(candidatesById.values());
+}
+
+function mergeAiSearchResults(results: AiSearchResult[]): AiSearchResult[] {
+  const resultsById = new Map<number, AiSearchResult>();
+  for (const result of results) {
+    const existing = resultsById.get(result.item.id);
+    if (!existing || result.score > existing.score) {
+      resultsById.set(result.item.id, result);
+    }
+  }
+
+  return Array.from(resultsById.values()).sort((left, right) => {
+    if (right.score !== left.score) {
+      return right.score - left.score;
+    }
+    if (left.distanceKm === null || left.distanceKm === undefined) return 1;
+    if (right.distanceKm === null || right.distanceKm === undefined) return -1;
+    return left.distanceKm - right.distanceKm;
+  });
 }
 
 function compareRankedAiCandidates(
@@ -7375,11 +7514,11 @@ export async function registerRoutes(
       }
 
       const explicitSearchCoordinates = getSearchCoordinates(input);
-      const promptAndLocationText = [input.prompt, input.location]
-        .filter((value): value is string => Boolean(value?.trim()))
-        .join(" ");
-      const inferredLocationQuery = getRequestedLocationQuery(promptAndLocationText);
-      const inferredLocation = !explicitSearchCoordinates
+      const explicitSearchLocation = normalizeSearchLocationText(input.location);
+      const inferredLocationQuery = explicitSearchLocation
+        ? getRequestedLocationQuery(explicitSearchLocation) ?? explicitSearchLocation
+        : null;
+      const inferredLocation = !explicitSearchCoordinates && explicitSearchLocation
         ? await searchTimeout.race(
             geocodeSearchLocationQuery(inferredLocationQuery ?? "")
           )
@@ -7392,7 +7531,6 @@ export async function registerRoutes(
             longitude: inferredLocation.longitude,
           }
         : null;
-      const explicitSearchLocation = normalizeSearchLocationText(input.location);
       const searchLocation = explicitSearchLocation || inferredLocationQuery || undefined;
       const searchLocationTextFilter =
         !searchCoordinates && explicitSearchLocation ? explicitSearchLocation : undefined;
@@ -7779,7 +7917,7 @@ export async function registerRoutes(
         filteredVectorMatches.map((candidate) => [candidate.item.id, candidate])
       );
 
-      const searchResults: AiSearchResult[] = rerankedMatches
+      let searchResults: AiSearchResult[] = rerankedMatches
         .flatMap((result) => {
           const vectorMatch = vectorMatchById.get(result.itemId);
           if (!vectorMatch) {
@@ -7843,6 +7981,101 @@ export async function registerRoutes(
         .slice(0, FINAL_RESULT_COUNT);
 
       abortIfNeeded(searchSignal);
+
+      if (
+        searchResults.length < FINAL_RESULT_COUNT &&
+        AI_SEARCH_EXACT_BACKFILL_LIMIT > 0
+      ) {
+        const exactBackfillStartedAt = Date.now();
+        const existingResultIds = new Set(searchResults.map((result) => result.item.id));
+        const exactBackfillLimit = Math.min(
+          FINAL_RESULT_COUNT - searchResults.length,
+          AI_SEARCH_EXACT_BACKFILL_LIMIT
+        );
+        const exactBackfillQueryText = trimmedPrompt && !validateSearchPrompt(trimmedPrompt)
+          ? trimmedPrompt
+          : queryText;
+        const exactBackfillCandidates = await searchTimeout.race(
+          withAiSearchDbTimeout(
+            getRemainingTimeoutMs(searchStartedAt, AI_SEARCH_TOTAL_TIMEOUT_MS),
+            (database) =>
+              searchExactKeywordAiBackfillCandidates({
+                queryText: exactBackfillQueryText,
+                searchCoordinates,
+                radiusKm: effectiveRadiusKm,
+                excludeItemIds: existingResultIds,
+                limit: exactBackfillLimit,
+                context: scoringContext,
+                database,
+              })
+          )
+        );
+        const exactBackfillResults: AiSearchResult[] = exactBackfillCandidates
+          .flatMap((candidate) => {
+            const evaluation = evaluateAiSearchCandidate({
+              queryText,
+              candidate,
+              hasLocationConstraint,
+              lostDateRange,
+              rerankEnabled: false,
+              context: scoringContext,
+            });
+            if (!evaluation.keep) {
+              return [];
+            }
+            candidateEvaluationById.set(candidate.item.id, evaluation);
+            const adjustedScore = applyAiSearchConditionAdjustment({
+              baseScore: applyAiSearchDateAdjustment(
+                blendAiSearchFallbackScore(
+                  candidate.score,
+                  candidate.distanceKm,
+                  effectiveRadiusKm
+                ),
+                candidate.item.date,
+                lostDateRange
+              ),
+              queryText,
+              item: candidate.item,
+              distanceKm: candidate.distanceKm,
+              lostDateRange,
+              context: scoringContext,
+              evaluation,
+            });
+            const dateSummary = buildAiSearchDateSummary(
+              candidate.item.date,
+              lostDateRange
+            );
+
+            return [{
+              item: candidate.item,
+              score: adjustedScore,
+              scoreCap: evaluation.scoreCap,
+              evidenceLabels: evaluation.evidenceLabels,
+              distanceKm: candidate.distanceKm,
+              dateSummary,
+              reasoning: buildReasoningFromEvidence({
+                queryText,
+                item: candidate.item,
+                matchScore: adjustedScore,
+                distanceKm: candidate.distanceKm,
+                dateSummary,
+              }),
+            }];
+          })
+          .filter((result) => result.score >= MIN_FALLBACK_MATCH_SCORE);
+
+        searchResults = mergeAiSearchResults([
+          ...searchResults,
+          ...exactBackfillResults,
+        ]).slice(0, FINAL_RESULT_COUNT);
+        logAiSearchPhase(searchId, "exact keyword backfill", exactBackfillStartedAt, {
+          enabled: true,
+          requested: exactBackfillLimit,
+          candidates: exactBackfillCandidates.length,
+          results: exactBackfillResults.length,
+          totalResults: searchResults.length,
+        });
+      }
 
       if (searchResults.length === 0) {
         const fallbackStartedAt = Date.now();
