@@ -3,6 +3,8 @@ import {
   api,
   type AnalyzeImageInput,
   type AnalyzeImageResponse,
+  type AnalyzeSearchImageInput,
+  type AnalyzeSearchImageResponse,
   type SearchSimilarInput,
   type SearchSimilarResponse,
 } from "@shared/routes";
@@ -57,6 +59,34 @@ export function useAnalyzeImage(): UseMutationResult<AnalyzeImageResponse, Error
         throw new Error(message);
       }
       return parseWithLogging(api.ai.analyzeImage.responses[200], resData, "ai.analyzeImage");
+    },
+  });
+}
+
+export function useAnalyzeSearchImage(): UseMutationResult<AnalyzeSearchImageResponse, Error, AnalyzeSearchImageInput> {
+  return useMutation({
+    mutationFn: async (data: AnalyzeSearchImageInput) => {
+      const validated = api.ai.analyzeSearchImage.input.parse(data);
+      const res = await fetch(api.ai.analyzeSearchImage.path, {
+        method: api.ai.analyzeSearchImage.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validated),
+        credentials: "include",
+      });
+
+      const resData = await readJsonResponse(res);
+
+      if (!res.ok) {
+        const message =
+          resData &&
+          typeof resData === "object" &&
+          "message" in resData &&
+          typeof resData.message === "string"
+            ? resData.message
+            : "Failed to analyze search image";
+        throw new Error(message);
+      }
+      return parseWithLogging(api.ai.analyzeSearchImage.responses[200], resData, "ai.analyzeSearchImage");
     },
   });
 }

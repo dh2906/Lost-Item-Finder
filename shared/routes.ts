@@ -646,12 +646,27 @@ export const api = {
         500: errorSchemas.internal,
       },
     },
+    analyzeSearchImage: {
+      method: "POST" as const,
+      path: "/api/ai/search-image-analysis" as const,
+      input: z.object({
+        imageUrl: aiImageDataUrlSchema,
+      }),
+      responses: {
+        200: z.object({
+          imageSearchText: z.string(),
+        }),
+        400: errorSchemas.validation,
+        500: errorSchemas.internal,
+      },
+    },
     searchSimilar: {
       method: "POST" as const,
       path: "/api/ai/search" as const,
       input: z.object({
         prompt: optionalTrimmedStringSchema,
         imageUrl: optionalAiImageDataUrlSchema,
+        imageSearchText: z.string().trim().max(1_000).optional(),
         lostDateText: z.string().trim().max(40).optional(),
         location: z
           .string()
@@ -798,6 +813,12 @@ export type UpdateItemInput = z.infer<typeof api.items.update.input>;
 export type AnalyzeImageInput = z.infer<typeof api.ai.analyzeImage.input>;
 export type AnalyzeImageResponse = z.infer<
   (typeof api.ai.analyzeImage.responses)[200]
+>;
+export type AnalyzeSearchImageInput = z.infer<
+  typeof api.ai.analyzeSearchImage.input
+>;
+export type AnalyzeSearchImageResponse = z.infer<
+  (typeof api.ai.analyzeSearchImage.responses)[200]
 >;
 export type MatchListResponse = z.infer<(typeof api.matches.list.responses)[200]>;
 export type MatchResponse = MatchListResponse[number];

@@ -146,6 +146,12 @@ const AI_SEARCH_GEOCODE_TIMEOUT_MS = Number(
 const AI_SEARCH_IMAGE_TIMEOUT_MS = Number(
   process.env.AI_SEARCH_IMAGE_TIMEOUT_MS ?? 600_000
 );
+const AI_SEARCH_IMAGE_MAX_EDGE = Number(
+  process.env.AI_SEARCH_IMAGE_MAX_EDGE ?? 1_600
+);
+const AI_SEARCH_IMAGE_JPEG_QUALITY = Number(
+  process.env.AI_SEARCH_IMAGE_JPEG_QUALITY ?? 82
+);
 const AI_SEARCH_RERANK_TIMEOUT_MS = Number(
   process.env.AI_SEARCH_RERANK_TIMEOUT_MS ?? 600_000
 );
@@ -2849,6 +2855,69 @@ function parseImageDataUrl(imageUrl?: string | null): {
   };
 }
 
+type PreparedAiSearchImage = {
+  imageUrl: string;
+  originalBytes?: number;
+  preparedBytes?: number;
+  optimized: boolean;
+};
+
+async function prepareAiSearchImageUrl(
+  imageUrl: string,
+  signal?: AbortSignal
+): Promise<PreparedAiSearchImage> {
+  const trimmedImageUrl = imageUrl.trim();
+  const parsedImage = parseImageDataUrl(trimmedImageUrl);
+  if (!parsedImage) {
+    return {
+      imageUrl: trimmedImageUrl,
+      optimized: false,
+    };
+  }
+
+  try {
+    abortIfNeeded(signal);
+    const preparedBuffer = await sharp(parsedImage.data)
+      .rotate()
+      .resize({
+        width: AI_SEARCH_IMAGE_MAX_EDGE,
+        height: AI_SEARCH_IMAGE_MAX_EDGE,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: AI_SEARCH_IMAGE_JPEG_QUALITY, mozjpeg: true })
+      .toBuffer();
+    abortIfNeeded(signal);
+
+    if (preparedBuffer.length >= parsedImage.data.length) {
+      return {
+        imageUrl: trimmedImageUrl,
+        originalBytes: parsedImage.data.length,
+        preparedBytes: parsedImage.data.length,
+        optimized: false,
+      };
+    }
+
+    return {
+      imageUrl: `data:image/jpeg;base64,${preparedBuffer.toString("base64")}`,
+      originalBytes: parsedImage.data.length,
+      preparedBytes: preparedBuffer.length,
+      optimized: true,
+    };
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw error;
+    }
+    console.warn("[AI Search] failed to optimize image payload; using original:", error);
+    return {
+      imageUrl: trimmedImageUrl,
+      originalBytes: parsedImage.data.length,
+      preparedBytes: parsedImage.data.length,
+      optimized: false,
+    };
+  }
+}
+
 async function createItemThumbnailDataUrl(
   imageUrl?: string | null
 ): Promise<string | null> {
@@ -5241,20 +5310,22 @@ async function createImageSearchText(
         {
           role: "system",
           content:
-            '너는 분실물 검색용 이미지 요약 도우미다. 제공된 이미지를 보고 검색에 도움이 되는 한국어 JSON 객체만 반환해라. 형식은 {"itemCategory":"...","color":"...","size":"...","tags":["..."],"description":"..."} 이다.',
+            '이미지를 분석해 분실물 등록 폼과 같은 한국어 JSON 필드를 반환해라. 형식은 {"itemCategory":"...","color":"...","size":"...","tags":["..."],"description":"...","requiresMasking":false} 이다. description은 한 문장으로 짧게 써라.',
         },
         {
           role: "user",
           content: [
             {
               type: "text",
-              text: "이 이미지를 분실물 검색용 텍스트로 요약해줘. 반드시 한국어 JSON만 반환해줘.",
+              text: "이 이미지를 분석하고 메타데이터를 JSON 형식의 한국어로 반환해줘.",
             },
             { type: "image_url", image_url: { url: imageUrl } },
           ],
         },
         ],
         response_format: { type: "json_object" },
+        temperature: 0,
+        max_tokens: 180,
       },
       {
         signal: requestSignal,
@@ -5273,8 +5344,18 @@ async function createImageSearchText(
     response,
     "이미지 검색 텍스트 생성에 실패했습니다"
   );
-  const parsed = normalizeItemMetadata(JSON.parse(content));
+  const rawResult = rawAnalyzeImageSchema.parse(JSON.parse(content));
+  const parsed = OPENAI_IMAGE_METADATA_NORMALIZE_ENABLED
+    ? await normalizeAnalyzeImageMetadata(rawResult).catch((normalizationError) => {
+        console.error(
+          "Failed to normalize image search metadata:",
+          normalizationError
+        );
+        return buildLocalAnalyzeImageResult(rawResult);
+      })
+    : buildLocalAnalyzeImageResult(rawResult);
   return buildItemSearchText({
+    title: parsed.title,
     itemCategory: parsed.itemCategory,
     color: parsed.color,
     size: parsed.size,
@@ -7145,6 +7226,43 @@ export async function registerRoutes(
     }
   );
 
+  app.post(api.ai.analyzeSearchImage.path, aiSearchRateLimit, async (req, res) => {
+    let searchImageAnalysisId: string | undefined;
+    try {
+      const startedAt = Date.now();
+      searchImageAnalysisId = `${startedAt.toString(36)}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`;
+      const input = api.ai.analyzeSearchImage.input.parse(req.body);
+      logAiSearchEvent(searchImageAnalysisId, "preanalysis start", {
+        hasImage: Boolean(input.imageUrl),
+      });
+
+      const preparedImage = await prepareAiSearchImageUrl(input.imageUrl);
+      const imageSearchText = await createImageSearchText(preparedImage.imageUrl);
+      logAiSearchPhase(searchImageAnalysisId, "preanalysis", startedAt, {
+        imageOptimized: preparedImage.optimized,
+        originalBytes: preparedImage.originalBytes,
+        preparedBytes: preparedImage.preparedBytes,
+      });
+
+      res.json({ imageSearchText });
+    } catch (err) {
+      logAiSearchEvent(searchImageAnalysisId, "preanalysis error", {
+        name: err instanceof Error ? err.name : typeof err,
+        message: getErrorMessage(err),
+      });
+      console.error(err);
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({
+          message: err.errors[0].message,
+          field: err.errors[0].path.join("."),
+        });
+      }
+      res.status(500).json({ message: getErrorMessage(err) });
+    }
+  });
+
   app.post(api.ai.searchSimilar.path, aiSearchRateLimit, async (req, res) => {
     let cleanupSearchTimeout: (() => void) | undefined;
     let searchId: string | undefined;
@@ -7267,26 +7385,38 @@ export async function registerRoutes(
 
       if (input.imageUrl) {
         const phaseStartedAt = Date.now();
-        const imageSearchText = await searchTimeout.race(
-          createImageSearchText(input.imageUrl, searchSignal).catch(
-            (imageSearchError) => {
-              if (isAiSearchTimeoutError(imageSearchError)) {
+        const preanalyzedImageSearchText = input.imageSearchText?.trim();
+        let imageSearchText = preanalyzedImageSearchText ?? "";
+        let preparedImage: PreparedAiSearchImage | null = null;
+        if (!imageSearchText) {
+          preparedImage = await searchTimeout.race(
+            prepareAiSearchImageUrl(input.imageUrl, searchSignal)
+          );
+          imageSearchText = await searchTimeout.race(
+            createImageSearchText(preparedImage.imageUrl, searchSignal).catch(
+              (imageSearchError) => {
+                if (isAiSearchTimeoutError(imageSearchError)) {
+                  throw imageSearchError;
+                }
+                if (trimmedPrompt && isAiSearchServiceUnavailableError(imageSearchError)) {
+                  console.warn(
+                    "[AI Search] image analysis failed; falling back to prompt-only search:",
+                    imageSearchError
+                  );
+                  return "";
+                }
+
                 throw imageSearchError;
               }
-              if (trimmedPrompt && isAiSearchServiceUnavailableError(imageSearchError)) {
-                console.warn(
-                  "[AI Search] image analysis failed; falling back to prompt-only search:",
-                  imageSearchError
-                );
-                return "";
-              }
-
-              throw imageSearchError;
-            }
-          )
-        );
+            )
+          );
+        }
         logAiSearchPhase(searchId, "image analysis", phaseStartedAt, {
           usedFallback: !imageSearchText,
+          usedPreanalysis: Boolean(preanalyzedImageSearchText),
+          imageOptimized: preparedImage?.optimized,
+          originalBytes: preparedImage?.originalBytes,
+          preparedBytes: preparedImage?.preparedBytes,
         });
         if (imageSearchText) {
           queryParts.push(imageSearchText);

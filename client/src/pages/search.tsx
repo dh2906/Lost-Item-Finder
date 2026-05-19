@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { ItemCard } from "@/components/item-card";
-import { useSearchSimilar } from "@/hooks/use-ai";
+import { useAnalyzeSearchImage, useSearchSimilar } from "@/hooks/use-ai";
 import { optimizeImageForUpload } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
@@ -69,12 +69,21 @@ const searchRadiusOptions = [
 
 export default function SearchPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageAnalysisRef = useRef<{
+    imageUrl: string;
+    promise: Promise<string>;
+  } | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageSearchText, setImageSearchText] = useState<string | null>(null);
+  const [isImageAnalysisPending, setIsImageAnalysisPending] = useState(false);
+  const [isSubmittingSearch, setIsSubmittingSearch] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [showLocation, setShowLocation] = useState(false);
   const [locationMode, setLocationMode] = useState<LocationMode>("none");
   const { toast } = useToast();
+  const analyzeSearchImageMutation = useAnalyzeSearchImage();
   const searchMutation = useSearchSimilar();
+  const isSearchBusy = searchMutation.isPending || isSubmittingSearch;
 
   const form = useForm<SearchFormValues>({
     resolver: zodResolver(searchSchema),
@@ -100,14 +109,37 @@ export default function SearchPage() {
     }
 
     try {
-      const base64 = await optimizeImageForUpload(file, {
-        maxWidth: 1280,
-        maxHeight: 1280,
-        quality: 0.72,
-      });
+      const base64 = await optimizeImageForUpload(file);
       setImagePreview(base64);
       form.setValue("imageUrl", base64);
       form.clearErrors("prompt");
+      setImageSearchText(null);
+      setIsImageAnalysisPending(true);
+
+      const analysisPromise = analyzeSearchImageMutation
+        .mutateAsync({ imageUrl: base64 })
+        .then((result) => {
+          if (imageAnalysisRef.current?.imageUrl === base64) {
+            setImageSearchText(result.imageSearchText);
+          }
+          return result.imageSearchText;
+        })
+        .catch((error) => {
+          if (imageAnalysisRef.current?.imageUrl === base64) {
+            setImageSearchText(null);
+            console.warn("Failed to pre-analyze search image:", error);
+          }
+          return "";
+        })
+        .finally(() => {
+          if (imageAnalysisRef.current?.imageUrl === base64) {
+            setIsImageAnalysisPending(false);
+          }
+        });
+      imageAnalysisRef.current = {
+        imageUrl: base64,
+        promise: analysisPromise,
+      };
     } catch (error) {
       toast({
         variant: "destructive",
@@ -150,6 +182,9 @@ export default function SearchPage() {
 
   const removeImage = () => {
     setImagePreview(null);
+    setImageSearchText(null);
+    setIsImageAnalysisPending(false);
+    imageAnalysisRef.current = null;
     form.setValue("imageUrl", "");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -205,10 +240,22 @@ export default function SearchPage() {
   };
 
   const onSubmit = async (data: SearchFormValues) => {
+    setIsSubmittingSearch(true);
     try {
+      const normalizedImageUrl = normalizeOptionalText(data.imageUrl);
+      let resolvedImageSearchText = imageSearchText ?? undefined;
+      if (
+        normalizedImageUrl &&
+        !resolvedImageSearchText &&
+        imageAnalysisRef.current?.imageUrl === normalizedImageUrl
+      ) {
+        resolvedImageSearchText = await imageAnalysisRef.current.promise.catch(() => undefined);
+      }
+
       const payload = {
         prompt: normalizeOptionalText(data.prompt),
-        imageUrl: normalizeOptionalText(data.imageUrl),
+        imageUrl: normalizedImageUrl,
+        imageSearchText: resolvedImageSearchText,
         lostDateText: normalizeOptionalText(data.lostDateText),
         location:
           locationMode === "map" ? normalizeOptionalText(data.location) : undefined,
@@ -227,13 +274,15 @@ export default function SearchPage() {
         title: "검색 실패",
         description: message,
       });
+    } finally {
+      setIsSubmittingSearch(false);
     }
   };
 
   const handlePromptKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key !== "Enter" || e.shiftKey || e.nativeEvent.isComposing) return;
     e.preventDefault();
-    if (searchMutation.isPending) return;
+    if (isSearchBusy) return;
     void form.handleSubmit(onSubmit)();
   };
 
@@ -342,12 +391,12 @@ export default function SearchPage() {
                   type="submit"
                   size="lg"
                   className="h-12 rounded-full px-8 font-semibold shadow-[0_12px_22px_-16px_hsl(var(--primary)/0.4)]"
-                  disabled={searchMutation.isPending}
+                  disabled={isSearchBusy}
                 >
-                  {searchMutation.isPending ? (
+                  {isSearchBusy ? (
                     <>
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      검색 중...
+                      {isImageAnalysisPending ? "사진 분석 중..." : "검색 중..."}
                     </>
                   ) : (
                     <>
@@ -433,7 +482,7 @@ export default function SearchPage() {
       {/* Results Section */}
       <section className="pb-16">
         <div className="container mx-auto max-w-6xl px-5">
-          {searchMutation.isPending ? (
+          {isSearchBusy ? (
             <div className="flex flex-col items-center justify-center py-20">
               <div className="relative mb-6">
                 <div className="absolute inset-0 animate-pulse rounded-full bg-primary blur-xl opacity-15"></div>
@@ -441,8 +490,14 @@ export default function SearchPage() {
                   <Sparkles className="h-10 w-10 animate-pulse text-primary" />
                 </div>
               </div>
-              <h3 className="mb-2 text-xl font-bold text-foreground">AI가 일치하는 게시물을 찾고 있어요</h3>
-              <p className="text-muted-foreground">입력하신 특징과 이미지, 위치 정보를 종합적으로 분석 중입니다.</p>
+              <h3 className="mb-2 text-xl font-bold text-foreground">
+                {isImageAnalysisPending ? "사진을 먼저 분석하고 있어요" : "AI가 일치하는 게시물을 찾고 있어요"}
+              </h3>
+              <p className="text-muted-foreground">
+                {isImageAnalysisPending
+                  ? "분석이 끝나면 바로 유사 게시물을 찾습니다."
+                  : "입력하신 특징과 이미지, 위치 정보를 종합적으로 분석 중입니다."}
+              </p>
             </div>
           ) : searchMutation.isSuccess && searchMutation.data ? (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
