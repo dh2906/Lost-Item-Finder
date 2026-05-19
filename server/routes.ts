@@ -4329,9 +4329,11 @@ function calculateExactQueryTokenMatchRatio(
     return 0;
   }
 
-  const evidenceText = normalizeKoreanText(getItemEvidenceText(item));
+  const evidenceTokens = new Set(
+    extractQueryKeywords(getItemEvidenceText(item)).map(normalizeComparableText)
+  );
   const matchedTokenCount = queryTokens.filter((token) =>
-    evidenceText.includes(normalizeComparableText(token))
+    evidenceTokens.has(normalizeComparableText(token))
   ).length;
   return matchedTokenCount / queryTokens.length;
 }
@@ -4667,9 +4669,15 @@ function compareRankedAiCandidates(
     return rightDateValue - leftDateValue;
   }
 
+  if (left.distanceKm === null && right.distanceKm === null) {
+    return right.item.id - left.item.id;
+  }
   if (left.distanceKm === null) return 1;
   if (right.distanceKm === null) return -1;
-  return left.distanceKm - right.distanceKm;
+  if (left.distanceKm !== right.distanceKm) {
+    return left.distanceKm - right.distanceKm;
+  }
+  return right.item.id - left.item.id;
 }
 
 function evaluateAiSearchCandidate(params: {
