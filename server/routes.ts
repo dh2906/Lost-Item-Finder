@@ -4788,9 +4788,18 @@ function mergeAiSearchResults(results: AiSearchResult[]): AiSearchResult[] {
     if (right.score !== left.score) {
       return right.score - left.score;
     }
-    if (left.distanceKm === null || left.distanceKm === undefined) return 1;
-    if (right.distanceKm === null || right.distanceKm === undefined) return -1;
-    return left.distanceKm - right.distanceKm;
+
+    const leftDistance = left.distanceKm ?? null;
+    const rightDistance = right.distanceKm ?? null;
+    if (leftDistance === null && rightDistance === null) {
+      return right.item.id - left.item.id;
+    }
+    if (leftDistance === null) return 1;
+    if (rightDistance === null) return -1;
+    if (leftDistance !== rightDistance) {
+      return leftDistance - rightDistance;
+    }
+    return right.item.id - left.item.id;
   });
 }
 
