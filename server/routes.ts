@@ -4293,6 +4293,49 @@ function toCandidateDateOnly(candidateDate: string | Date | null | undefined): s
   return Number.isNaN(parsedDate.getTime()) ? null : toKstDateOnly(parsedDate);
 }
 
+function getCandidateDateSortValue(candidateDate: string | Date | null | undefined): number {
+  const dateOnly = toCandidateDateOnly(candidateDate);
+  if (!dateOnly) {
+    return 0;
+  }
+  return new Date(`${dateOnly}T00:00:00+09:00`).getTime();
+}
+
+function calculateAiSearchRecencyTieBreakScore(
+  candidateDate: string | Date | null | undefined
+): number {
+  const dateSortValue = getCandidateDateSortValue(candidateDate);
+  if (dateSortValue <= 0) {
+    return 0;
+  }
+
+  const diffDays = Math.max(
+    0,
+    (Date.now() - dateSortValue) / (1000 * 60 * 60 * 24)
+  );
+  if (diffDays <= 7) return 1;
+  if (diffDays <= 30) return 0.85;
+  if (diffDays <= 90) return 0.65;
+  if (diffDays <= 180) return 0.4;
+  if (diffDays <= 365) return 0.2;
+  return 0;
+}
+
+function calculateExactQueryTokenMatchRatio(
+  queryTokens: string[],
+  item: VectorCandidate["item"]
+): number {
+  if (queryTokens.length === 0) {
+    return 0;
+  }
+
+  const evidenceText = normalizeKoreanText(getItemEvidenceText(item));
+  const matchedTokenCount = queryTokens.filter((token) =>
+    evidenceText.includes(normalizeComparableText(token))
+  ).length;
+  return matchedTokenCount / queryTokens.length;
+}
+
 async function searchDateAiCandidates(params: {
   range: SearchDateRange | null;
   queryText: string;
@@ -4443,15 +4486,24 @@ async function searchLexicalAiCandidates(params: {
       const categoryScore = getRequestedCategoryScore(queryText, item);
       const colorScore = getRequestedColorScore(queryText, item);
       const locationScore = getRequestedLocationScore(queryText, item);
+      const exactMatchRatio = calculateExactQueryTokenMatchRatio(
+        uniqueTokens,
+        item
+      );
+      const recencyTieBreakScore = calculateAiSearchRecencyTieBreakScore(
+        item.date
+      );
       const lexicalScore = Number(
         Math.max(
           0.32,
           Math.min(
-            0.72,
+            0.88,
             evidence.overlapScore * 0.5 +
               categoryScore * 0.2 +
               colorScore * 0.18 +
-              locationScore * 0.12
+              locationScore * 0.12 +
+              exactMatchRatio * 0.12 +
+              recencyTieBreakScore * 0.04
           )
         ).toFixed(4)
       );
@@ -4463,7 +4515,7 @@ async function searchLexicalAiCandidates(params: {
   }
 
   return Array.from(candidatesById.values())
-    .sort((left, right) => right.score - left.score)
+    .sort((left, right) => compareRankedAiCandidates(left, right))
     .slice(0, limit);
 }
 
@@ -4599,6 +4651,25 @@ function mergeRankedCandidates(
     }
   }
   return Array.from(candidatesById.values());
+}
+
+function compareRankedAiCandidates(
+  left: RankedVectorCandidate,
+  right: RankedVectorCandidate
+): number {
+  if (right.score !== left.score) {
+    return right.score - left.score;
+  }
+
+  const rightDateValue = getCandidateDateSortValue(right.item.date);
+  const leftDateValue = getCandidateDateSortValue(left.item.date);
+  if (rightDateValue !== leftDateValue) {
+    return rightDateValue - leftDateValue;
+  }
+
+  if (left.distanceKm === null) return 1;
+  if (right.distanceKm === null) return -1;
+  return left.distanceKm - right.distanceKm;
 }
 
 function evaluateAiSearchCandidate(params: {
@@ -7638,6 +7709,7 @@ export async function registerRoutes(
         candidateEvaluationById.set(result.item.id, evaluation);
         filteredVectorMatches.push(result);
       }
+      filteredVectorMatches.sort(compareRankedAiCandidates);
       logAiSearchPhase(searchId, "candidate filtering: evaluate", evaluationStartedAt, {
         candidates: locationFilteredCandidates.length,
         kept: filteredVectorMatches.length,
